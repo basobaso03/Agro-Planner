@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "370226892145",
+    "project_id": "gen-lang-client-0801418948",
+    "storage_bucket": "gen-lang-client-0801418948.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:370226892145:android:5bd3e90ff5aad8a68f7ad0",
+        "android_client_info": {
+          "package_name": "com.basobaso.agroplanner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "370226892145-givdaus34kjfs7sg70fvtocpj5ii37hu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBrAAZSxjEthv_770PlaBFWdEvuo-Z1MGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "370226892145-givdaus34kjfs7sg70fvtocpj5ii37hu.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

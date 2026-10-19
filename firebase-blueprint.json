@@ -1,0 +1,250 @@
+{
+  "entities": {
+    "FarmLocation": {
+      "title": "FarmLocation",
+      "description": "Represents a physical farm site or ranch operated by the syndicate.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 120 },
+        "region": { "type": "string", "maxLength": 120 },
+        "gpsCoordinates": { "type": "string", "maxLength": 80 },
+        "primaryOperatorName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "name", "region", "gpsCoordinates", "primaryOperatorName", "createdAt", "createdBy"]
+    },
+    "SyndicateMember": {
+      "title": "SyndicateMember",
+      "description": "Represents an authenticated investor, treasurer, admin, or ground operator in the syndicate.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 160 },
+        "fullName": { "type": "string", "maxLength": 120 },
+        "phoneOrEmail": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 60 },
+        "jobTitle": { "type": "string", "maxLength": 120 },
+        "bio": { "type": "string", "maxLength": 400 },
+        "preferredContact": { "type": "string", "enum": ["EMAIL", "WHATSAPP", "SMS"] },
+        "role": { "type": "string", "enum": ["SYNDICATE_ADMIN", "REMOTE_INVESTOR", "GROUND_OPERATOR", "TREASURER"] },
+        "approvalStatus": { "type": "string", "enum": ["APPROVED", "PENDING_APPROVAL", "SUSPENDED"] },
+        "authProviders": { "type": "array" },
+        "hasPasswordSetup": { "type": "boolean" },
+        "passwordVerifierHash": { "type": "string", "maxLength": 128 },
+        "assignedLocationId": { "type": "string", "maxLength": 128 },
+        "joinedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "lastLoginAt": { "type": "string", "maxLength": 64 },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "fullName", "phoneOrEmail", "role", "joinedAt", "active"]
+    },
+    "CapitalContributionEvent": {
+      "title": "CapitalContributionEvent",
+      "description": "Immutable append-only capital contribution or contra-reversal event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "memberName": { "type": "string", "maxLength": 120 },
+        "direction": { "type": "string", "enum": ["INITIAL", "ADDITION", "CONTRA_REVERSAL"] },
+        "amount": { "type": "number" },
+        "referenceTransactionId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "receiptUrlOrBase64": { "type": "string", "maxLength": 100000 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdByMemberId": { "type": "string", "maxLength": 128 },
+        "auditHash": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "memberId", "memberName", "direction", "amount", "note", "createdAt", "createdByMemberId", "auditHash"]
+    },
+    "ExpenseLedgerEvent": {
+      "title": "ExpenseLedgerEvent",
+      "description": "Immutable append-only farm expense deduction or contra-reversal event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "locationName": { "type": "string", "maxLength": 120 },
+        "batchOrAnimalId": { "type": "string", "maxLength": 128 },
+        "category": {
+          "type": "string",
+          "enum": ["FEED", "VACCINES_MEDICATION", "LIVESTOCK_PURCHASE", "FIXED_ASSET_PURCHASE", "LABOR_WAGES", "TRANSPORT_LOGISTICS", "UTILITIES_SECURITY", "FENCING_SECURITY", "MAINTENANCE", "OTHER"]
+        },
+        "direction": { "type": "string", "enum": ["DEDUCTION", "CONTRA_REVERSAL"] },
+        "amount": { "type": "number" },
+        "referenceTransactionId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "loggedByMemberId": { "type": "string", "maxLength": 128 },
+        "loggedByName": { "type": "string", "maxLength": 120 },
+        "gpsStamp": { "type": "string", "maxLength": 80 },
+        "receiptPhotoDataUrl": { "type": "string", "maxLength": 100000 },
+        "approvalStatus": { "type": "string", "enum": ["APPROVED", "PENDING_MULTISIG", "REJECTED_BY_CONTRA"] },
+        "approvedByMemberIds": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "auditHash": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "locationId", "locationName", "category", "direction", "amount", "note", "loggedByMemberId", "loggedByName", "approvalStatus", "approvedByMemberIds", "createdAt", "auditHash"]
+    },
+    "FixedAssetLedgerEvent": {
+      "title": "FixedAssetLedgerEvent",
+      "description": "Immutable append-only fixed asset acquisition, valuation adjustment, or inter-site transfer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetGroupId": { "type": "string", "maxLength": 128 },
+        "assetName": { "type": "string", "maxLength": 140 },
+        "category": { "type": "string", "enum": ["HOUSING_INFRASTRUCTURE", "WATER_SOLAR", "FEEDERS_EQUIPMENT", "FENCING_SECURITY", "TOOLS_MACHINERY"] },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "direction": { "type": "string", "enum": ["INITIAL", "ADDITION", "DEDUCTION", "CONTRA_REVERSAL", "TRANSFER_IN", "TRANSFER_OUT"] },
+        "quantityDelta": { "type": "number" },
+        "valueDelta": { "type": "number" },
+        "condition": { "type": "string", "enum": ["EXCELLENT", "GOOD", "FAIR", "DAMAGED"] },
+        "referenceTransactionId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "loggedByName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "auditHash": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "assetGroupId", "assetName", "category", "locationId", "direction", "quantityDelta", "valueDelta", "condition", "note", "loggedByName", "createdAt", "auditHash"]
+    },
+    "LivestockEntry": {
+      "title": "LivestockEntry",
+      "description": "Immutable livestock batch or individual ear-tag registration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "locationName": { "type": "string", "maxLength": 120 },
+        "species": { "type": "string", "maxLength": 80 },
+        "nameOrTag": { "type": "string", "maxLength": 140 },
+        "trackingMode": { "type": "string", "enum": ["BATCH", "INDIVIDUAL_TAG"] },
+        "entryDate": { "type": "string", "maxLength": 64 },
+        "initialAgeValue": { "type": "number" },
+        "initialAgeUnit": { "type": "string", "enum": ["DAYS", "WEEKS", "MONTHS", "YEARS"] },
+        "targetDurationValue": { "type": "number" },
+        "targetDurationUnit": { "type": "string", "enum": ["DAYS", "WEEKS", "MONTHS", "YEARS"] },
+        "targetSaleDate": { "type": "string", "maxLength": 64 },
+        "initialHeadcount": { "type": "number" },
+        "purchaseCostTotal": { "type": "number" },
+        "targetSaleWeightKg": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdByMemberName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "locationId", "locationName", "species", "nameOrTag", "trackingMode", "entryDate", "initialAgeValue", "initialAgeUnit", "targetDurationValue", "targetDurationUnit", "targetSaleDate", "initialHeadcount", "purchaseCostTotal", "notes", "createdByMemberName", "createdAt"]
+    },
+    "LivestockLifecycleEvent": {
+      "title": "LivestockLifecycleEvent",
+      "description": "Append-only livestock headcount, mortality, birth, health, sale, or contra-adjustment event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "livestockId": { "type": "string", "maxLength": 128 },
+        "livestockName": { "type": "string", "maxLength": 140 },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "eventType": {
+          "type": "string",
+          "enum": ["INITIAL_STOCK", "MORTALITY_LOSS", "BIRTH_OFFSPRING", "SALE_DISPATCH", "HEADCOUNT_CONTRA_ADJUSTMENT", "VACCINATION_HEALTH", "WEIGHT_CHECK", "TRANSFER_OUT", "TRANSFER_IN"]
+        },
+        "headcountDelta": { "type": "number" },
+        "weightAvgKg": { "type": "number" },
+        "saleRevenueAmount": { "type": "number" },
+        "reinvestmentPercentage": { "type": "number" },
+        "referenceTransactionId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "loggedByName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "auditHash": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "livestockId", "livestockName", "locationId", "eventType", "headcountDelta", "note", "loggedByName", "createdAt", "auditHash"]
+    },
+    "FeedLedgerEvent": {
+      "title": "FeedLedgerEvent",
+      "description": "Append-only feed stock-in, daily consumption, or contra-reversal event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "feedType": { "type": "string", "maxLength": 120 },
+        "direction": { "type": "string", "enum": ["STOCK_IN", "DAILY_CONSUMPTION", "CONTRA_REVERSAL"] },
+        "bagsDelta": { "type": "number" },
+        "kgPerBag": { "type": "number" },
+        "linkedLivestockId": { "type": "string", "maxLength": 128 },
+        "referenceTransactionId": { "type": "string", "maxLength": 128 },
+        "note": { "type": "string", "minLength": 4, "maxLength": 500 },
+        "loggedByName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "auditHash": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "locationId", "feedType", "direction", "bagsDelta", "kgPerBag", "note", "loggedByName", "createdAt", "auditHash"]
+    },
+    "AuditNotificationEvent": {
+      "title": "AuditNotificationEvent",
+      "description": "Cryptographically hash-chained audit trail and real-time ground notification event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sequenceNumber": { "type": "number" },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 120 },
+        "actorRole": { "type": "string", "enum": ["SYNDICATE_ADMIN", "REMOTE_INVESTOR", "GROUND_OPERATOR", "TREASURER"] },
+        "locationId": { "type": "string", "maxLength": 128 },
+        "locationName": { "type": "string", "maxLength": 120 },
+        "eventType": { "type": "string", "maxLength": 64 },
+        "severity": { "type": "string", "enum": ["INFO", "FINANCIAL", "WARNING_CONTRA", "URGENT_GROUND", "MILESTONE"] },
+        "title": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "minLength": 4, "maxLength": 800 },
+        "deltaFinancial": { "type": "number" },
+        "deltaHeadcount": { "type": "number" },
+        "referenceEntityId": { "type": "string", "maxLength": 128 },
+        "previousHash": { "type": "string", "maxLength": 128 },
+        "currentHash": { "type": "string", "maxLength": 128 },
+        "readByMemberIds": { "type": "array" }
+      },
+      "required": ["id", "sequenceNumber", "timestamp", "actorId", "actorName", "actorRole", "locationId", "locationName", "eventType", "severity", "title", "message", "previousHash", "currentHash", "readByMemberIds"]
+    }
+  },
+  "firestore": {
+    "/locations/{locationId}": {
+      "schema": "FarmLocation",
+      "description": "Syndicate farm locations"
+    },
+    "/members/{memberId}": {
+      "schema": "SyndicateMember",
+      "description": "Syndicate members and operators"
+    },
+    "/capital_contributions/{entryId}": {
+      "schema": "CapitalContributionEvent",
+      "description": "Append-only capital pool contributions and contra-reversals"
+    },
+    "/expense_ledger/{entryId}": {
+      "schema": "ExpenseLedgerEvent",
+      "description": "Append-only expense ledger and multi-sig approvals"
+    },
+    "/fixed_assets_ledger/{entryId}": {
+      "schema": "FixedAssetLedgerEvent",
+      "description": "Append-only fixed assets registry and inter-location transfers"
+    },
+    "/livestock_entries/{livestockId}": {
+      "schema": "LivestockEntry",
+      "description": "Append-only livestock batches and individual ear-tagged animals"
+    },
+    "/livestock_lifecycle_events/{eventId}": {
+      "schema": "LivestockLifecycleEvent",
+      "description": "Append-only livestock lifecycle events (mortality, births, vaccines, sales, contra)"
+    },
+    "/feed_ledger/{eventId}": {
+      "schema": "FeedLedgerEvent",
+      "description": "Append-only feed stock-in and daily consumption events"
+    },
+    "/audit_notifications/{auditId}": {
+      "schema": "AuditNotificationEvent",
+      "description": "Cryptographically hash-chained immutable audit log and real-time ground notifications"
+    }
+  }
+}

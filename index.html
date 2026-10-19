@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
+  <meta name="theme-color" content="#FAF7F2" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="application-name" content="Agro Planner" />
+  <meta name="apple-mobile-web-app-title" content="Agro Planner" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500..800;1,500..800&family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..800&display=swap"
+    rel="stylesheet" />
+  <title>Agro Planner</title>
+  <meta name="description" content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <!-- WhatsApp and Social Media OpenGraph Metadata (No em-dashes) -->
+  <meta property="og:site_name" content="Agro Planner" />
+  <meta property="og:title" content="Agro Planner | Livestock and Farm Management Platform" />
+  <meta property="og:description"
+    content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <meta property="og:image" content="icon.png" />
+  <meta property="og:image:secure_url" content="icon.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Agro Planner Official App Logo" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Agro Planner | Agricultural Syndicate and Livestock Platform" />
+  <meta name="twitter:description"
+    content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <meta name="twitter:image" content="icon.png" />
+  <style>
+    #public-website-view {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 99999;
+      background: #FAF8F5;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Full-Window Public Presentation Website (Loads by default on GitHub Pages root) -->
+  <iframe id="public-website-view" src="public-website/index.html"
+    title="Agro Planner Public Website &amp; Technical Specifications" style="display: none;"></iframe>
+
+  <!-- React Application Container -->
+  <div id="root"></div>
+
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var hash = window.location.hash || '';
+      var isCapacitorNative = Boolean(
+        window.Capacitor &&
+        window.Capacitor.isNativePlatform &&
+        window.Capacitor.isNativePlatform()
+      );
+
+      // Determine if user explicitly wants app or public website
+      var wantsApp = params.get('app') === 'true' || hash === '#app' || isCapacitorNative;
+      var wantsWebsite = params.get('website') === 'true' || hash === '#website' || hash === '#download' || hash === '#features' || hash === '#contact';
+
+      // Check stored view preference if no query parameters exist
+      if (!wantsApp && !wantsWebsite) {
+        var saved = localStorage.getItem('agro_view_mode');
+        if (saved === 'app' && !window.location.hostname.includes('github.io')) {
+          wantsApp = true;
+        }
+      }
+
+      var iframe = document.getElementById('public-website-view');
+      var rootDiv = document.getElementById('root');
+
+      if (wantsApp) {
+        if (iframe) iframe.style.display = 'none';
+        if (rootDiv) rootDiv.style.display = 'block';
+        localStorage.setItem('agro_view_mode', 'app');
+      } else {
+        // Default to public website view (loads public-website/index.html cleanly on GitHub Pages root)
+        if (iframe) {
+          iframe.style.display = 'block';
+          if (hash && hash !== '#website') {
+            iframe.src = 'public-website/index.html' + hash;
+          }
+        }
+        if (rootDiv) rootDiv.style.display = 'none';
+        localStorage.setItem('agro_view_mode', 'website');
+      }
+
+      // Handle message event from iframe when user clicks "Launch Web App"
+      window.addEventListener('message', function (event) {
+        if (event.data && event.data.type === 'LAUNCH_AGRO_APP') {
+          if (iframe) iframe.style.display = 'none';
+          if (rootDiv) rootDiv.style.display = 'block';
+          localStorage.setItem('agro_view_mode', 'app');
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.set('app', 'true');
+            window.history.pushState({}, '', u.toString());
+          } catch (e) { }
+        }
+      });
+    })();
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

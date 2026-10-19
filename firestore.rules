@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isPrimaryFounderAdmin() {
+      return isAuthenticated()
+             && request.auth.token.email != null
+             && request.auth.token.email.lower() == 'baseramarlvin@gmail.com'
+             && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isPrimaryFounderAdmin()
+             || (isAuthenticated()
+                 && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                 && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'SYNDICATE_ADMIN'
+                 && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.active == true);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function hasMandatoryAuditFields() {
+      return request.resource.data.keys().hasAll(['note', 'createdAt', 'auditHash'])
+             && request.resource.data.note is string
+             && request.resource.data.note.size() >= 4
+             && request.resource.data.note.size() <= 500
+             && request.resource.data.createdAt is string
+             && request.resource.data.createdAt.size() <= 64
+             && request.resource.data.auditHash is string
+             && request.resource.data.auditHash.size() <= 128;
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    match /locations/{locationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && isValidId(locationId)
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() <= 120;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /members/{memberId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && isValidId(memberId)
+                    && request.resource.data.fullName is string
+                    && request.resource.data.fullName.size() <= 120
+                    && (
+                      isAdmin()
+                      || (
+                        memberId == request.auth.uid
+                        && request.resource.data.role == 'REMOTE_INVESTOR'
+                        && request.resource.data.active == false
+                      )
+                    );
+      allow update: if isAuthenticated()
+                    && isValidId(memberId)
+                    && (
+                      isAdmin()
+                      || (
+                        memberId == request.auth.uid
+                        && request.resource.data.role == resource.data.role
+                        && request.resource.data.active == resource.data.active
+                      )
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS
+    match /capital_contributions/{entryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /expense_ledger/{entryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow update: if isAuthenticated()
+                    && isValidId(entryId)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedByMemberIds'])
+                    && request.resource.data.approvalStatus in ['APPROVED', 'PENDING_MULTISIG', 'REJECTED_BY_CONTRA']
+                    && request.resource.data.approvedByMemberIds is list
+                    && request.resource.data.approvedByMemberIds.size() <= 50;
+      allow delete: if isAdmin();
+    }
+
+    match /fixed_assets_ledger/{entryId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /livestock_entries/{livestockId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && isValidId(livestockId)
+                    && request.resource.data.nameOrTag is string
+                    && request.resource.data.nameOrTag.size() <= 140;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /livestock_lifecycle_events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /feed_ledger/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /audit_notifications/{auditId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && isValidId(auditId)
+                    && request.resource.data.keys().hasAll(['previousHash', 'currentHash', 'timestamp', 'message'])
+                    && request.resource.data.previousHash is string
+                    && request.resource.data.previousHash.size() <= 128
+                    && request.resource.data.currentHash is string
+                    && request.resource.data.currentHash.size() <= 128
+                    && request.resource.data.message is string
+                    && request.resource.data.message.size() <= 800;
+      allow update: if isAuthenticated()
+                    && isValidId(auditId)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByMemberIds'])
+                    && request.resource.data.readByMemberIds is list
+                    && request.resource.data.readByMemberIds.size() <= 100;
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

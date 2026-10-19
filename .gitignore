@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+bun.lock
+.pnp
+.pnp.js
+
+# Build Outputs (Compiled Web & Caches)
+dist/
+dev-dist/
+build/
+coverage/
+.aistudio/
+
+# Local Environment Variables & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+*.pem
+*.key
+*.keystore
+*.jks
+*service-account*.json
+!/.env.example
+
+# Android Machine-Specific & Build Caches
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+**/local.properties
+*.iml
+.idea/
+.vscode/
+
+# Logs & System Files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# Allow Distribution APKs and Public Assets for GitHub Pages
+!apk/
+!apk/*.apk
+!public/apk/
+!public/apk/*.apk
+!public-website/apk/
+!public-website/apk/*.apk

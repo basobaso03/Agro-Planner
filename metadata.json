@@ -1,0 +1,6 @@
+{
+  "name": "Agro Planner",
+  "description": "Multi-Location Livestock & Syndicate ERP Mobile Application with an immutable append-only cryptographic ledger, real-time livestock lifecycle countdowns, and automated equity profit-sharing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,433 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-app: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--font-app);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-tap-highlight-color: transparent;
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+  }
+
+  body {
+    background-color: #FAF7F2;
+    color: #0F172A;
+    overscroll-behavior-y: none;
+    min-height: 100vh;
+  }
+
+  /* Safe area utility classes for mobile apps (Capacitor / iOS / Android) */
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  }
+
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  }
+
+  /* 5 Font Styles Switcher Classes */
+  body.font-style-geometric,
+  .font-style-geometric {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  }
+
+  body.font-style-tech,
+  .font-style-tech {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  }
+
+  body.font-style-serif,
+  .font-style-serif {
+    font-family: 'Playfair Display', Georgia, serif !important;
+  }
+
+  body.font-style-mono,
+  .font-style-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
+  }
+
+  body.font-style-humanist,
+  .font-style-humanist {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Custom subtle scrollbars for horizontal location/filter bars */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Solora tactile shadow & card utilities */
+.solora-card {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(229, 222, 206, 0.85);
+  box-shadow: 0 4px 20px -2px rgba(217, 119, 6, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.solora-card-interactive {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(229, 222, 206, 0.95);
+  box-shadow: 0 4px 20px -2px rgba(217, 119, 6, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.solora-card-interactive:hover {
+  transform: translateY(-1px);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 8px 24px -2px rgba(217, 119, 6, 0.09), 0 4px 8px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* GLOBAL SOLORA THEME COLOR & CARD UNIFICATION */
+div.bg-slate-900,
+section.bg-slate-900,
+main.bg-slate-900,
+form.bg-slate-900 {
+  background-color: #FFFFFF !important;
+  border-color: #E8DFCE !important;
+  box-shadow: 0 4px 20px -2px rgba(217, 119, 6, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+/* Ensure buttons and links styled with bg-slate-900 retain dark contrast and white text */
+button.bg-slate-900,
+a.bg-slate-900,
+button.bg-slate-800,
+a.bg-slate-800 {
+  background-color: #0F172A !important;
+  color: #FFFFFF !important;
+  border-color: #0F172A !important;
+}
+
+button.bg-slate-900:hover,
+a.bg-slate-900:hover,
+button.bg-slate-800:hover,
+a.bg-slate-800:hover {
+  background-color: #1E293B !important;
+  color: #FFFFFF !important;
+}
+
+.bg-slate-950 {
+  background-color: #FAF8F5 !important;
+  border-color: #E8DFCE !important;
+}
+
+.bg-slate-950\/95,
+.bg-slate-950\/90,
+.bg-slate-950\/80,
+.bg-slate-950\/70,
+.bg-slate-950\/60 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: #E8DFCE !important;
+}
+
+.bg-slate-900\/90,
+.bg-slate-900\/80,
+.bg-slate-900\/60,
+.bg-slate-900\/50,
+.bg-slate-900\/40 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: #E8DFCE !important;
+}
+
+.border-slate-800,
+.border-slate-800\/80,
+.border-slate-800\/90,
+.border-slate-800\/60 {
+  border-color: #E8DFCE !important;
+}
+
+.border-slate-700,
+.border-slate-700\/80,
+.border-slate-700\/50 {
+  border-color: #E0D7C6 !important;
+}
+
+.text-white {
+  color: #0F172A !important;
+}
+
+button.text-white,
+a.text-white,
+button span.text-white,
+.bg-amber-500.text-white,
+.bg-amber-600.text-white,
+.bg-emerald-600.text-white,
+.bg-emerald-700.text-white,
+.bg-rose-600.text-white,
+.bg-rose-700.text-white,
+.public-dark-surface .text-white,
+.public-dark-surface {
+  color: #FFFFFF !important;
+}
+
+.public-dark-surface {
+  background: linear-gradient(135deg, #071A12 0%, #0D291E 55%, #16241D 100%) !important;
+}
+
+.text-slate-100 {
+  color: #1E293B !important;
+}
+
+.text-slate-200 {
+  color: #334155 !important;
+}
+
+.text-slate-300 {
+  color: #475569 !important;
+}
+
+.text-slate-400 {
+  color: #64748B !important;
+}
+
+/* Unified Button & Tab Design System (Exact replica of Open Brand & Logo Studio: emerald-600 + shadow-emerald-950) */
+.btn-emerald-exact,
+button.btn-emerald-exact {
+  background-color: #059669 !important;
+  /* emerald-600 */
+  color: #FFFFFF !important;
+  border-radius: 0.75rem !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 6px -1px #022c22, 0 2px 4px -2px #022c22 !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+}
+
+.btn-emerald-exact:hover,
+button.btn-emerald-exact:hover {
+  background-color: #10B981 !important;
+  /* emerald-500 */
+  color: #FFFFFF !important;
+  box-shadow: 0 6px 14px -1px #022c22, 0 3px 6px -2px #022c22 !important;
+  transform: translateY(-0.5px);
+}
+
+.btn-emerald-exact:active,
+button.btn-emerald-exact:active {
+  transform: scale(0.98);
+}
+
+.btn-brand-primary,
+button.btn-brand-primary,
+button.bg-emerald-600,
+a.bg-emerald-600,
+button.bg-amber-500,
+a.bg-amber-500,
+button.bg-slate-900,
+a.bg-slate-900 {
+  border-radius: 0.75rem !important;
+  /* rounded-xl */
+  font-weight: 700 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 6px -1px #022c22, 0 2px 4px -2px #022c22 !important;
+  /* shadow-md shadow-emerald-950 */
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  cursor: pointer !important;
+}
+
+button.bg-emerald-600:hover,
+a.bg-emerald-600:hover,
+button.bg-amber-500:hover,
+a.bg-amber-500:hover,
+button.bg-slate-900:hover,
+a.bg-slate-900:hover,
+.btn-brand-primary:hover,
+button.btn-brand-primary:hover {
+  box-shadow: 0 6px 14px -1px #022c22, 0 3px 6px -2px #022c22 !important;
+  transform: translateY(-0.5px);
+}
+
+button.bg-emerald-600:active,
+button.bg-amber-500:active,
+button.bg-slate-900:active,
+.btn-brand-primary:active,
+button.btn-brand-primary:active {
+  transform: scale(0.98);
+}
+
+/* Secondary & Outline Buttons: matching shape, border, and the same subtle elevation */
+.btn-brand-secondary,
+button.btn-brand-secondary {
+  border-radius: 0.75rem !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 4px -1px rgba(2, 44, 34, 0.25) !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.btn-brand-secondary:hover,
+button.btn-brand-secondary:hover {
+  box-shadow: 0 4px 8px -1px rgba(2, 44, 34, 0.35) !important;
+  transform: translateY(-0.5px);
+}
+
+/* Selected Tab / Active Filter Pill (Matching Open Brand & Logo Studio emerald fill + shadow-emerald-950) */
+.tab-brand-active,
+button.tab-brand-active {
+  background-color: #059669 !important;
+  /* emerald-600 */
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 6px -1px #022c22, 0 2px 4px -2px #022c22 !important;
+  /* shadow-md shadow-emerald-950 */
+  border-color: transparent !important;
+}
+
+/* Inactive Tab / Inactive Filter Pill */
+.tab-brand-inactive,
+button.tab-brand-inactive {
+  background-color: #FAF8F5 !important;
+  color: #475569 !important;
+  border: 1px solid #E8DFCE !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px 0 rgba(2, 44, 34, 0.15) !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.tab-brand-inactive:hover,
+button.tab-brand-inactive:hover {
+  background-color: #F0EBE1 !important;
+  color: #0F172A !important;
+  box-shadow: 0 3px 6px -1px rgba(2, 44, 34, 0.25) !important;
+}
+
+/* Modals & Backdrop */
+.bg-slate-950\/80,
+.bg-slate-900\/40 {
+  background-color: rgba(15, 23, 42, 0.45) !important;
+}
+
+/* Input Fields inside Solora Light theme */
+input.bg-slate-950,
+select.bg-slate-950,
+textarea.bg-slate-950,
+input.bg-slate-900,
+select.bg-slate-900,
+textarea.bg-slate-900 {
+  background-color: #FAF8F5 !important;
+  color: #0F172A !important;
+  border-color: #E0D7C6 !important;
+}
+
+/* Splash Screen Animations */
+@keyframes gradientFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes shimmerSlide {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes fadeInScale {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-gradient-flow {
+  animation: gradientFlow 3s linear infinite;
+}
+
+.animate-shimmer-slide {
+  animation: shimmerSlide 2s ease-in-out infinite;
+}
+
+.animate-fade-in-scale {
+  animation: fadeInScale 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-spin-slow {
+  animation: spinSlow 20s linear infinite;
+}
+
+/* =========================================================================
+   KEYBOARD-SAFE MOBILE MODAL & FORM ADAPTATION
+   Prevents virtual keyboard from pushing modals too high or off the screen
+========================================================================= */
+.modal-overlay-responsive {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0.5rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+@media (min-width: 640px) {
+  .modal-overlay-responsive {
+    justify-content: center;
+    padding: 1rem;
+  }
+}
+
+.modal-dialog-responsive {
+  width: 100%;
+  margin-top: auto;
+  margin-bottom: auto;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 1rem);
+  max-height: calc(100vh - 1rem);
+  overflow: hidden;
+  background-color: #FFFFFF;
+  border: 1px solid #E8DFCE;
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.modal-body-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  padding-right: 0.25rem;
+}

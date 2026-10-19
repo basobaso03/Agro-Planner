@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content" />
+  <title>Agro Planner</title>
+  <meta name="description" content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <!-- WhatsApp & Social Media OpenGraph Metadata (Clean text, no em-dashes) -->
+  <meta property="og:site_name" content="Agro Planner" />
+  <meta property="og:title" content="Agro Planner | Livestock Platform" />
+  <meta property="og:description"
+    content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <meta property="og:image" content="icon.png" />
+  <meta property="og:image:secure_url" content="icon.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:image:alt" content="Agro Planner Official App Logo" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Agro Planner | Livestock Platform" />
+  <meta name="twitter:description"
+    content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
+  <meta name="twitter:image" content="icon.png" />
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap"
+    rel="stylesheet" />
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            amber: { 50: '#FFFBEB', 100: '#FEF3C7', 200: '#FDE68A', 400: '#FBBF24', 500: '#F59E0B', 600: '#D97706', 700: '#B45309', 800: '#92400E', 900: '#78350F' },
+            emerald: { 50: '#ECFDF5', 100: '#D1FAE5', 600: '#059669', 700: '#047857', 800: '#065F46', 900: '#064E3B' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #F8FAF8;
+      color: #0F172A;
+    }
+
+    .public-dark-surface {
+      background: radial-gradient(120% 120% at 50% 0%, #064E3B 0%, #022C22 55%, #051B14 100%);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- ==================== STICKY TOP BRAND NAVBAR ==================== -->
+  <header class="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-20 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3 cursor-pointer group" onclick="switchTab('home')">
+        <div
+          class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+          <svg viewBox="0 0 500 500" fill="none" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"
+            aria-label="Agro Planner App Logo">
+            <rect width="500" height="500" rx="108" fill="#064e3b" />
+            <rect x="20" y="20" width="460" height="460" rx="88" stroke="#34d399" stroke-width="6" stroke-opacity="0.3"
+              fill="none" />
+            <circle cx="250" cy="250" r="160" fill="#047857" fill-opacity="0.45" />
+            <path d="M 125 385 C 130 260 190 140 240 95 C 248 150 215 250 180 385 Z" fill="#ffffff" />
+            <path d="M 285 140 L 285 385" stroke="#ffffff" stroke-width="42" stroke-linecap="round" fill="none" />
+            <path d="M 285 140 C 375 120 425 175 420 235 C 415 285 365 305 285 300" stroke="#ffffff" stroke-width="42"
+              stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            <path d="M 285 150 C 340 160 380 205 380 235 C 330 235 295 195 285 150 Z" fill="#10b981" />
+            <path d="M 160 290 Q 230 270 310 280" stroke="#34d399" stroke-width="28" stroke-linecap="round"
+              fill="none" />
+            <path d="M 230 95 C 235 60 215 40 190 45 C 185 70 205 90 230 95 Z" fill="#6ee7b7" />
+            <path d="M 245 95 C 275 65 310 70 320 90 C 295 105 270 105 245 95 Z" fill="#10b981" />
+          </svg>
+        </div>
+        <div>
+          <span class="text-base sm:text-xl font-black tracking-tight text-slate-900 block leading-none">
+            Agro Planner
+          </span>
+          <span class="text-[10px] sm:text-[11px] font-bold tracking-wider uppercase text-emerald-700">
+            By BASOBASO SOFTWARES
+          </span>
+        </div>
+      </div>
+
+      <!-- Desktop Navigation Bar -->
+      <nav class="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200">
+        <button onclick="switchTab('home')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all bg-amber-500 text-white shadow-xs"
+          data-target="home">Homepage</button>
+        <button onclick="switchTab('features')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
+          data-target="features">Features &amp; Modules</button>
+        <button onclick="switchTab('download')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
+          data-target="download">Download Android App</button>
+        <button onclick="switchTab('contact')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
+          data-target="contact">Contact Engineering</button>
+        <button onclick="switchTab('terms')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
+          data-target="terms">Terms &amp; Governance</button>
+      </nav>
+
+      <!-- Right Action CTA -->
+      <div class="flex items-center gap-2 shrink-0">
+        <a id="btn-launch-app-top" href="?app=true" onclick="launchWebApp(event)"
+          class="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5">
+          <span>Launch Web App</span>
+          <span class="text-xs">↗</span>
+        </a>
+
+        <button onclick="switchTab('download')"
+          class="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5">
+          <span>Get APK</span>
+          <span class="hidden sm:inline">↓</span>
+        </button>
+
+        <button onclick="toggleMobileMenu()"
+          class="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200"
+          aria-label="Toggle navigation menu">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown Navigation -->
+    <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-1.5 shadow-lg">
+      <a href="?app=true" onclick="launchWebApp(event)"
+        class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-extrabold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200">
+        <span>🚀 Launch Agro Planner Web App</span>
+        <span>→</span>
+      </a>
+      <button onclick="switchTab('home')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Homepage</button>
+      <button onclick="switchTab('features')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Features
+        &amp; Modules</button>
+      <button onclick="switchTab('download')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Download
+        Android App (APK)</button>
+      <button onclick="switchTab('contact')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Contact
+        Engineering</button>
+      <button onclick="switchTab('terms')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Terms
+        &amp; Governance</button>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full">
+
+    <!-- =========================================================================
+         TAB 1: HOMEPAGE (DEEP, COMPREHENSIVE ARCHITECTURAL SHOWCASE)
+    ========================================================================= -->
+    <section id="tab-home" class="tab-content active">
+      <!-- Full-Bleed Deep Forest Hero -->
+      <div class="public-dark-surface py-12 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-10 border-b border-emerald-900/40">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          <div class="lg:col-span-7 space-y-6">
+            <div
+              class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-wider uppercase">
+              <span>★ Enterprise Agricultural Syndicate Platform · v1.0.0</span>
+            </div>
+
+            <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] text-balance">
+              Cryptographic Financial &amp; Livestock Governance From Ranch to Investor Pool.
+            </h1>
+
+            <p class="text-sm sm:text-base lg:text-lg text-emerald-100/90 leading-relaxed max-w-2xl">
+              Built by <strong>BASOBASO SOFTWARES</strong>, Agro Planner unites multi-location herd lifecycle tracking,
+              SHA-256 append-only accounting, multi-signature treasury controls, and automated equity profit-sharing in
+              one web and Android platform.
+            </p>
+
+            <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
+              <a href="?app=true" onclick="launchWebApp(event)"
+                class="px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
+                <span>🚀 Launch Web Application</span>
+                <span class="text-base">→</span>
+              </a>
+
+              <button onclick="switchTab('download')"
+                class="px-6 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
+                <span>Download Android APK</span>
+                <span class="text-base">↓</span>
+              </button>
+
+              <button onclick="switchTab('features')"
+                class="px-5 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
+                <span>Technical Matrix</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right Column: Architectural Telemetry Showcase Card -->
+          <div
+            class="lg:col-span-5 bg-white text-slate-900 rounded-3xl p-6 sm:p-8 border-2 border-amber-400/80 shadow-2xl space-y-5">
+            <div class="pb-3 border-b border-slate-200 flex items-center justify-between">
+              <div>
+                <span class="text-xs font-black uppercase tracking-wider text-amber-700 block">Zero-Trust Ledger
+                  Engine</span>
+                <span class="text-sm font-bold text-slate-900">Verified Syndicate Architecture</span>
+              </div>
+              <span
+                class="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
+                SHA-256 Verified
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
+                <div class="text-slate-500 font-medium">Ledger Model</div>
+                <div class="text-base font-black text-slate-900 mt-1 font-mono">Append-Only</div>
+                <div class="text-[11px] text-emerald-700 font-semibold mt-0.5">Zero silent edits or deletes</div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
+                <div class="text-slate-500 font-medium">Multi-Sig Guard</div>
+                <div class="text-base font-black text-slate-900 mt-1 font-mono tabular-nums">&gt; $150.00 USD</div>
+                <div class="text-[11px] text-amber-700 font-semibold mt-0.5">Dual-key Admin/Treasurer</div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
+                <div class="text-slate-500 font-medium">Access Control</div>
+                <div class="text-base font-black text-slate-900 mt-1 font-mono">4 RBAC Roles</div>
+                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Admin clearance lobby</div>
+              </div>
+
+              <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
+                <div class="text-slate-500 font-medium">Mobile Field Sync</div>
+                <div class="text-base font-black text-emerald-800 mt-1 font-mono">Offline Client</div>
+                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Android 8.0+ ready</div>
+              </div>
+            </div>
+
+            <div class="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs space-y-1 text-amber-950">
+              <div class="font-extrabold flex items-center gap-1.5">
+                <span class="text-amber-600">●</span>
+                <span>Automated Pro-Rata Equity Engine</span>
+              </div>
+              <p class="text-[11px] leading-relaxed text-amber-900">
+                Calculates real-time syndicate Net Asset Value (NAV) by reconciling cash reserves, fixed agricultural
+                assets, and biological herd biomass valuations automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Core Value Pillars Section -->
+      <div class="max-w-7xl mx-auto py-12 sm:py-20 px-4 sm:px-6 lg:px-10 space-y-10">
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div class="space-y-1">
+            <div class="text-xs font-extrabold uppercase tracking-wider text-emerald-700">
+              Why Syndicates &amp; Commercial Farmers Choose Us
+            </div>
+            <h2 class="text-2xl sm:text-4xl font-black text-slate-900">
+              Complete Visibility Across Every Farm Site &amp; Dollar
+            </h2>
+          </div>
+          <button onclick="switchTab('features')"
+            class="text-xs sm:text-sm font-extrabold text-amber-700 hover:text-amber-800 self-start md:self-auto cursor-pointer">
+            Explore All 6 Enterprise Modules →
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div class="md:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
+            <span class="text-xs font-mono font-extrabold text-amber-700">01. LIVESTOCK BIOMASS &amp; MARKET READINESS
+              ENGINE</span>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900">
+              Individual Ear-Tag &amp; Flock Batch Tracking Across All Rearing Durations
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Manage cattle, goats, sheep, pigs, broilers, layers, and fish across multiple farm locations. Convert
+              rearing durations across days, weeks, months, and years with automatic target harvest dates and biological
+              growth curves.
+            </p>
+          </div>
+
+          <div class="md:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
+            <span class="text-xs font-mono font-extrabold text-emerald-700">02. AUTOMATED EQUITY &amp; DIVIDENDS</span>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900">
+              Dynamic Pro-Rata Ownership &amp; Profit Splits
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Every verified capital deposit updates member ownership percentages in real time and powers the
+              interactive Harvest Profit-Split Simulator.
+            </p>
+          </div>
+
+          <div class="md:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
+            <span class="text-xs font-mono font-extrabold text-slate-700">03. ZERO-TRUST IDENTITY &amp; ROLES</span>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900">
+              Google + Password Linking &amp; Admin Role Switcher
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Sign in via Google OAuth or Email &amp; Password. Admins approve new registrants from a secure lobby and
+              switch users between roles in one click.
+            </p>
+          </div>
+
+          <div class="md:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
+            <span class="text-xs font-mono font-extrabold text-amber-700">04. CONTRA-ENTRY ACCOUNTING &amp; FEED
+              INVENTORY</span>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-900">
+              Audited Reversals Instead of Deletions + Kilogram-Level Feed Alerts
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Maintain an unbreakable audit trail where mistakes are rectified via formal Contra-Entry Reversals and
+              feed purchases are reconciled against daily livestock rations.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 2: FEATURES (FULL ENTERPRISE TECHNICAL MATRIX)
+    ========================================================================= -->
+    <section id="tab-features" class="tab-content">
+      <div class="max-w-7xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10 space-y-10">
+        <!-- Section Header Card -->
+        <div class="public-dark-surface rounded-3xl p-6 sm:p-10 text-white space-y-3 shadow-md">
+          <div class="text-xs font-bold uppercase tracking-wider text-amber-300">
+            Complete Technical Specifications
+          </div>
+          <h1 class="text-2xl sm:text-4xl font-black text-white">
+            Agro Planner Enterprise Feature Matrix
+          </h1>
+          <p class="text-xs sm:text-base text-emerald-100/90 max-w-3xl leading-relaxed">
+            Every module in Agro Planner is engineered by <strong>BASOBASO SOFTWARES</strong> to eliminate financial
+            leakage, automate partner equity splits, and provide real-time operational clarity across distributed farm
+            sites.
+          </p>
+        </div>
+
+        <!-- 6 Feature Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- Module 1 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-amber-700">MODULE 01</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Biomass
+                  Engine</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Multi-Location Livestock &amp; Growth Engine</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Supports Cattle, Goats, Sheep, Pigs, Broiler Poultry, Layer Poultry, and Fish.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Individual Ear-Tag tracking &amp; Batch/Flock headcount tracking.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Universal rearing duration converter (Days, Weeks, Months, Years).</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Biological growth curves &amp; target harvest date countdowns.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Module 2 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-emerald-700">MODULE 02</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Treasury &amp;
+                  Equity</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Syndicate Pool &amp; Pro-Rata Equity Matrix</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Dynamic ownership stake calculation from verified capital deposits.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Live Net Asset Value (NAV) across cash, infrastructure, and herd value.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Interactive Harvest Profit-Split Simulator for investor payouts.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Automatic PII contact masking for non-privileged syndicate roles.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Module 3 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-amber-700">MODULE 03</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Audit &amp;
+                  Feed</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Append-Only Expense &amp; Feed Ledger</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Strict immutability—records cannot be silently edited or deleted.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Formal Accounting Contra-Entry Reversals with mandatory audit notes.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Dual-Key Multi-Signature approval for expenses above $150 USD.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Kilogram-level Feed Inventory tracking with low-stock threshold alerts.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Module 4 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-slate-700">MODULE 04</span>
+                <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold">Security &amp;
+                  RBAC</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Zero-Trust Auth &amp; Admin Role Switcher</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Google OAuth 2.0 and Email &amp; Password login with password linking.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Pending Security Clearance Lobby for newly registered accounts.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Real-time Admin Role Switcher (Admin, Treasurer, Investor, Operator).</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>One-click Admin Demo Data Purge and clean production reset utility.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Module 5 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-amber-700">MODULE 05</span>
+                <span
+                  class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Infrastructure</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">Fixed Assets &amp; Infrastructure Registry</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Track Land, Tractors, Boreholes, Solar Arrays, and Housing.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Append-only asset maintenance, upgrade, and impairment logs.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Site-scoped infrastructure filtering and condition tracking.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Direct integration into overall Syndicate Net Asset Value.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Module 6 -->
+          <div
+            class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 space-y-4 shadow-sm flex flex-col justify-between">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-mono font-extrabold text-emerald-700">MODULE 06</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Field
+                  Mobility</span>
+              </div>
+              <h2 class="text-lg font-bold text-slate-900">SHA-256 Audit Chain &amp; Offline Android App</h2>
+              <ul class="space-y-2 text-xs text-slate-600">
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Every ledger action is chained to the previous SHA-256 block hash.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>One-click Cryptographic Chain Integrity Verifier.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Offline-capable Android app for remote field stations with zero signal.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                  <span class="text-emerald-600 font-bold shrink-0">✓</span>
+                  <span>Real-time Cloud Firestore synchronization when back online.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 3: DOWNLOAD (DETAILED ANDROID INSTALLATION & SPECIFICATIONS)
+    ========================================================================= -->
+    <section id="tab-download" class="tab-content">
+      <div class="max-w-7xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10 space-y-8">
+        <!-- Main Download Banner -->
+        <div
+          class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-sm grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-7 space-y-5">
+            <div
+              class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800">
+              <span>Android Field Edition · Offline-First Architecture</span>
+            </div>
+
+            <h1 class="text-2xl sm:text-4xl font-black text-slate-900 leading-tight">
+              Download Agro Planner for Android Phones &amp; Field Tablets
+            </h1>
+
+            <p class="text-xs sm:text-base text-slate-600 leading-relaxed">
+              Install the official Agro Planner Android application engineered by <strong>BASOBASO SOFTWARES</strong>.
+              Built with offline SQLite/IndexedDB persistence so field operators can record livestock events, feed
+              rations, and site expenses even without cellular coverage.
+            </p>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+              <a id="direct-apk-download-btn" href="apk/agro-planner.apk" download="agro-planner-v1.0.0.apk"
+                class="px-6 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.02] cursor-pointer">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                <span>Download Official Android APK (v1.0.0)</span>
+              </a>
+
+              <a href="https://wa.me/263788123047?text=Hello%20BASOBASO%20SOFTWARES%2C%20please%20send%20me%20the%20official%20Agro%20Planner%20Android%20APK%20package."
+                target="_blank" rel="noopener noreferrer"
+                class="px-5 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm transition-colors">
+                <span>Request on WhatsApp</span>
+                <span class="text-base">→</span>
+              </a>
+
+              <a href="mailto:baseramarlvin@gmail.com?subject=Agro%20Planner%20APK%20Request&body=Please%20send%20the%20Agro%20Planner%20Android%20APK%20package."
+                class="px-4 py-4 rounded-2xl bg-[#FAF8F5] hover:bg-amber-50 border border-slate-300 text-slate-900 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors">
+                <span>Request via Email</span>
+              </a>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-500 pt-1">
+              <span class="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">✓
+                Compiled APK Ready</span>
+              <span>·</span>
+              <span>Release: v1.0.0</span>
+              <span>·</span>
+              <span>OS: Android 8.0+ (Oreo) or newer</span>
+              <span>·</span>
+              <span>Package: agro-planner.apk (13.4 MB)</span>
+              <span>·</span>
+              <span>Developer: BASOBASO SOFTWARES</span>
+            </div>
+          </div>
+
+          <!-- 3-Step Installation Guide Card -->
+          <div class="lg:col-span-5 bg-[#FAF8F5] border border-[#E8DFCE] rounded-3xl p-6 sm:p-7 space-y-4">
+            <h2 class="text-base font-extrabold text-slate-900">
+              3-Step Android Installation Guide
+            </h2>
+
+            <ol class="space-y-3 text-xs text-slate-700">
+              <li class="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-3">
+                <span
+                  class="w-6 h-6 rounded-lg bg-emerald-600 text-white font-mono font-bold flex items-center justify-center shrink-0">1</span>
+                <div>
+                  <div class="font-bold text-slate-900">Download the Official APK File</div>
+                  <p class="text-slate-500 mt-0.5">Click the green "Download Official Android APK" button above to save
+                    the 13.4 MB package directly to your device.</p>
+                </div>
+              </li>
+
+              <li class="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-3">
+                <span
+                  class="w-6 h-6 rounded-lg bg-amber-500 text-white font-mono font-bold flex items-center justify-center shrink-0">2</span>
+                <div>
+                  <div class="font-bold text-slate-900">Install On Android Device</div>
+                  <p class="text-slate-500 mt-0.5">Open the `.apk` file and grant installation permission if prompted by
+                    Android Package Installer.</p>
+                </div>
+              </li>
+
+              <li class="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-3">
+                <span
+                  class="w-6 h-6 rounded-lg bg-amber-500 text-white font-mono font-bold flex items-center justify-center shrink-0">3</span>
+                <div>
+                  <div class="font-bold text-slate-900">Sign In &amp; Request Clearance</div>
+                  <p class="text-slate-500 mt-0.5">Launch full-screen from your app drawer. Your syndicate admin
+                    approves your role for field logging.</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- System Requirements & Hardware Telemetry Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
+          <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
+            <div class="font-extrabold text-slate-900 text-sm">Offline Field Station Cache</div>
+            <p class="text-slate-600 leading-relaxed">Full local database enables field operators to log daily livestock
+              weight, feed dispensations, and veterinary treatments with zero cellular signal.</p>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
+            <div class="font-extrabold text-slate-900 text-sm">Biometric Authentication</div>
+            <p class="text-slate-600 leading-relaxed">Supports hardware biometric unlocking (Fingerprint / Face Unlock)
+              on supported Android devices for rapid and secure station access.</p>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
+            <div class="font-extrabold text-slate-900 text-sm">Automatic Conflict Resolution</div>
+            <p class="text-slate-600 leading-relaxed">Queues offline writes into an append-only transaction pipeline
+              that reconciles with the cloud database upon reconnecting.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 4: CONTACT (FULL CHANNELS & VALIDATED DISPATCH FORM)
+    ========================================================================= -->
+    <section id="tab-contact" class="tab-content">
+      <div
+        class="max-w-7xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <!-- Direct Developer Information Cards -->
+        <div class="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+          <div class="space-y-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-amber-700">Official Software Engineering Studio
+            </div>
+            <h1
+              class="text-2xl font-black bg-gradient-to-r from-amber-700 via-rose-700 to-emerald-700 bg-clip-text text-transparent">
+              BASOBASO SOFTWARES
+            </h1>
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Connect directly with our engineering studio for enterprise agricultural ERP deployments, custom syndicate
+              integrations, or technical support.
+            </p>
+          </div>
+
+          <div class="space-y-3.5 text-xs">
+            <!-- Email Card -->
+            <a href="mailto:baseramarlvin@gmail.com"
+              class="p-4 rounded-2xl bg-[#FAF8F5] hover:bg-amber-50/70 border border-[#E8DFCE] flex items-center justify-between gap-3 transition-colors group">
+              <div>
+                <div class="text-[11px] font-semibold text-slate-500">Official Engineering Email</div>
+                <div class="font-mono font-extrabold text-slate-900 group-hover:text-amber-700 text-sm">
+                  baseramarlvin@gmail.com</div>
+              </div>
+              <span class="text-amber-600 font-bold">Email ↗</span>
+            </a>
+
+            <!-- WhatsApp & Call Card -->
+            <div class="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
+              <div>
+                <div class="text-[11px] font-semibold text-slate-500">Call &amp; WhatsApp Direct Line</div>
+                <div class="font-mono font-extrabold text-slate-900 text-sm tabular-nums">0788123047 / +263788123047
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <a href="tel:0788123047"
+                  class="py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 font-bold text-center">
+                  Call Direct
+                </a>
+                <a href="https://wa.me/263788123047" target="_blank" rel="noopener noreferrer"
+                  class="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-center">
+                  WhatsApp Chat
+                </a>
+              </div>
+            </div>
+
+            <!-- LinkedIn Profile Card -->
+            <a href="https://www.linkedin.com/in/marlvin-basera-359939286" target="_blank" rel="noopener noreferrer"
+              class="p-4 rounded-2xl bg-[#FAF8F5] hover:bg-sky-50/70 border border-[#E8DFCE] flex items-center justify-between gap-3 transition-colors group">
+              <div>
+                <div class="text-[11px] font-semibold text-slate-500">Lead Systems Engineer</div>
+                <div class="text-sm font-extrabold text-[#0A66C2] group-hover:underline">Marlvin Basera (LinkedIn)</div>
+              </div>
+              <span class="text-[#0A66C2] font-bold">Profile ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Validated Inquiry Dispatch Form -->
+        <div class="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm">
+          <div class="pb-4 border-b border-slate-100 mb-5">
+            <h2 class="text-lg font-bold text-slate-900">Send a Direct Inquiry to BASOBASO SOFTWARES</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Submit your message below to dispatch directly via Email or
+              WhatsApp.</p>
+          </div>
+
+          <form onsubmit="handleInquirySubmit(event)" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="c-name" class="block text-xs font-semibold text-slate-700 mb-1">Your Full Name *</label>
+                <input id="c-name" type="text" required placeholder="e.g. Tendai Moyo"
+                  class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
+              </div>
+              <div>
+                <label for="c-email" class="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
+                <input id="c-email" type="email" required placeholder="you@farm.com"
+                  class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
+              </div>
+              <div>
+                <label for="c-phone" class="block text-xs font-semibold text-slate-700 mb-1">Phone / WhatsApp Number
+                  *</label>
+                <input id="c-phone" type="tel" required placeholder="0788 123 047"
+                  class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-amber-500" />
+              </div>
+              <div>
+                <label for="c-org" class="block text-xs font-semibold text-slate-700 mb-1">Farm / Syndicate Name</label>
+                <input id="c-org" type="text" placeholder="e.g. Highveld Ranch Syndicate"
+                  class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
+              </div>
+            </div>
+
+            <div>
+              <label for="c-subject" class="block text-xs font-semibold text-slate-700 mb-1">Inquiry Topic</label>
+              <select id="c-subject"
+                class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500">
+                <option value="Enterprise Syndicate Deployment">Enterprise Syndicate Deployment</option>
+                <option value="Custom Software Engineering (BASOBASO SOFTWARES)">Custom Software Engineering (BASOBASO
+                  SOFTWARES)</option>
+                <option value="Android Field App Support">Android Field App Support</option>
+                <option value="Licensing & Partnership">Licensing &amp; Partnership</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="c-msg" class="block text-xs font-semibold text-slate-700 mb-1">Detailed Message *</label>
+              <textarea id="c-msg" rows="4" required
+                placeholder="Describe your farm operations, livestock headcount, or deployment timeline..."
+                class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500"></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <button type="submit"
+                class="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer">
+                Send via WhatsApp
+              </button>
+              <button type="button" onclick="sendViaEmail()"
+                class="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer">
+                Send via Email
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 5: TERMS (FULL 5-SECTION GOVERNANCE & LEGAL SPECIFICATION)
+    ========================================================================= -->
+    <section id="tab-terms" class="tab-content">
+      <div class="max-w-5xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10">
+        <div class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xs space-y-7">
+          <div class="pb-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-amber-700">Legal &amp; Governance Terms</div>
+              <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">Terms and Conditions of Use</h1>
+            </div>
+            <span class="text-xs font-mono text-slate-500 tabular-nums">
+              Release: v1.0.0 · BASOBASO SOFTWARES
+            </span>
+          </div>
+
+          <div class="space-y-6 text-xs sm:text-sm text-slate-600 leading-relaxed">
+            <div class="space-y-1.5">
+              <h2 class="text-base font-bold text-slate-900">01. Acceptance of Terms &amp; Platform Scope</h2>
+              <p>
+                By registering an account, signing in via Google OAuth or Email &amp; Password, or installing the Agro
+                Planner Android application, you agree to abide by these Terms and Conditions. Agro Planner is an
+                agricultural syndicate and livestock resource planning platform developed and maintained by
+                <strong>BASOBASO SOFTWARES</strong>.
+              </p>
+            </div>
+
+            <div class="space-y-1.5">
+              <h2 class="text-base font-bold text-slate-900">02. Immutable Append-Only Financial &amp; Livestock Ledger
+                Policy</h2>
+              <p>
+                Agro Planner enforces a strict append-only data integrity protocol. Once a capital contribution,
+                operational expense, fixed asset valuation, feed transaction, or livestock lifecycle event is committed,
+                it is cryptographically signed with a SHA-256 hash and cannot be silently overwritten or deleted by
+                standard users. Corrections to erroneous entries must be executed exclusively via audited
+                <strong>Contra-Entry Reversals</strong>.
+              </p>
+            </div>
+
+            <div class="space-y-1.5">
+              <h2 class="text-base font-bold text-slate-900">03. Zero-Trust Account Clearance &amp; Role Governance</h2>
+              <p>
+                Self-registered accounts default to the <strong>Pending Security Clearance Lobby</strong> with zero
+                access to sensitive treasury or site records until a verified <strong>Syndicate Admin</strong>
+                explicitly approves the account and assigns an operational role (<em>Syndicate Admin, Treasurer, Remote
+                  Investor,</em> or <em>Ground Operator</em>).
+              </p>
+            </div>
+
+            <div class="space-y-1.5">
+              <h2 class="text-base font-bold text-slate-900">04. Multi-Signature Expense Controls &amp; Equity
+                Calculations</h2>
+              <p>
+                Operational expenses exceeding the configured syndicate threshold ($150.00 USD) require multi-signature
+                approval from an authorized Admin or Treasurer before funds are deducted from the liquid capital pool.
+                Pro-rata equity shares and harvest profit simulations are calculated mathematically from verified ledger
+                contributions.
+              </p>
+            </div>
+
+            <div class="space-y-1.5">
+              <h2 class="text-base font-bold text-slate-900">05. Intellectual Property &amp; Developer Attribution</h2>
+              <p>
+                All software architecture, cryptographic ledger algorithms, user interface designs, and documentation in
+                Agro Planner are the intellectual property of <strong>BASOBASO SOFTWARES</strong> (Lead Engineer: <a
+                  href="https://www.linkedin.com/in/marlvin-basera-359939286" target="_blank" rel="noopener noreferrer"
+                  class="font-bold text-[#0A66C2] hover:underline">Marlvin Basera</a> · Email: <span
+                  class="font-mono text-slate-900">baseramarlvin@gmail.com</span> · Call/WhatsApp: <span
+                  class="font-mono text-slate-900">0788123047</span>).
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==================== RESPONSIVE HIGH-CONTRAST FOOTER ==================== -->
+  <footer class="w-full bg-white border-t-2 border-amber-400 mt-14">
+    <div
+      class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 flex flex-col lg:flex-row items-center justify-between gap-6">
+      <div class="flex items-center gap-3.5 text-center lg:text-left">
+        <div
+          class="w-11 h-11 rounded-2xl shadow-xs shrink-0 overflow-hidden hidden sm:flex items-center justify-center">
+          <svg viewBox="0 0 500 500" fill="none" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+            <rect width="500" height="500" rx="108" fill="#064e3b" />
+            <rect x="20" y="20" width="460" height="460" rx="88" stroke="#34d399" stroke-width="6" stroke-opacity="0.3"
+              fill="none" />
+            <circle cx="250" cy="250" r="160" fill="#047857" fill-opacity="0.45" />
+            <path d="M 125 385 C 130 260 190 140 240 95 C 248 150 215 250 180 385 Z" fill="#ffffff" />
+            <path d="M 285 140 L 285 385" stroke="#ffffff" stroke-width="42" stroke-linecap="round" fill="none" />
+            <path d="M 285 140 C 375 120 425 175 420 235 C 415 285 365 305 285 300" stroke="#ffffff" stroke-width="42"
+              stroke-linecap="round" stroke-linejoin="round" fill="none" />
+            <path d="M 285 150 C 340 160 380 205 380 235 C 330 235 295 195 285 150 Z" fill="#10b981" />
+            <path d="M 160 290 Q 230 270 310 280" stroke="#34d399" stroke-width="28" stroke-linecap="round"
+              fill="none" />
+            <path d="M 230 95 C 235 60 215 40 190 45 C 185 70 205 90 230 95 Z" fill="#6ee7b7" />
+            <path d="M 245 95 C 275 65 310 70 320 90 C 295 105 270 105 245 95 Z" fill="#10b981" />
+          </svg>
+        </div>
+        <div class="space-y-1">
+          <div class="flex flex-wrap items-center justify-center lg:justify-start gap-2">
+            <span
+              class="text-base sm:text-lg font-black tracking-widest bg-gradient-to-r from-amber-700 via-rose-700 to-emerald-700 bg-clip-text text-transparent">
+              BASOBASO SOFTWARES
+            </span>
+            <span class="text-slate-300">·</span>
+            <span
+              class="px-2.5 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-xs font-mono font-bold text-amber-900">
+              Agro Planner v1.0.0
+            </span>
+          </div>
+          <p class="text-xs text-slate-500">
+            Enterprise Agricultural &amp; Livestock Syndicate Software Systems
+          </p>
+        </div>
+      </div>
+
+      <!-- Contact Badges -->
+      <div class="flex flex-wrap items-center justify-center gap-3 text-xs">
+        <a href="mailto:baseramarlvin@gmail.com"
+          class="px-3.5 py-2 rounded-xl bg-[#FAF8F5] hover:bg-amber-50 border border-[#E8DFCE] font-mono font-extrabold text-slate-900 transition-colors">
+          baseramarlvin@gmail.com
+        </a>
+
+        <a href="https://wa.me/263788123047" target="_blank" rel="noopener noreferrer"
+          class="px-3.5 py-2 rounded-xl bg-[#FAF8F5] hover:bg-emerald-50 border border-[#E8DFCE] font-mono font-extrabold text-emerald-900 transition-colors">
+          WhatsApp: 0788123047
+        </a>
+
+        <a href="https://www.linkedin.com/in/marlvin-basera-359939286" target="_blank" rel="noopener noreferrer"
+          class="px-3.5 py-2 rounded-xl bg-[#FAF8F5] hover:bg-sky-50 border border-[#E8DFCE] font-extrabold text-[#0A66C2] transition-colors">
+          Marlvin Basera (LinkedIn)
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      const activeEl = document.getElementById('tab-' + tabId);
+      if (activeEl) activeEl.classList.add('active');
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.dataset.target === tabId) {
+          btn.className = 'nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all bg-amber-500 text-white shadow-xs';
+        } else {
+          btn.className = 'nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900';
+        }
+      });
+      document.getElementById('mobile-menu').classList.add('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden');
+    }
+
+    function handleInquirySubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('c-name').value;
+      const email = document.getElementById('c-email').value;
+      const phone = document.getElementById('c-phone').value;
+      const org = document.getElementById('c-org').value || 'N/A';
+      const subject = document.getElementById('c-subject').value;
+      const msg = document.getElementById('c-msg').value;
+
+      const url = `https://wa.me/263788123047?text=${encodeURIComponent(
+        `*Agro Planner Inquiry (${subject})*\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nFarm/Org: ${org}\n\n${msg}`
+      )}`;
+      window.open(url, '_blank');
+    }
+
+    function sendViaEmail() {
+      const name = document.getElementById('c-name').value;
+      const email = document.getElementById('c-email').value;
+      const phone = document.getElementById('c-phone').value;
+      const org = document.getElementById('c-org').value || 'N/A';
+      const subject = document.getElementById('c-subject').value;
+      const msg = document.getElementById('c-msg').value;
+
+      if (!name || !email || !msg) {
+        alert('Please fill in your Name, Email, and Message before sending.');
+        return;
+      }
+
+      const mailtoUrl = `mailto:baseramarlvin@gmail.com?subject=${encodeURIComponent(
+        `[Agro Planner] ${subject} - ${name}`
+      )}&body=${encodeURIComponent(
+        `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nOrganization: ${org}\n\nMessage:\n${msg}`
+      )}`;
+      window.location.href = mailtoUrl;
+    }
+
+    // Launch Web Application helper
+    function launchWebApp(e) {
+      if (e) e.preventDefault();
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'LAUNCH_AGRO_APP' }, '*');
+          const pUrl = new URL(window.parent.location.href);
+          pUrl.searchParams.set('app', 'true');
+          window.parent.location.href = pUrl.toString();
+          return;
+        }
+      } catch (err) {
+        // Cross-origin fallback
+      }
+
+      const url = new URL(window.location.href);
+      if (url.pathname.includes('public-website')) {
+        url.pathname = url.pathname.replace(/\/public-website(\/index\.html)?\/?$/, '/');
+      }
+      url.searchParams.set('app', 'true');
+      window.location.href = url.toString();
+    }
+
+    // Initialize direct APK download path dynamically
+    (function initApkPath() {
+      const downloadBtn = document.getElementById('direct-apk-download-btn');
+      if (downloadBtn) {
+        const isSubfolder = window.location.pathname.includes('/public-website');
+        downloadBtn.href = isSubfolder ? '../apk/agro-planner.apk' : 'apk/agro-planner.apk';
+      }
+
+      // Handle deep hash navigation on page load
+      const hash = window.location.hash.replace('#', '');
+      if (['home', 'features', 'download', 'contact', 'terms'].includes(hash)) {
+        switchTab(hash);
+      }
+    })();
+  </script>
+</body>
+
+</html>
