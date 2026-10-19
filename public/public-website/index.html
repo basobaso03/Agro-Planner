@@ -79,10 +79,11 @@
 
   <!-- ==================== STICKY TOP BRAND NAVBAR ==================== -->
   <header class="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-16 sm:h-20 flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3 cursor-pointer group" onclick="switchTab('home')">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-10 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+      <!-- Brand Logo & Text -->
+      <div class="flex items-center gap-2 sm:gap-3 cursor-pointer group min-w-0 shrink" onclick="switchTab('home')">
         <div
-          class="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden shrink-0">
+          class="w-9 h-9 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform overflow-hidden shrink-0">
           <svg viewBox="0 0 500 500" fill="none" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"
             aria-label="Agro Planner App Logo">
             <rect width="500" height="500" rx="108" fill="#064e3b" />
@@ -100,18 +101,18 @@
             <path d="M 245 95 C 275 65 310 70 320 90 C 295 105 270 105 245 95 Z" fill="#10b981" />
           </svg>
         </div>
-        <div>
-          <span class="text-base sm:text-xl font-black tracking-tight text-slate-900 block leading-none">
+        <div class="min-w-0">
+          <span class="text-sm sm:text-xl font-black tracking-tight text-slate-900 block leading-tight truncate whitespace-nowrap">
             Agro Planner
           </span>
-          <span class="text-[10px] sm:text-[11px] font-bold tracking-wider uppercase text-emerald-700">
+          <span class="text-[9px] sm:text-[11px] font-bold tracking-wider uppercase text-emerald-700 block leading-none truncate whitespace-nowrap">
             By BASOBASO SOFTWARES
           </span>
         </div>
       </div>
 
       <!-- Desktop Navigation Bar -->
-      <nav class="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200">
+      <nav class="hidden lg:flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 shrink-0">
         <button onclick="switchTab('home')"
           class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all bg-amber-500 text-white shadow-xs"
           data-target="home">Homepage</button>
@@ -130,21 +131,21 @@
       </nav>
 
       <!-- Right Action CTA -->
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <a id="btn-download-apk-top" href="apk/agro-planner.apk" download="agro-planner.apk"
-          class="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5">
+          class="hidden sm:flex px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer items-center gap-1.5 whitespace-nowrap">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
           </svg>
           <span>Download APK</span>
-          <span class="text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">51.3 MB</span>
+          <span class="text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">51.3 MB</span>
         </a>
 
         <button onclick="toggleMobileMenu()"
-          class="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200"
+          class="lg:hidden p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 shrink-0 flex items-center justify-center transition-colors"
           aria-label="Toggle navigation menu">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
           </svg>
         </button>
