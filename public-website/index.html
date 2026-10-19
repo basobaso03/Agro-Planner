@@ -131,17 +131,15 @@
 
       <!-- Right Action CTA -->
       <div class="flex items-center gap-2 shrink-0">
-        <a id="btn-launch-app-top" href="?app=true" onclick="launchWebApp(event)"
+        <a id="btn-download-apk-top" href="apk/agro-planner.apk" download="agro-planner.apk"
           class="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5">
-          <span>Launch Web App</span>
-          <span class="text-xs">↗</span>
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+          <span>Download APK</span>
+          <span class="text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">51.3 MB</span>
         </a>
-
-        <button onclick="switchTab('download')"
-          class="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5">
-          <span>Get APK</span>
-          <span class="hidden sm:inline">↓</span>
-        </button>
 
         <button onclick="toggleMobileMenu()"
           class="lg:hidden p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200"
@@ -155,10 +153,16 @@
 
     <!-- Mobile Dropdown Navigation -->
     <div id="mobile-menu" class="hidden lg:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-1.5 shadow-lg">
-      <a href="?app=true" onclick="launchWebApp(event)"
-        class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-extrabold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200">
-        <span>🚀 Launch Agro Planner Web App</span>
-        <span>→</span>
+      <a href="apk/agro-planner.apk" download="agro-planner.apk"
+        class="w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs sm:text-sm font-extrabold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+          Download Android APK (51.3 MB)
+        </span>
+        <span>↓</span>
       </a>
       <button onclick="switchTab('home')"
         class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Homepage</button>
@@ -203,16 +207,20 @@
             </p>
 
             <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
-              <a href="?app=true" onclick="launchWebApp(event)"
-                class="px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
-                <span>🚀 Launch Web Application</span>
-                <span class="text-base">→</span>
+              <a href="apk/agro-planner.apk" download="agro-planner.apk"
+                class="px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-extrabold flex items-center justify-center gap-2.5 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                <span>Download Official Android APK (51.3 MB)</span>
+                <span class="text-base">↓</span>
               </a>
 
               <button onclick="switchTab('download')"
                 class="px-6 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
-                <span>Download Android APK</span>
-                <span class="text-base">↓</span>
+                <span>Installation Guide</span>
+                <span class="text-base">→</span>
               </button>
 
               <button onclick="switchTab('features')"
@@ -581,13 +589,13 @@
             </p>
 
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
-              <a id="direct-apk-download-btn" href="apk/agro-planner.apk" download="agro-planner-v1.0.0.apk"
+              <a id="direct-apk-download-btn" href="apk/agro-planner.apk" download="agro-planner.apk"
                 class="px-6 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.02] cursor-pointer">
                 <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
-                <span>Download Official Android APK (v1.0.0)</span>
+                <span>Download Official Android APK (51.3 MB)</span>
               </a>
 
               <a href="https://wa.me/263788123047?text=Hello%20BASOBASO%20SOFTWARES%2C%20please%20send%20me%20the%20official%20Agro%20Planner%20Android%20APK%20package."
@@ -604,14 +612,11 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-500 pt-1">
-              <span class="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">✓
-                Compiled APK Ready</span>
-              <span>·</span>
               <span>Release: v1.0.0</span>
               <span>·</span>
               <span>OS: Android 8.0+ (Oreo) or newer</span>
               <span>·</span>
-              <span>Package: agro-planner.apk (13.4 MB)</span>
+              <span>Package: agro-planner.apk (51.3 MB)</span>
               <span>·</span>
               <span>Developer: BASOBASO SOFTWARES</span>
             </div>
@@ -630,7 +635,7 @@
                 <div>
                   <div class="font-bold text-slate-900">Download the Official APK File</div>
                   <p class="text-slate-500 mt-0.5">Click the green "Download Official Android APK" button above to save
-                    the 13.4 MB package directly to your device.</p>
+                    the 51.3 MB package directly to your device.</p>
                 </div>
               </li>
 

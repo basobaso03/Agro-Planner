@@ -1170,7 +1170,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
             </a>
             <a
               href="apk/agro-planner.apk"
-              download="agro-planner-v1.0.0.apk"
+              download="agro-planner.apk"
               className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold transition-colors cursor-pointer shadow-xs"
             >
               <span>Download APK ↓</span>
