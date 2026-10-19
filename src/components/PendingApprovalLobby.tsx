@@ -10,10 +10,12 @@ import {
   Save,
   Eye,
   EyeOff,
+  MessageCircle,
 } from 'lucide-react';
 import type { SyndicateMember } from '../types/agro.ts';
 import { dataService } from '../services/dataService.ts';
 import { LogoSvg } from './BrandLogos.tsx';
+import { DEVELOPER_INFO } from './DeveloperBrandInfo.tsx';
 
 interface PendingApprovalLobbyProps {
   member: SyndicateMember;
@@ -25,6 +27,12 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
   onSignOut,
 }) => {
   const isSuspended = member.approvalStatus === 'SUSPENDED';
+
+  // WhatsApp pre-filled notification to Admin
+  const whatsappMsg = encodeURIComponent(
+    `Hello Admin, I have registered on Agro Planner.\n\nName: ${member.fullName}\nEmail: ${member.email || member.phoneOrEmail}\nPhone: ${member.phone || 'N/A'}\n\nPlease approve my account so I can access the farm platform.`
+  );
+  const whatsappUrl = `https://wa.me/${DEVELOPER_INFO.whatsappIntl}?text=${whatsappMsg}`;
 
   // Profile Edit State while awaiting approval
   const [fullName, setFullName] = useState(member.fullName);
@@ -58,7 +66,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
         bio,
         preferredContact,
       });
-      setProfileSaved('Your profile details have been updated for the Syndicate Admin review.');
+      setProfileSaved('Your profile details have been updated for the farm manager review.');
     } catch (err) {
       setProfileError(err instanceof Error ? err.message : 'Could not update profile.');
     }
@@ -120,7 +128,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
         {/* Status Banner */}
         <section className="bg-white border border-[#E8DFCE] rounded-3xl p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2 max-w-2xl">
+            <div className="space-y-3 max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-700">
                 {isSuspended ? (
                   <ShieldAlert className="w-4 h-4 text-rose-600" />
@@ -129,40 +137,56 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
                 )}
                 <span>
                   {isSuspended
-                    ? 'Zero-Trust Access Suspended'
-                    : 'Zero-Trust Security Clearance Pending'}
+                    ? 'Account Temporarily Paused'
+                    : 'Account Pending Admin Approval'}
                 </span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
                 {isSuspended
-                  ? 'Your Syndicate Access Has Been Paused'
-                  : `Welcome, ${member.fullName}. Your Account Awaits Admin Role Assignment.`}
+                  ? 'Your Account Has Been Paused'
+                  : `Welcome, ${member.fullName}! Your registration has been received.`}
               </h1>
 
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
                 {isSuspended
-                  ? 'A Syndicate Administrator has temporarily suspended ledger access for this account. Please contact the primary Syndicate Admin to restore clearance.'
-                  : 'Under our Zero-Trust architecture, newly registered accounts cannot view or mutate syndicate financial or livestock ledgers until a Syndicate Administrator approves your identity and assigns your official role.'}
+                  ? 'Your access has been temporarily paused by the farm administrator. Please reach out to your administrator to resume access.'
+                  : 'Your account has been registered successfully. For farm privacy and record security, the farm administrator will review your account and assign your role shortly. This screen will automatically open once approved.'}
               </p>
+
+              {/* Direct Quick WhatsApp Notification to Admin */}
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>Notify Admin on WhatsApp</span>
+                </a>
+                <span className="text-xs text-slate-500">
+                  Tap to quickly notify the manager to approve your account.
+                </span>
+              </div>
             </div>
 
-            {/* Cryptographic Identity Summary */}
+            {/* Account Identity Summary */}
             <div className="bg-[#FAF8F5] border border-[#E8DFCE] rounded-2xl p-4 space-y-2 shrink-0 min-w-[260px]">
               <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
-                <span>Verified Identity Record</span>
+                <span>Registered Account Details</span>
               </div>
               <div className="text-xs text-slate-600 space-y-1 font-mono tabular-nums">
-                <div>UID: {member.id.slice(0, 18)}</div>
+                <div>Name: {member.fullName}</div>
                 <div>Email: {member.email || member.phoneOrEmail}</div>
                 <div>
-                  Methods: {(member.authProviders || ['google.com']).join(' · ')}
+                  Sign-In: {(member.authProviders || ['google.com']).join(' · ')}
                 </div>
                 <div>
                   Status:{' '}
                   <strong className={isSuspended ? 'text-rose-700' : 'text-amber-700'}>
-                    {member.approvalStatus || 'PENDING_APPROVAL'}
+                    {isSuspended ? 'PAUSED' : 'AWAITING APPROVAL'}
                   </strong>
                 </div>
               </div>
@@ -390,8 +414,8 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
       </main>
 
       <footer className="w-full max-w-5xl mx-auto pt-4 border-t border-[#E8DFCE] flex items-center justify-between text-xs text-slate-500">
-        <span>Zero-Trust Clearance Lobby</span>
-        <span>This page unlocks automatically upon Syndicate Admin approval</span>
+        <span>Agro Planner · Account Verification</span>
+        <span>This page unlocks automatically once approved by the farm administrator</span>
       </footer>
     </div>
   );

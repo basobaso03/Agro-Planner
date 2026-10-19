@@ -781,6 +781,10 @@ class AgroDataService {
     };
     this.setActiveSession(session);
 
+    if (firestoreDb) {
+      this.attachCloudListeners(firestoreDb, resolvedUid);
+    }
+
     return member;
   }
 
@@ -827,6 +831,9 @@ class AgroDataService {
           providers,
           isCloudAuth: true,
         });
+        if (firestoreDb) {
+          this.attachCloudListeners(firestoreDb, user.uid);
+        }
         return member;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -859,6 +866,9 @@ class AgroDataService {
         providers,
         isCloudAuth: Boolean(this.currentUser),
       });
+      if (firestoreDb) {
+        this.attachCloudListeners(firestoreDb, updated.uid || updated.id);
+      }
       return updated;
     }
 
@@ -1500,7 +1510,10 @@ class AgroDataService {
   }
 
   private async persistDocumentToCloudIfActive(collectionPath: string, docId: string, data: object) {
-    if (this.cloudSyncActive && this.currentUser && firestoreDb) {
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (firestoreDb) {
       try {
         const cleanData = JSON.parse(JSON.stringify(data));
         await setDoc(doc(firestoreDb, collectionPath, docId), cleanData);
