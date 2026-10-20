@@ -625,11 +625,11 @@ class AgroDataService {
       eventType: 'MEMBER_ADDED',
       severity: isPrimaryAdmin ? 'MILESTONE' : 'URGENT_GROUND',
       title: isPrimaryAdmin
-        ? `Primary Syndicate Admin Initialized: ${newMember.fullName}`
-        : `New Account Awaiting Clearance: ${newMember.fullName}`,
+        ? `Primary Farm Admin Initialized: ${newMember.fullName}`
+        : `New Member Awaiting Approval: ${newMember.fullName}`,
       message: isPrimaryAdmin
-        ? `${newMember.fullName} (${normEmail}) authenticated and initialized as Master SYNDICATE_ADMIN.`
-        : `${newMember.fullName} (${normEmail}) registered via ${params.providers.join(', ')} and entered the Zero-Trust Pending Approval Lobby.`,
+        ? `${newMember.fullName} (${normEmail}) initialized as Farm Administrator.`
+        : `${newMember.fullName} (${normEmail}) registered via ${params.providers.join(', ')} and is awaiting admin approval.`,
       referenceEntityId: newMember.id,
       timestamp: now,
     });
@@ -642,6 +642,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', newMember.id, newMember);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newMember;
   }
 
@@ -725,7 +726,7 @@ class AgroDataService {
       throw new Error('Please enter your full name (at least 2 characters).');
     }
     if (params.password.length < 8) {
-      throw new Error('Password must be at least 8 characters long for Zero-Trust security.');
+      throw new Error('Password must be at least 8 characters long for account security.');
     }
 
     const existing = this.findMemberByUidOrEmail(undefined, cleanEmail);

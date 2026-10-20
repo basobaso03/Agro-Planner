@@ -7,6 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "build:apk": "node scripts/compile-apk.mjs",
+    "build:release": "node build-android-release.mjs",
     "preview": "vite preview",
     "android:live": "node run-android-live.mjs",
     "clean": "rm -rf dist server.js",

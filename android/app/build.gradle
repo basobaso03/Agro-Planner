@@ -16,8 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keystoreFile = file('release.keystore')
+            if (keystoreFile.exists()) {
+                storeFile keystoreFile
+                storePassword System.getenv("RELEASE_STORE_PASSWORD") ?: "AgroPlanner2026!"
+                keyAlias System.getenv("RELEASE_KEY_ALIAS") ?: "agroplanner"
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD") ?: "AgroPlanner2026!"
+            }
+        }
+    }
     buildTypes {
         release {
+            def keystoreFile = file('release.keystore')
+            if (keystoreFile.exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

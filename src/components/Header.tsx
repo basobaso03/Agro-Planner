@@ -12,6 +12,7 @@ import {
   X,
   Eye,
   EyeOff,
+  UserCog,
 } from 'lucide-react';
 import type { FarmLocation, SyndicateMember } from '../types/agro.ts';
 import type { ActiveTab } from '../App.tsx';
@@ -88,6 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const canAddLocations = PERMISSIONS.canAddLocations(activeMember.role);
+  const canManageRoles = PERMISSIONS.canManageMembers(activeMember.role);
   const roleMeta = getRoleMeta(activeMember.role);
 
   return (
@@ -190,6 +192,25 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {mobileFrameMode ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
             </button>
+
+            {/* Quick Admin Pending Approvals Alert Badge */}
+            {canManageRoles && (pendingUsersCount || 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => onNavigateTab('USERS')}
+                title={`${pendingUsersCount} new user${(pendingUsersCount || 0) > 1 ? 's' : ''} awaiting admin approval`}
+                aria-label={`View ${pendingUsersCount} pending user approvals`}
+                className="relative flex items-center gap-1.5 px-2.5 min-h-[38px] rounded-xl bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-xs transition-colors cursor-pointer animate-pulse"
+              >
+                <UserCog className="w-4 h-4" />
+                <span className="text-[11px] font-bold whitespace-nowrap hidden sm:inline">
+                  {pendingUsersCount} Pending
+                </span>
+                <span className="sm:hidden text-[11px] font-bold">
+                  {pendingUsersCount}
+                </span>
+              </button>
+            )}
 
             <button
               type="button"

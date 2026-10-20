@@ -46,7 +46,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
     if (password.length >= 12) s += 1;
     if (/[A-Z]/.test(password) && /[a-z]/.test(password)) s += 1;
     if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) s += 1;
-    const labels = ['Too Short', 'Weak', 'Fair', 'Good', 'Strong Zero-Trust'];
+    const labels = ['Too Short', 'Weak', 'Fair', 'Good', 'Very Strong'];
     return { score: s, label: labels[s] || 'Strong' };
   }, [password]);
 

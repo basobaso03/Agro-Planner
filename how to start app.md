@@ -16,35 +16,21 @@ npm run android:live
 
 ---
 
-## Option 2: Production Standalone APK (100% Independent - No PC or Terminal Needed!)
-Use this to compile a final `.apk` that can be installed on ANY Android phone. Once installed:
-- It **does NOT depend** on your PC or any running terminal.
-- Your computer can be turned off.
-- The app runs completely from internal device storage (`https://localhost/`).
-- Works offline in remote fields and syncs directly to Firebase Cloud Firestore.
+## Option 2: Compile Signed Release APK (1-Command Production Build)
+Use this to build and sign the final standalone release application for public distribution:
 
-### How to Compile the Standalone APK:
+```bash
+npm run build:release
+```
+*Or directly via Node:*
+```bash
+node build-android-release.mjs
+```
 
-1. **Build web assets and sync to native Android:**
-   ```bash
-   npm run build
-   npx cap sync android
-   ```
-
-2. **Compile the Standalone APK:**
-   - **Using Terminal (Windows):**
-     ```bash
-     cd android
-     .\gradlew.bat assembleDebug
-     cd ..
-     ```
-   - **OR Using Android Studio:**
-     Open the `android/` folder in Android Studio and select:
-     **Build** → **Build Bundle(s) / APK(s)** → **Build APK(s)**.
-
-3. **Locate your compiled APK:**
-   The output APK is generated at:
-   `android/app/build/outputs/apk/debug/app-debug.apk`
-
-4. **Distribute:**
-   Copy this file to `apk/agro-planner.apk`. You can share it directly on WhatsApp, email, or let users download it from your public website download button. Anyone can install and use it independently!
+### What this command does automatically:
+1. Verifies/creates the secure release keystore (`android/app/release.keystore`).
+2. Displays the exact **SHA-1** & **SHA-256** fingerprints for Firebase Console verification.
+3. Compiles the production web bundle (`npm run build`).
+4. Syncs all native assets into Capacitor (`npx cap sync android`).
+5. Signs and compiles the release APK with Gradle (`.\gradlew.bat assembleRelease`).
+6. Automatically distributes the signed APK to `./apk/agro-planner.apk` and website download folders!

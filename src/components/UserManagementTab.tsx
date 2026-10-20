@@ -62,10 +62,10 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
     return (
       <div className="bg-white border border-[#E8DFCE] rounded-3xl p-8 text-center space-y-2">
         <h2 className="text-lg font-bold text-slate-900">
-          Zero-Trust Access Restricted
+          Access Restricted
         </h2>
         <p className="text-xs text-slate-500">
-          Only an authenticated Syndicate Admin can access the User Management &amp; Role Governance Console.
+          Only an administrator can access the User Management &amp; Role Governance Console.
         </p>
       </div>
     );
@@ -177,7 +177,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <ShieldCheck className="w-4 h-4 text-amber-600" />
-            <span>Zero-Trust Identity &amp; Role-Based Access Governance</span>
+            <span>Farm Identity &amp; Role-Based Access Governance</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
             User Management &amp; Role Assignment Console
