@@ -140,7 +140,7 @@
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
           </svg>
           <span>Download APK</span>
-          <span class="text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">8.9 MB</span>
+          <span class="apk-size-display text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">8.9 MB</span>
         </a>
 
         <button onclick="toggleMobileMenu()"
@@ -162,7 +162,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
           </svg>
-          Download Android APK (8.9 MB)
+          Download Android APK (<span class="apk-size-display">8.9 MB</span>)
         </span>
         <span>↓</span>
       </a>
@@ -195,17 +195,17 @@
           <div class="lg:col-span-7 space-y-6">
             <div
               class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-wider uppercase">
-              <span>★ Enterprise Agricultural Syndicate Platform · v1.0.0</span>
+              <span>★ Enterprise Agricultural Syndicate Platform · <span class="apk-version-display">v1.0.0</span></span>
             </div>
 
             <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] text-balance">
-              Cryptographic Financial &amp; Livestock Governance From Ranch to Investor Pool.
+              Smart Farm Management &amp; Transparent Profit-Sharing For Modern Agriculture.
             </h1>
 
             <p class="text-sm sm:text-base lg:text-lg text-emerald-100/90 leading-relaxed max-w-2xl">
-              Built by <strong>BASOBASO SOFTWARES</strong>, Agro Planner unites multi-location herd lifecycle tracking,
-              SHA-256 append-only accounting, multi-signature treasury controls, and automated equity profit-sharing in
-              one web and Android platform.
+              Built by <strong>BASOBASO SOFTWARES</strong>, Agro Planner brings complete financial clarity and herd
+              management to commercial farms and investment syndicates. Track livestock growth cycles, feed inventories,
+              member capital, and harvest dividends with 100% tamper-proof records — both online and in remote offline fields.
             </p>
 
             <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
@@ -215,7 +215,8 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
-                <span>Download Official Android APK (51.3 MB)</span>
+                <span>Download Official Android APK</span>
+                <span class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded">8.9 MB</span>
                 <span class="text-base">↓</span>
               </a>
 
@@ -227,7 +228,7 @@
 
               <button onclick="switchTab('features')"
                 class="px-5 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
-                <span>Technical Matrix</span>
+                <span>Explore Features</span>
               </button>
             </div>
           </div>
@@ -237,50 +238,48 @@
             class="lg:col-span-5 bg-white text-slate-900 rounded-3xl p-6 sm:p-8 border-2 border-amber-400/80 shadow-2xl space-y-5">
             <div class="pb-3 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <span class="text-xs font-black uppercase tracking-wider text-amber-700 block">Zero-Trust Ledger
-                  Engine</span>
-                <span class="text-sm font-bold text-slate-900">Verified Syndicate Architecture</span>
+                <span class="text-xs font-black uppercase tracking-wider text-amber-700 block">Tamper-Proof Financial Core</span>
+                <span class="text-sm font-bold text-slate-900">Engineered for Complete Partner Trust</span>
               </div>
               <span
                 class="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
-                SHA-256 Verified
+                Bank-Grade Security
               </span>
             </div>
 
             <div class="grid grid-cols-2 gap-3 text-xs">
               <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
-                <div class="text-slate-500 font-medium">Ledger Model</div>
-                <div class="text-base font-black text-slate-900 mt-1 font-mono">Append-Only</div>
-                <div class="text-[11px] text-emerald-700 font-semibold mt-0.5">Zero silent edits or deletes</div>
+                <div class="text-slate-500 font-medium">Record Keeping</div>
+                <div class="text-base font-black text-slate-900 mt-1 font-mono">100% Verifiable</div>
+                <div class="text-[11px] text-emerald-700 font-semibold mt-0.5">No hidden edits or secret deletions</div>
               </div>
 
               <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
-                <div class="text-slate-500 font-medium">Multi-Sig Guard</div>
+                <div class="text-slate-500 font-medium">Expense Safeguard</div>
                 <div class="text-base font-black text-slate-900 mt-1 font-mono tabular-nums">&gt; $150.00 USD</div>
-                <div class="text-[11px] text-amber-700 font-semibold mt-0.5">Dual-key Admin/Treasurer</div>
+                <div class="text-[11px] text-amber-700 font-semibold mt-0.5">Dual Admin/Treasurer approval</div>
               </div>
 
               <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
-                <div class="text-slate-500 font-medium">Access Control</div>
-                <div class="text-base font-black text-slate-900 mt-1 font-mono">4 RBAC Roles</div>
-                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Admin clearance lobby</div>
+                <div class="text-slate-500 font-medium">Team Permissions</div>
+                <div class="text-base font-black text-slate-900 mt-1 font-mono">Role Access</div>
+                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Owners, Managers &amp; Investors</div>
               </div>
 
               <div class="p-3.5 rounded-2xl bg-[#FAF8F5] border border-slate-200">
-                <div class="text-slate-500 font-medium">Mobile Field Sync</div>
-                <div class="text-base font-black text-emerald-800 mt-1 font-mono">Offline Client</div>
-                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Android 8.0+ ready</div>
+                <div class="text-slate-500 font-medium">Field Mobility</div>
+                <div class="text-base font-black text-emerald-800 mt-1 font-mono">Works Offline</div>
+                <div class="text-[11px] text-slate-600 font-semibold mt-0.5">Syncs automatically with cloud</div>
               </div>
             </div>
 
             <div class="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs space-y-1 text-amber-950">
               <div class="font-extrabold flex items-center gap-1.5">
                 <span class="text-amber-600">●</span>
-                <span>Automated Pro-Rata Equity Engine</span>
+                <span>Automated Fair Profit-Sharing Engine</span>
               </div>
               <p class="text-[11px] leading-relaxed text-amber-900">
-                Calculates real-time syndicate Net Asset Value (NAV) by reconciling cash reserves, fixed agricultural
-                assets, and biological herd biomass valuations automatically.
+                Eliminates partnership disputes. Automatically calculates each member's equity and harvest payouts based on verified contributions, livestock market value, and operational expenses.
               </p>
             </div>
           </div>
@@ -330,25 +329,22 @@
           </div>
 
           <div class="md:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
-            <span class="text-xs font-mono font-extrabold text-slate-700">03. ZERO-TRUST IDENTITY &amp; ROLES</span>
+            <span class="text-xs font-mono font-extrabold text-slate-700">03. TEAM &amp; INVESTOR PERMISSIONS</span>
             <h3 class="text-lg sm:text-xl font-bold text-slate-900">
-              Google + Password Linking &amp; Admin Role Switcher
+              Clear Member Roles &amp; Multi-Tier Financial Approvals
             </h3>
             <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Sign in via Google OAuth or Email &amp; Password. Admins approve new registrants from a secure lobby and
-              switch users between roles in one click.
+              Protect your syndicate capital. Assign dedicated roles for Farm Owners, Treasurers, Field Managers, and Silent Investors. Unverified accounts cannot view sensitive books without admin approval.
             </p>
           </div>
 
           <div class="md:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3 shadow-xs">
-            <span class="text-xs font-mono font-extrabold text-amber-700">04. CONTRA-ENTRY ACCOUNTING &amp; FEED
-              INVENTORY</span>
+            <span class="text-xs font-mono font-extrabold text-amber-700">04. FEED INVENTORY &amp; EXPENSE ACCOUNTING</span>
             <h3 class="text-lg sm:text-xl font-bold text-slate-900">
-              Audited Reversals Instead of Deletions + Kilogram-Level Feed Alerts
+              Transparent Expense Records &amp; Kilogram-Level Feed Alerts
             </h3>
             <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Maintain an unbreakable audit trail where mistakes are rectified via formal Contra-Entry Reversals and
-              feed purchases are reconciled against daily livestock rations.
+              Eliminate feed loss and accounting confusion. Track daily rations directly against animal weight gain, and keep an open audit history where every single correction includes a verified explanation note.
             </p>
           </div>
         </div>
@@ -363,15 +359,15 @@
         <!-- Section Header Card -->
         <div class="public-dark-surface rounded-3xl p-6 sm:p-10 text-white space-y-3 shadow-md">
           <div class="text-xs font-bold uppercase tracking-wider text-amber-300">
-            Complete Technical Specifications
+            Comprehensive Management Capabilities
           </div>
           <h1 class="text-2xl sm:text-4xl font-black text-white">
-            Agro Planner Enterprise Feature Matrix
+            Agro Planner Core Modules &amp; Benefits
           </h1>
           <p class="text-xs sm:text-base text-emerald-100/90 max-w-3xl leading-relaxed">
             Every module in Agro Planner is engineered by <strong>BASOBASO SOFTWARES</strong> to eliminate financial
-            leakage, automate partner equity splits, and provide real-time operational clarity across distributed farm
-            sites.
+            leakage, automate fair profit sharing, and provide complete operational transparency across all your farm
+            locations.
           </p>
         </div>
 
@@ -433,7 +429,7 @@
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Automatic PII contact masking for non-privileged syndicate roles.</span>
+                  <span>Privacy protection: masks sensitive contact details for non-administrative members.</span>
                 </li>
               </ul>
             </div>
@@ -445,26 +441,26 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-amber-700">MODULE 03</span>
-                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Audit &amp;
-                  Feed</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Feed &amp;
+                  Expenses</span>
               </div>
-              <h2 class="text-lg font-bold text-slate-900">Append-Only Expense &amp; Feed Ledger</h2>
+              <h2 class="text-lg font-bold text-slate-900">Feed Inventory &amp; Transparent Expense Ledger</h2>
               <ul class="space-y-2 text-xs text-slate-600">
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Strict immutability—records cannot be silently edited or deleted.</span>
+                  <span>Tamper-proof accounting: all financial entries are permanently preserved for honest reporting.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Formal Accounting Contra-Entry Reversals with mandatory audit notes.</span>
+                  <span>Open adjustment trail: mistakes are corrected with mandatory explanation notes rather than hidden edits.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Dual-Key Multi-Signature approval for expenses above $150 USD.</span>
+                  <span>Dual authorization required for major syndicate expenses exceeding $150 USD.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Kilogram-level Feed Inventory tracking with low-stock threshold alerts.</span>
+                  <span>Kilogram-level feed inventory tracking with automatic low-stock alerts before supplies run dry.</span>
                 </li>
               </ul>
             </div>
@@ -476,26 +472,25 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-slate-700">MODULE 04</span>
-                <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold">Security &amp;
-                  RBAC</span>
+                <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold">Team Access</span>
               </div>
-              <h2 class="text-lg font-bold text-slate-900">Zero-Trust Auth &amp; Admin Role Switcher</h2>
+              <h2 class="text-lg font-bold text-slate-900">Member Permissions &amp; Secure Logins</h2>
               <ul class="space-y-2 text-xs text-slate-600">
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Google OAuth 2.0 and Email &amp; Password login with password linking.</span>
+                  <span>Fast, verified sign-in with Google or Email with optional fingerprint lock on Android phones.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Pending Security Clearance Lobby for newly registered accounts.</span>
+                  <span>New Member Approval Lobby prevents uninvited users from seeing private farm data.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Real-time Admin Role Switcher (Admin, Treasurer, Investor, Operator).</span>
+                  <span>Dedicated roles tailored for Farm Owners, Syndicate Treasurers, Field Managers, and Investors.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>One-click Admin Demo Data Purge and clean production reset utility.</span>
+                  <span>Interactive demonstration mode allows exploring features safely before adding live farm data.</span>
                 </li>
               </ul>
             </div>
@@ -518,7 +513,7 @@
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Append-only asset maintenance, upgrade, and impairment logs.</span>
+                  <span>Permanent service records for asset maintenance, upgrades, and depreciation.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
@@ -538,26 +533,25 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-emerald-700">MODULE 06</span>
-                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Field
-                  Mobility</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Field Mobility</span>
               </div>
-              <h2 class="text-lg font-bold text-slate-900">SHA-256 Audit Chain &amp; Offline Android App</h2>
+              <h2 class="text-lg font-bold text-slate-900">100% Offline Android App &amp; Audit Trail</h2>
               <ul class="space-y-2 text-xs text-slate-600">
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Every ledger action is chained to the previous SHA-256 block hash.</span>
+                  <span>Bank-grade security ensures past records can never be manipulated or forged.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>One-click Cryptographic Chain Integrity Verifier.</span>
+                  <span>One-click Audit Verifier allows partners to confirm all ledger books are authentic.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Offline-capable Android app for remote field stations with zero signal.</span>
+                  <span>Full offline capability: log animal weights, medications, and feed in remote pastures without signal.</span>
                 </li>
                 <li class="flex items-start gap-2">
                   <span class="text-emerald-600 font-bold shrink-0">✓</span>
-                  <span>Real-time Cloud Firestore synchronization when back online.</span>
+                  <span>Automatic background cloud sync the instant your device reconnects to Wi-Fi or cellular data.</span>
                 </li>
               </ul>
             </div>
@@ -586,8 +580,8 @@
 
             <p class="text-xs sm:text-base text-slate-600 leading-relaxed">
               Install the official Agro Planner Android application engineered by <strong>BASOBASO SOFTWARES</strong>.
-              Built with offline SQLite/IndexedDB persistence so field operators can record livestock events, feed
-              rations, and site expenses even without cellular coverage.
+              Built with reliable offline capability so field managers and team members can record livestock events,
+              log feed rations, and enter farm expenses even in remote fields without cellular coverage.
             </p>
 
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
@@ -597,7 +591,8 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
-                <span>Download Official Android APK (51.3 MB)</span>
+                <span>Download Official Android APK</span>
+                <span class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded ml-1">8.9 MB</span>
               </a>
 
               <a href="https://wa.me/263788123047?text=Hello%20BASOBASO%20SOFTWARES%2C%20please%20send%20me%20the%20official%20Agro%20Planner%20Android%20APK%20package."
@@ -614,11 +609,11 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-500 pt-1">
-              <span>Release: v1.0.0</span>
+              <span>Release: <span class="apk-version-display">v1.0.0</span></span>
               <span>·</span>
               <span>OS: Android 8.0+ (Oreo) or newer</span>
               <span>·</span>
-              <span>Package: agro-planner.apk (8.9 MB)</span>
+              <span>Package: agro-planner.apk (<span class="apk-size-display">8.9 MB</span>)</span>
               <span>·</span>
               <span>Developer: BASOBASO SOFTWARES</span>
             </div>
@@ -637,7 +632,7 @@
                 <div>
                   <div class="font-bold text-slate-900">Download the Official APK File</div>
                   <p class="text-slate-500 mt-0.5">Click the green "Download Official Android APK" button above to save
-                    the 51.3 MB package directly to your device.</p>
+                    the lightweight package (<span class="apk-size-display">8.9 MB</span>) directly to your device.</p>
                 </div>
               </li>
 
@@ -667,19 +662,19 @@
         <!-- System Requirements & Hardware Telemetry Grid -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
-            <div class="font-extrabold text-slate-900 text-sm">Offline Field Station Cache</div>
-            <p class="text-slate-600 leading-relaxed">Full local database enables field operators to log daily livestock
-              weight, feed dispensations, and veterinary treatments with zero cellular signal.</p>
+            <div class="font-extrabold text-slate-900 text-sm">Offline Field Capability</div>
+            <p class="text-slate-600 leading-relaxed">Empowers farm operators to log daily livestock weights, feed
+              dispensations, and veterinary treatments in remote pastures with zero cellular signal.</p>
           </div>
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
-            <div class="font-extrabold text-slate-900 text-sm">Biometric Authentication</div>
-            <p class="text-slate-600 leading-relaxed">Supports hardware biometric unlocking (Fingerprint / Face Unlock)
-              on supported Android devices for rapid and secure station access.</p>
+            <div class="font-extrabold text-slate-900 text-sm">Fast Biometric Unlock</div>
+            <p class="text-slate-600 leading-relaxed">Supports biometric sign-in (Fingerprint / Face Unlock) on supported
+              Android devices for rapid and secure daily farm access.</p>
           </div>
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
-            <div class="font-extrabold text-slate-900 text-sm">Automatic Conflict Resolution</div>
-            <p class="text-slate-600 leading-relaxed">Queues offline writes into an append-only transaction pipeline
-              that reconciles with the cloud database upon reconnecting.</p>
+            <div class="font-extrabold text-slate-900 text-sm">Automatic Cloud Synchronization</div>
+            <p class="text-slate-600 leading-relaxed">Safely queues your entries on your phone while in the field,
+              then syncs automatically with the cloud database the moment you reconnect.</p>
           </div>
         </div>
       </div>
@@ -828,7 +823,7 @@
               <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">Terms and Conditions of Use</h1>
             </div>
             <span class="text-xs font-mono text-slate-500 tabular-nums">
-              Release: v1.0.0 · BASOBASO SOFTWARES
+              Release: <span class="apk-version-display">v1.0.0</span> · BASOBASO SOFTWARES
             </span>
           </div>
 
@@ -844,42 +839,30 @@
             </div>
 
             <div class="space-y-1.5">
-              <h2 class="text-base font-bold text-slate-900">02. Immutable Append-Only Financial &amp; Livestock Ledger
-                Policy</h2>
+              <h2 class="text-base font-bold text-slate-900">02. Tamper-Proof Financial &amp; Livestock Ledger Guarantee</h2>
               <p>
-                Agro Planner enforces a strict append-only data integrity protocol. Once a capital contribution,
-                operational expense, fixed asset valuation, feed transaction, or livestock lifecycle event is committed,
-                it is cryptographically signed with a SHA-256 hash and cannot be silently overwritten or deleted by
-                standard users. Corrections to erroneous entries must be executed exclusively via audited
-                <strong>Contra-Entry Reversals</strong>.
+                Agro Planner is founded on mutual trust between farming partners, investors, and operations teams. To ensure absolute transparency, the system enforces a strict non-destructive record-keeping policy: once a capital contribution, operating expense, feed inventory log, or livestock event is recorded, it cannot be quietly altered or deleted. In the event of a recording error, corrections are posted as transparent adjustment entries with a mandatory explanatory note. This guarantees that every dollar invested and every animal counted can be independently audited and trusted by all syndicate members.
               </p>
             </div>
 
             <div class="space-y-1.5">
-              <h2 class="text-base font-bold text-slate-900">03. Zero-Trust Account Clearance &amp; Role Governance</h2>
+              <h2 class="text-base font-bold text-slate-900">03. Member Authorization &amp; Role-Based Access</h2>
               <p>
-                Self-registered accounts default to the <strong>Pending Security Clearance Lobby</strong> with zero
-                access to sensitive treasury or site records until a verified <strong>Syndicate Admin</strong>
-                explicitly approves the account and assigns an operational role (<em>Syndicate Admin, Treasurer, Remote
-                  Investor,</em> or <em>Ground Operator</em>).
+                To protect private financial data and commercial farm secrets, new account sign-ups enter a secure Pending Approval state. Access to the syndicate dashboard is granted only after verification by a designated Farm Administrator. Farm leadership can assign distinct roles—such as Farm Owner, Syndicate Treasurer, Field Manager, or Investor Observer—giving each team member the tools they need while keeping sensitive financial controls protected.
               </p>
             </div>
 
             <div class="space-y-1.5">
-              <h2 class="text-base font-bold text-slate-900">04. Multi-Signature Expense Controls &amp; Equity
-                Calculations</h2>
+              <h2 class="text-base font-bold text-slate-900">04. Dual-Approval Expense Controls &amp; Fair Profit Sharing</h2>
               <p>
-                Operational expenses exceeding the configured syndicate threshold ($150.00 USD) require multi-signature
-                approval from an authorized Admin or Treasurer before funds are deducted from the liquid capital pool.
-                Pro-rata equity shares and harvest profit simulations are calculated mathematically from verified ledger
-                contributions.
+                To safeguard collective capital, operational disbursements exceeding the configured threshold ($150.00 USD) require authorization from both the Administrator and Treasurer before funds are withdrawn. All equity calculations, cost-of-production metrics, and harvest dividend splits are computed automatically from verified ledger records, ensuring fair and dispute-free distributions for all partners.
               </p>
             </div>
 
             <div class="space-y-1.5">
               <h2 class="text-base font-bold text-slate-900">05. Intellectual Property &amp; Developer Attribution</h2>
               <p>
-                All software architecture, cryptographic ledger algorithms, user interface designs, and documentation in
+                All software design, agricultural calculation models, user interface systems, and documentation in
                 Agro Planner are the intellectual property of <strong>BASOBASO SOFTWARES</strong> (Lead Engineer: <a
                   href="https://www.linkedin.com/in/marlvin-basera-359939286" target="_blank" rel="noopener noreferrer"
                   class="font-bold text-[#0A66C2] hover:underline">Marlvin Basera</a> · Email: <span
@@ -926,7 +909,7 @@
             <span class="text-slate-300">·</span>
             <span
               class="px-2.5 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-xs font-mono font-bold text-amber-900">
-              Agro Planner v1.0.0
+              Agro Planner <span class="apk-version-display">v1.0.0</span>
             </span>
           </div>
           <p class="text-xs text-slate-500">
@@ -1036,15 +1019,54 @@
       window.location.href = url.toString();
     }
 
-    // Initialize direct APK download path dynamically
-    (function initApkPath() {
+    // =========================================================================
+    // CENTRALIZED RELEASE CONFIGURATION
+    // Update these single values whenever publishing a new build.
+    // All download buttons, size badges, version tags, and package links across
+    // all pages and tabs will automatically update.
+    // =========================================================================
+    const APP_CONFIG = {
+      version: 'v1.0.0',
+      apkSize: '8.9 MB',
+      apkName: 'agro-planner.apk'
+    };
+
+    // Initialize release info and dynamic APK download paths
+    (function initReleaseConfig() {
+      // 1. Synchronize all APK size displays across tabs, navbar, and download instructions
+      document.querySelectorAll('.apk-size-display').forEach(function (el) {
+        el.textContent = APP_CONFIG.apkSize;
+      });
+
+      // 2. Synchronize all APK version displays
+      document.querySelectorAll('.apk-version-display').forEach(function (el) {
+        el.textContent = APP_CONFIG.version;
+      });
+
+      // 3. Adjust download button paths dynamically based on location
+      const isSubfolder = window.location.pathname.includes('/public-website');
+      const apkPath = isSubfolder ? `../apk/${APP_CONFIG.apkName}` : `apk/${APP_CONFIG.apkName}`;
+
       const downloadBtn = document.getElementById('direct-apk-download-btn');
       if (downloadBtn) {
-        const isSubfolder = window.location.pathname.includes('/public-website');
-        downloadBtn.href = isSubfolder ? '../apk/agro-planner.apk' : 'apk/agro-planner.apk';
+        downloadBtn.href = apkPath;
+        downloadBtn.setAttribute('download', APP_CONFIG.apkName);
       }
 
-      // Handle deep hash navigation on page load
+      const topDownloadBtn = document.getElementById('btn-download-apk-top');
+      if (topDownloadBtn) {
+        topDownloadBtn.href = apkPath;
+        topDownloadBtn.setAttribute('download', APP_CONFIG.apkName);
+      }
+
+      document.querySelectorAll('a[download]').forEach(function (link) {
+        if (link.getAttribute('href') && link.getAttribute('href').endsWith('.apk')) {
+          link.href = apkPath;
+          link.setAttribute('download', APP_CONFIG.apkName);
+        }
+      });
+
+      // 4. Handle deep hash navigation on page load
       const hash = window.location.hash.replace('#', '');
       if (['home', 'features', 'download', 'contact', 'terms'].includes(hash)) {
         switchTab(hash);
