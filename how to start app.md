@@ -34,3 +34,5 @@ node build-android-release.mjs
 4. Syncs all native assets into Capacitor (`npx cap sync android`).
 5. Signs and compiles the release APK with Gradle (`.\gradlew.bat assembleRelease`).
 6. Automatically distributes the signed APK to `./apk/agro-planner.apk` and website download folders!
+
+> 📖 For complete details on version bumping, Play Store App Bundles (`.aab`), Firebase fingerprints, and website deployment, see [FUTURE_RELEASE_GUIDE.md](./FUTURE_RELEASE_GUIDE.md).

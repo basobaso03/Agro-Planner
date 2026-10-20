@@ -141,6 +141,25 @@ try {
     fs.copyFileSync(srcFile, path.join(dir, 'agro-planner.apk'));
   });
 
+  // Automatically update dynamic size config in public website HTML files
+  try {
+    const websiteHtmlPath = path.join(projectRoot, 'public-website', 'index.html');
+    const publicWebsiteHtmlPath = path.join(projectRoot, 'public', 'public-website', 'index.html');
+
+    if (fs.existsSync(websiteHtmlPath)) {
+      let htmlContent = fs.readFileSync(websiteHtmlPath, 'utf-8');
+      htmlContent = htmlContent.replace(/apkSize:\s*['"][^'"]+['"]/, `apkSize: '${sizeMb} MB'`);
+      fs.writeFileSync(websiteHtmlPath, htmlContent, 'utf-8');
+
+      if (fs.existsSync(path.dirname(publicWebsiteHtmlPath))) {
+        fs.copyFileSync(websiteHtmlPath, publicWebsiteHtmlPath);
+      }
+      console.log(`\x1b[32m✔ Website Sync: Auto-updated APP_CONFIG.apkSize to ${sizeMb} MB\x1b[0m`);
+    }
+  } catch (syncErr) {
+    console.warn('  (Could not auto-update website size config, continuing...)', syncErr.message);
+  }
+
   console.log('\n\x1b[32m✔ SUCCESS! Standalone Release APK Generated Successfully!\x1b[0m');
   console.log(`\x1b[32m✔ File Size: ${sizeMb} MB\x1b[0m`);
   console.log(`\x1b[32m✔ Signature: ${isSigned ? 'SIGNED (Ready for public install)' : 'UNSIGNED'}\x1b[0m`);
