@@ -1163,17 +1163,20 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
           </div>
           <div className="flex flex-wrap items-center gap-2 self-start lg:self-center">
             <a
-              href="?website=true"
+              href={
+                typeof window !== 'undefined' && (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+                  ? 'https://basobaso03.github.io/Agro-Planner/'
+                  : '?website=true'
+              }
+              target={
+                typeof window !== 'undefined' && (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+                  ? '_blank'
+                  : undefined
+              }
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 border border-[#E0D7C6] text-slate-800 text-xs font-bold transition-colors cursor-pointer shadow-xs"
             >
               <span>Public Website ↗</span>
-            </a>
-            <a
-              href="apk/agro-planner.apk"
-              download="agro-planner.apk"
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold transition-colors cursor-pointer shadow-xs"
-            >
-              <span>Download APK ↓</span>
             </a>
             {onPreviewSplash && (
               <button

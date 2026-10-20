@@ -1051,7 +1051,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleLifecycleSubmit} className="modal-body-scroll mt-4 space-y-3.5">
+            <form onSubmit={handleActionSubmit} className="modal-body-scroll mt-4 space-y-3.5">
               {evError && (
                 <p className="text-xs text-rose-300 bg-rose-950/60 border border-rose-800 rounded-lg px-3 py-2">
                   {evError}

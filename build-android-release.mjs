@@ -65,18 +65,32 @@ try {
     console.log('  (Could not read cert fingerprint directly, continuing build...)\n');
   }
 
-  // Step 1: Production Web Bundle
-  console.log('\x1b[33m[2/5] Building optimized web bundle with Vite...\x1b[0m');
+  // Step 1: Pre-build cleanup of any nested APK files in web asset directories
+  console.log('\x1b[33m[2/5] Cleaning web directories to prevent APK nesting...\x1b[0m');
+  const strayApkPaths = [
+    path.join(projectRoot, 'public', 'apk'),
+    path.join(projectRoot, 'public', 'public-website', 'apk'),
+    path.join(projectRoot, 'dist', 'apk'),
+    path.join(projectRoot, 'dist', 'public-website', 'apk'),
+    path.join(projectRoot, 'android', 'app', 'src', 'main', 'assets', 'public', 'apk'),
+    path.join(projectRoot, 'android', 'app', 'src', 'main', 'assets', 'public', 'public-website', 'apk'),
+  ];
+  strayApkPaths.forEach((p) => {
+    if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+  });
+
+  // Step 2: Production Web Bundle
+  console.log('\x1b[33m[3/5] Building optimized web bundle with Vite...\x1b[0m');
   const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   execSync(`${npmCmd} run build`, { cwd: projectRoot, stdio: 'inherit' });
 
-  // Step 2: Sync to native Android assets
-  console.log('\n\x1b[33m[3/5] Syncing web assets to native Android project with Capacitor...\x1b[0m');
+  // Step 3: Sync to native Android assets
+  console.log('\n\x1b[33m[4/5] Syncing web assets to native Android project with Capacitor...\x1b[0m');
   const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   execSync(`${npxCmd} cap sync android`, { cwd: projectRoot, stdio: 'inherit' });
 
-  // Step 3: Run Gradle to assemble Release APK
-  console.log('\n\x1b[33m[4/5] Compiling Signed Release APK with Gradle...\x1b[0m');
+  // Step 4: Run Gradle to assemble Release APK
+  console.log('\n\x1b[33m[5/5] Compiling Signed Release APK with Gradle...\x1b[0m');
   const androidDir = path.join(projectRoot, 'android');
   const gradlewCmd = process.platform === 'win32' ? '.\\gradlew.bat' : './gradlew';
 
@@ -93,8 +107,8 @@ try {
 
   execSync(`${gradlewCmd} ${gradleTask}`, { cwd: androidDir, env, stdio: 'inherit' });
 
-  // Step 4: Verify and distribute compiled APK
-  console.log('\n\x1b[33m[5/5] Packaging and distributing Release files...\x1b[0m');
+  // Step 5: Verify and distribute compiled APK
+  console.log('\n\x1b[33mPackaging and distributing Release files...\x1b[0m');
   const releaseApk = path.join(androidAppDir, 'build', 'outputs', 'apk', 'release', 'app-release.apk');
   const unsignedApk = path.join(androidAppDir, 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk');
   const releaseAab = path.join(androidAppDir, 'build', 'outputs', 'bundle', 'release', 'app-release.aab');
@@ -119,10 +133,7 @@ try {
 
   const targets = [
     path.join(projectRoot, 'apk'),
-    path.join(projectRoot, 'public', 'apk'),
     path.join(projectRoot, 'public-website', 'apk'),
-    path.join(projectRoot, 'public', 'public-website', 'apk'),
-    path.join(projectRoot, 'dist', 'apk'),
   ];
 
   targets.forEach((dir) => {
@@ -133,8 +144,8 @@ try {
   console.log('\n\x1b[32m✔ SUCCESS! Standalone Release APK Generated Successfully!\x1b[0m');
   console.log(`\x1b[32m✔ File Size: ${sizeMb} MB\x1b[0m`);
   console.log(`\x1b[32m✔ Signature: ${isSigned ? 'SIGNED (Ready for public install)' : 'UNSIGNED'}\x1b[0m`);
-  console.log(`\x1b[32m✔ Primary APK: ./apk/agro-planner.apk\x1b[0m`);
-  console.log(`\x1b[32m✔ Release APK: ./apk/agro-planner-release.apk\x1b[0m\n`);
+  console.log(`\x1b[32m✔ Root APK:    ./apk/agro-planner.apk\x1b[0m`);
+  console.log(`\x1b[32m✔ Website APK: ./public-website/apk/agro-planner.apk\x1b[0m\n`);
   console.log('You can now:');
   console.log('  1. Share ./apk/agro-planner.apk directly via WhatsApp or Email');
   console.log('  2. Host it on your website for instant downloads');

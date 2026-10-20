@@ -28,9 +28,7 @@ try {
 
   const targetDirs = [
     path.resolve('apk'),
-    path.resolve('public/apk'),
-    path.resolve('public-website/apk'),
-    path.resolve('dist/apk')
+    path.resolve('public-website/apk')
   ];
 
   targetDirs.forEach((dir) => {
