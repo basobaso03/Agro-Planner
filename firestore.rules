@@ -40,7 +40,7 @@ service cloud.firestore {
     }
 
     match /locations/{locationId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated()
                     && isValidId(locationId)
                     && request.resource.data.name is string
@@ -50,7 +50,7 @@ service cloud.firestore {
     }
 
     match /members/{memberId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated()
                     && isValidId(memberId)
                     && request.resource.data.fullName is string
@@ -78,14 +78,14 @@ service cloud.firestore {
 
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS
     match /capital_contributions/{entryId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /expense_ledger/{entryId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if isAuthenticated()
                     && isValidId(entryId)
@@ -97,14 +97,14 @@ service cloud.firestore {
     }
 
     match /fixed_assets_ledger/{entryId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /livestock_entries/{livestockId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated()
                     && isValidId(livestockId)
                     && request.resource.data.nameOrTag is string
@@ -114,21 +114,21 @@ service cloud.firestore {
     }
 
     match /livestock_lifecycle_events/{eventId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /feed_ledger/{eventId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /audit_notifications/{auditId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated()
                     && isValidId(auditId)
                     && request.resource.data.keys().hasAll(['previousHash', 'currentHash', 'timestamp', 'message'])

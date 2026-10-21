@@ -8,6 +8,8 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithCredential,
+  signInAnonymously,
   linkWithCredential,
   updatePassword,
   updateProfile,
@@ -663,6 +665,24 @@ class AgroDataService {
       uid = user?.uid || '';
       email = (user?.email || '').trim().toLowerCase();
       displayName = user?.displayName || email.split('@')[0] || 'Member';
+
+      if (result.credential?.idToken) {
+        try {
+          if (!firebaseAuth) {
+            initFirebaseInstance(this.getCustomFirebaseConfig());
+          }
+          if (firebaseAuth) {
+            const credential = GoogleAuthProvider.credential(result.credential.idToken);
+            const userCred = await signInWithCredential(firebaseAuth, credential);
+            this.currentUser = userCred.user;
+            if (userCred.user.uid) {
+              uid = userCred.user.uid;
+            }
+          }
+        } catch (bridgeErr) {
+          console.warn('Could not bridge native Google credential to Firebase Web SDK:', bridgeErr);
+        }
+      }
     } else {
       // 2. Web Browser Flow (Firebase Web SDK)
       if (!firebaseAuth) {
@@ -1594,14 +1614,28 @@ class AgroDataService {
       'audit_notifications',
     ];
 
+    // Attempt to ensure an active Firebase Auth user session exists if available
+    if (firebaseAuth && !firebaseAuth.currentUser) {
+      try {
+        await signInAnonymously(firebaseAuth);
+      } catch (anonErr) {
+        console.info('Anonymous auth sync attempt note:', anonErr);
+      }
+    }
+
     const fetchCol = async (colPath: string) => {
       try {
         const snap = await getDocsFromServer(collection(firestoreDb!, colPath));
         return { colPath, docs: snap.docs.map((d) => d.data()) };
       } catch (err) {
         console.warn(`Direct server query failed for ${colPath}, falling back to cache:`, err);
-        const snap = await getDocs(collection(firestoreDb!, colPath));
-        return { colPath, docs: snap.docs.map((d) => d.data()) };
+        try {
+          const snap = await getDocs(collection(firestoreDb!, colPath));
+          return { colPath, docs: snap.docs.map((d) => d.data()) };
+        } catch (innerErr) {
+          console.warn(`Cache read also failed for ${colPath}:`, innerErr);
+          return { colPath, docs: [] };
+        }
       }
     };
 
