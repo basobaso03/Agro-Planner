@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-agroplanner-a7a9f5e5-7236-4070-af61-204fcbb6c3e8",
+      "rules": "firestore.rules"
+    }
+  ]
+}
