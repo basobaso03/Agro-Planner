@@ -52,16 +52,15 @@ service cloud.firestore {
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS
     match /capital_contributions/{entryId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /expense_ledger/{entryId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
-      allow update: if isAuthenticated()
-                    && isValidId(entryId)
+      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
+      allow update: if isValidId(entryId)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedByMemberIds'])
                     && request.resource.data.approvalStatus in ['APPROVED', 'PENDING_MULTISIG', 'REJECTED_BY_CONTRA']
                     && request.resource.data.approvedByMemberIds is list
@@ -71,15 +70,14 @@ service cloud.firestore {
 
     match /fixed_assets_ledger/{entryId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /livestock_entries/{livestockId} {
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && isValidId(livestockId)
+      allow create: if isValidId(livestockId)
                     && request.resource.data.nameOrTag is string
                     && request.resource.data.nameOrTag.size() <= 140;
       allow update: if false;
@@ -88,22 +86,21 @@ service cloud.firestore {
 
     match /livestock_lifecycle_events/{eventId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
+      allow create: if isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /feed_ledger/{eventId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidId(eventId) && hasMandatoryAuditFields();
+      allow create: if isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /audit_notifications/{auditId} {
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && isValidId(auditId)
+      allow create: if isValidId(auditId)
                     && request.resource.data.keys().hasAll(['previousHash', 'currentHash', 'timestamp', 'message'])
                     && request.resource.data.previousHash is string
                     && request.resource.data.previousHash.size() <= 128
@@ -111,8 +108,7 @@ service cloud.firestore {
                     && request.resource.data.currentHash.size() <= 128
                     && request.resource.data.message is string
                     && request.resource.data.message.size() <= 800;
-      allow update: if isAuthenticated()
-                    && isValidId(auditId)
+      allow update: if isValidId(auditId)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByMemberIds'])
                     && request.resource.data.readByMemberIds is list
                     && request.resource.data.readByMemberIds.size() <= 100;

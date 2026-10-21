@@ -295,6 +295,9 @@ class AgroDataService {
     const fb = initFirebaseInstance(customCfg);
     if (fb && fb.db) {
       void this.testConnection(fb.db);
+      // Immediately connect live real-time listeners for all 9 collections
+      this.attachCloudListeners(fb.db, this.currentUser?.uid || this.activeSession?.uid || 'active');
+
       if (fb.auth) {
         onAuthStateChanged(fb.auth, (user) => {
           this.currentUser = user;
@@ -329,11 +332,9 @@ class AgroDataService {
               providers: nextSession.providers,
               passwordVerifierHash: creds[email]?.verifierHash || existingMem?.passwordVerifierHash,
             });
-          } else {
-            this.detachCloudListeners();
-            // In native mobile & offline mode, preserve persisted session so user stays logged in
-            // Active session is only cleared when the user explicitly clicks "Sign Out" via signOutCloud()
           }
+          // Do NOT detach real-time listeners on mobile app startup or guest mode;
+          // Listeners are only detached when the user explicitly clicks "Sign Out" via signOutCloud()
         });
       }
     }
@@ -2047,6 +2048,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('capital_contributions', newEvent.id, newEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newEvent;
   }
 
@@ -2133,6 +2135,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('expense_ledger', newExpense.id, newExpense);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newExpense;
   }
 
@@ -2167,12 +2170,13 @@ class AgroDataService {
     };
 
     this.saveLocalState(nextState);
-    if (this.cloudSyncActive && this.currentUser && firestoreDb) {
+    if (firestoreDb) {
       updateDoc(doc(firestoreDb, 'expense_ledger', expenseId), {
         approvalStatus: 'APPROVED',
         approvedByMemberIds: updatedApprovedBy,
       }).catch((err) => console.warn('Cloud expense approval update warning:', err));
     }
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
   }
 
   public registerLivestock(params: {
@@ -2305,6 +2309,7 @@ class AgroDataService {
       initialLifecycleEvent.id,
       initialLifecycleEvent
     );
+    void this.persistDocumentToCloudIfActive('audit_notifications', regAudit.id, regAudit);
     return newEntry;
   }
 
@@ -2406,6 +2411,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', newEvent.id, newEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newEvent;
   }
 
@@ -2512,6 +2518,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('fixed_assets_ledger', newAssetEvent.id, newAssetEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', assetAudit.id, assetAudit);
     return newAssetEvent;
   }
 
@@ -2609,6 +2616,7 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('fixed_assets_ledger', outEvent.id, outEvent);
     void this.persistDocumentToCloudIfActive('fixed_assets_ledger', inEvent.id, inEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return { outEvent, inEvent };
   }
 
@@ -2681,6 +2689,7 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('feed_ledger', newFeedEvent.id, newFeedEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newFeedEvent;
   }
 
@@ -2715,6 +2724,7 @@ class AgroDataService {
     };
 
     this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return audit;
   }
 
@@ -2722,7 +2732,7 @@ class AgroDataService {
     const updated = this.state.auditNotifications.map((n) => {
       if (n.readByMemberIds.includes(memberId)) return n;
       const nextRead = [...n.readByMemberIds, memberId];
-      if (this.cloudSyncActive && this.currentUser && firestoreDb) {
+      if (firestoreDb) {
         updateDoc(doc(firestoreDb, 'audit_notifications', n.id), {
           readByMemberIds: nextRead,
         }).catch((err) => console.warn('Cloud notification read update warning:', err));
