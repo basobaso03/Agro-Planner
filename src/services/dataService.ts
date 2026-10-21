@@ -1122,14 +1122,14 @@ class AgroDataService {
   /**
    * Admin Governance: Switch user roles, approve pending registrations, assign sites, or suspend accounts
    */
-  public adminUpdateMemberRoleAndAccess(params: {
+  public async adminUpdateMemberRoleAndAccess(params: {
     targetMemberId: string;
     role: Role;
     approvalStatus: MemberApprovalStatus;
     assignedLocationId?: string;
     note?: string;
     actor: SyndicateMember;
-  }): SyndicateMember {
+  }): Promise<SyndicateMember> {
     const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
     if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
       throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can modify member roles, clearances, or suspensions.');
@@ -1194,8 +1194,8 @@ class AgroDataService {
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
+    await this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
     this.saveLocalState(nextState);
-    void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
     return updatedMember;
   }
 
@@ -1740,7 +1740,12 @@ class AgroDataService {
         const cleanData = JSON.parse(JSON.stringify(data));
         await setDoc(doc(firestoreDb, collectionPath, docId), cleanData);
       } catch (error) {
-        console.warn(`Cloud persistence warning (${collectionPath}/${docId}):`, error);
+        console.warn(`Cloud persistence error (${collectionPath}/${docId}):`, error);
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg.includes('permission') || msg.includes('Missing or insufficient permissions')) {
+          throw new Error('Cloud update rejected: Active Founder session required. Please sign out and sign in with Google (baseramarlvin@gmail.com) on the latest APK to activate Cloud permissions.');
+        }
+        throw error;
       }
     }
   }

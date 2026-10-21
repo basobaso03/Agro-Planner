@@ -105,7 +105,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
     return m.role === roleFilter;
   });
 
-  const handleRoleOrSiteChange = (
+  const handleRoleOrSiteChange = async (
     target: SyndicateMember,
     newRole: Role,
     newStatus: MemberApprovalStatus,
@@ -115,7 +115,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
     setErrorMsg('');
     setStatusMessage('');
     try {
-      const updated = dataService.adminUpdateMemberRoleAndAccess({
+      const updated = await dataService.adminUpdateMemberRoleAndAccess({
         targetMemberId: target.id,
         role: newRole,
         approvalStatus: newStatus,
@@ -124,7 +124,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
         actor: activeMember,
       });
       setStatusMessage(
-        `Updated ${updated.fullName}: Role set to ${getRoleMeta(updated.role).label} (${updated.approvalStatus}). Logged to SHA-256 audit chain.`
+        `Updated ${updated.fullName}: Role set to ${getRoleMeta(updated.role).label} (${updated.approvalStatus}). Synced to Cloud & SHA-256 audit chain.`
       );
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Could not update member access.');
