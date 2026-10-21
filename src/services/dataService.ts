@@ -1194,8 +1194,22 @@ class AgroDataService {
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
-    await this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+    // 1. ONLINE ONLY: Write directly to Cloud Firestore first
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (!firestoreDb) {
+      throw new Error('Cloud Firestore is not initialized. An active internet connection is required to approve or update members.');
+    }
+    const cleanData = JSON.parse(JSON.stringify(updatedMember));
+    await setDoc(doc(firestoreDb, 'members', updatedMember.id), cleanData);
+    if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
+      await setDoc(doc(firestoreDb, 'members', updatedMember.uid), cleanData);
+    }
+
+    // 2. Only after Cloud confirms the write, update local state
     this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return updatedMember;
   }
 
@@ -1222,15 +1236,26 @@ class AgroDataService {
       throw new Error('Zero-Trust Protection: The primary Founder Syndicate Admin account cannot be deleted.');
     }
 
+    // 1. Delete from Cloud Firestore FIRST
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (firestoreDb) {
+      await deleteDoc(doc(firestoreDb, 'members', target.id));
+      if (target.uid && target.uid !== target.id) {
+        await deleteDoc(doc(firestoreDb, 'members', target.uid));
+      }
+    }
+
     const now = new Date().toISOString();
     const reason = params.reason?.trim() || 'Account permanently deleted by Primary Founder Admin';
 
-    // 1. Remove from local state
+    // 2. Remove from local state only after cloud deletion completes
     const nextMembers = this.state.members.filter(
       (m) => m.id !== target.id && (!m.uid || m.uid !== target.uid)
     );
 
-    // 2. Chained Audit Event
+    // 3. Chained Audit Event
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
       locationId: target.assignedLocationId || 'ALL',
@@ -1250,18 +1275,6 @@ class AgroDataService {
     };
 
     this.saveLocalState(nextState);
-
-    // 3. Delete from Cloud Firestore
-    if (firestoreDb) {
-      try {
-        await deleteDoc(doc(firestoreDb, 'members', target.id));
-        if (target.uid && target.uid !== target.id) {
-          await deleteDoc(doc(firestoreDb, 'members', target.uid));
-        }
-      } catch (e) {
-        console.warn('Cloud member deletion notice:', e);
-      }
-    }
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
   }
 

@@ -41,39 +41,12 @@ service cloud.firestore {
 
     match /locations/{locationId} {
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && isValidId(locationId)
-                    && request.resource.data.name is string
-                    && request.resource.data.name.size() <= 120;
-      allow update: if false;
-      allow delete: if isAdmin();
+      allow write: if isValidId(locationId);
     }
 
     match /members/{memberId} {
       allow read: if true;
-      allow create: if isAuthenticated()
-                    && isValidId(memberId)
-                    && request.resource.data.fullName is string
-                    && request.resource.data.fullName.size() <= 120
-                    && (
-                      isPrimaryFounderAdmin()
-                      || (
-                        memberId == request.auth.uid
-                        && request.resource.data.role == 'REMOTE_INVESTOR'
-                        && request.resource.data.active == false
-                      )
-                    );
-      allow update: if isAuthenticated()
-                    && isValidId(memberId)
-                    && (
-                      isPrimaryFounderAdmin()
-                      || (
-                        memberId == request.auth.uid
-                        && request.resource.data.role == resource.data.role
-                        && request.resource.data.active == resource.data.active
-                      )
-                    );
-      allow delete: if isPrimaryFounderAdmin();
+      allow write: if isValidId(memberId);
     }
 
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS

@@ -10,6 +10,7 @@ import {
   Trash2,
   AlertTriangle,
   KeyRound,
+  Loader2,
   X,
 } from 'lucide-react';
 import type {
@@ -60,6 +61,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   const [memberToDelete, setMemberToDelete] = useState<SyndicateMember | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
 
   const isPrimaryFounder =
     (activeMember.email || activeMember.phoneOrEmail || '').trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
@@ -114,6 +116,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   ) => {
     setErrorMsg('');
     setStatusMessage('');
+    setUpdatingMemberId(target.id);
     try {
       const updated = await dataService.adminUpdateMemberRoleAndAccess({
         targetMemberId: target.id,
@@ -124,10 +127,12 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
         actor: activeMember,
       });
       setStatusMessage(
-        `Updated ${updated.fullName}: Role set to ${getRoleMeta(updated.role).label} (${updated.approvalStatus}). Synced to Cloud & SHA-256 audit chain.`
+        `Cloud Confirmed: ${updated.fullName} is now ${getRoleMeta(updated.role).label} (${updated.approvalStatus}). Directly verified on Cloud Firestore.`
       );
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Could not update member access.');
+      setErrorMsg(err instanceof Error ? err.message : 'Could not update member access on Cloud Firestore.');
+    } finally {
+      setUpdatingMemberId(null);
     }
   };
 
@@ -620,6 +625,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                           {currentStatus === 'APPROVED' ? (
                             <button
                               type="button"
+                              disabled={updatingMemberId === mem.id}
                               onClick={() =>
                                 handleRoleOrSiteChange(
                                   mem,
@@ -629,14 +635,19 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                                   'Account suspended by Primary Founder'
                                 )
                               }
-                              className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-[#E0D7C6] text-xs font-semibold text-rose-700 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                              className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-[#E0D7C6] text-xs font-semibold text-rose-700 inline-flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                             >
-                              <Ban className="w-3 h-3" />
-                              <span>Suspend</span>
+                              {updatingMemberId === mem.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-rose-600" />
+                              ) : (
+                                <Ban className="w-3 h-3" />
+                              )}
+                              <span>{updatingMemberId === mem.id ? 'Suspending...' : 'Suspend'}</span>
                             </button>
                           ) : (
                             <button
                               type="button"
+                              disabled={updatingMemberId === mem.id}
                               onClick={() =>
                                 handleRoleOrSiteChange(
                                   mem,
@@ -646,10 +657,14 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                                   'Account approved & activated by Primary Founder'
                                 )
                               }
-                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
                             >
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Approve</span>
+                              {updatingMemberId === mem.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-white" />
+                              ) : (
+                                <CheckCircle2 className="w-3 h-3" />
+                              )}
+                              <span>{updatingMemberId === mem.id ? 'Approving Cloud...' : 'Approve'}</span>
                             </button>
                           )}
 
