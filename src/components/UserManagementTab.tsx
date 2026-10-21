@@ -56,6 +56,13 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeLoading, setWipeLoading] = useState(false);
 
+  // Permanent Member Deletion Modal State
+  const [memberToDelete, setMemberToDelete] = useState<SyndicateMember | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isPrimaryFounder =
+    (activeMember.email || activeMember.phoneOrEmail || '').trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
   const canManage = PERMISSIONS.canManageMembers(activeMember.role);
 
   if (!canManage) {
@@ -151,6 +158,29 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!memberToDelete) return;
+    setIsDeleting(true);
+    setErrorMsg('');
+    setStatusMessage('');
+    try {
+      await dataService.deleteMember({
+        targetMemberId: memberToDelete.id,
+        actor: activeMember,
+        reason: deleteReason || 'Account permanently deleted by Primary Founder Admin',
+      });
+      setStatusMessage(
+        `Member ${memberToDelete.fullName} (${memberToDelete.email || memberToDelete.phoneOrEmail}) was permanently deleted from local cache and Cloud.`
+      );
+      setMemberToDelete(null);
+      setDeleteReason('');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not delete member.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleConfirmWipe = async (mode: 'DEMO_ONLY' | 'FULL_RESET') => {
     setWipeLoading(true);
     setErrorMsg('');
@@ -188,25 +218,43 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowWipeModal(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-[#FAF8F5] hover:bg-rose-50 border border-[#E0D7C6] hover:border-rose-300 text-xs font-bold text-slate-700 hover:text-rose-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Wipe Demo Data / Reset Ledger
-          </button>
+          {isPrimaryFounder && (
+            <button
+              type="button"
+              onClick={() => setShowWipeModal(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-[#FAF8F5] hover:bg-rose-50 border border-[#E0D7C6] hover:border-rose-300 text-xs font-bold text-slate-700 hover:text-rose-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Wipe Demo Data / Reset Ledger
+            </button>
+          )}
 
-          <button
-            type="button"
-            onClick={() => setShowInviteModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4" />
-            + Pre-Authorize Member
-          </button>
+          {isPrimaryFounder ? (
+            <button
+              type="button"
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              + Pre-Authorize Member
+            </button>
+          ) : (
+            <div className="px-3.5 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 select-none">
+              <ShieldCheck className="w-4 h-4 text-slate-500" />
+              <span>Directory View</span>
+            </div>
+          )}
         </div>
       </section>
+
+      {!isPrimaryFounder && (
+        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2.5 shadow-2xs">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            <strong>Primary Founder Governance:</strong> Member creation, role changes, clearance approvals, suspensions, and account deletions are strictly restricted to the Primary Founder ({PRIMARY_ADMIN_EMAIL}).
+          </span>
+        </div>
+      )}
 
       {statusMessage && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-3">
@@ -503,7 +551,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                     <td className="py-3.5 px-3">
                       <select
                         aria-label={`Change role for ${mem.fullName}`}
-                        disabled={isFounder}
+                        disabled={isFounder || !isPrimaryFounder}
                         value={mem.role}
                         onChange={(e) =>
                           handleRoleOrSiteChange(
@@ -526,6 +574,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                     <td className="py-3.5 px-3">
                       <select
                         aria-label={`Assign site for ${mem.fullName}`}
+                        disabled={!isPrimaryFounder}
                         value={mem.assignedLocationId || 'ALL'}
                         onChange={(e) =>
                           handleRoleOrSiteChange(
@@ -536,7 +585,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                             `Site assignment updated`
                           )
                         }
-                        className="bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-amber-500 cursor-pointer"
+                        className="bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-amber-500 disabled:opacity-70 cursor-pointer"
                       >
                         <option value="ALL">All Sites (Master)</option>
                         {locations.map((loc) => (
@@ -562,40 +611,61 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                         <span className="text-[11px] font-mono text-slate-400">
                           Primary Founder
                         </span>
-                      ) : currentStatus === 'APPROVED' ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRoleOrSiteChange(
-                              mem,
-                              mem.role,
-                              'SUSPENDED',
-                              mem.assignedLocationId || 'ALL',
-                              'Account suspended by Admin'
-                            )
-                          }
-                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-[#E0D7C6] text-xs font-semibold text-rose-700 inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <Ban className="w-3 h-3" />
-                          Suspend
-                        </button>
+                      ) : !isPrimaryFounder ? (
+                        <span className="text-[11px] font-mono text-slate-400">
+                          View Only
+                        </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleRoleOrSiteChange(
-                              mem,
-                              mem.role,
-                              'APPROVED',
-                              mem.assignedLocationId || 'ALL',
-                              'Account approved & activated by Admin'
-                            )
-                          }
-                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Approve
-                        </button>
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          {currentStatus === 'APPROVED' ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRoleOrSiteChange(
+                                  mem,
+                                  mem.role,
+                                  'SUSPENDED',
+                                  mem.assignedLocationId || 'ALL',
+                                  'Account suspended by Primary Founder'
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-[#E0D7C6] text-xs font-semibold text-rose-700 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Ban className="w-3 h-3" />
+                              <span>Suspend</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRoleOrSiteChange(
+                                  mem,
+                                  mem.role,
+                                  'APPROVED',
+                                  mem.assignedLocationId || 'ALL',
+                                  'Account approved & activated by Primary Founder'
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Approve</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMemberToDelete(mem);
+                              setDeleteReason('');
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 inline-flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            title={`Permanently delete ${mem.fullName}`}
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -784,6 +854,81 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
           </div>
         </div>
       </div>
+      )}
+
+      {/* Modal 3: Confirm Permanent Member Deletion */}
+      {memberToDelete && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="modal-overlay-responsive"
+        >
+          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
+            <div className="flex items-center justify-between pb-3 border-b border-rose-200 shrink-0">
+              <h2 className="text-base font-bold text-rose-900 flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>Permanently Delete Member</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setMemberToDelete(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="modal-body-scroll mt-4 space-y-3.5">
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1.5 leading-relaxed">
+                <div className="font-bold flex items-center gap-1.5 text-rose-950">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Permanent Irreversible Action</span>
+                </div>
+                <p>
+                  You are about to permanently delete <strong>{memberToDelete.fullName}</strong> ({memberToDelete.email || memberToDelete.phoneOrEmail}) from local storage and the Google Firestore Cloud database.
+                </p>
+                {memberToDelete.role === 'SYNDICATE_ADMIN' && (
+                  <p className="font-semibold text-rose-700">
+                    Notice: This account has <strong>Syndicate Admin</strong> privileges. Deleting will permanently revoke all administrative access.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reason for Deletion (Logged to SHA-256 Audit Chain)
+                </label>
+                <input
+                  type="text"
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="e.g. Member left syndicate / Contract ended"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#E0D7C6] bg-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{isDeleting ? 'Deleting from Cloud & Ledger...' : 'Confirm Permanent Deletion'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMemberToDelete(null)}
+                  className="w-full py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

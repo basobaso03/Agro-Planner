@@ -28,6 +28,7 @@ import {
   deleteDoc,
   getDocs,
   getDocFromServer,
+  getDocsFromServer,
   onSnapshot,
   type Firestore,
 } from 'firebase/firestore';
@@ -1109,15 +1110,16 @@ class AgroDataService {
     note?: string;
     actor: SyndicateMember;
   }): SyndicateMember {
-    if (params.actor.role !== 'SYNDICATE_ADMIN') {
-      throw new Error('Zero-Trust Violation: Only a Syndicate Admin can modify member roles or clearances.');
+    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
+    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
+      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can modify member roles, clearances, or suspensions.');
     }
     const target = this.state.members.find((m) => m.id === params.targetMemberId);
     if (!target) throw new Error('Target member record not found.');
 
     // Protect primary bootstrapped admin from accidental self-lockout
     if (
-      (target.email || '').toLowerCase() === PRIMARY_ADMIN_EMAIL &&
+      (target.email || target.phoneOrEmail || '').toLowerCase() === PRIMARY_ADMIN_EMAIL &&
       (params.role !== 'SYNDICATE_ADMIN' || params.approvalStatus !== 'APPROVED')
     ) {
       throw new Error('The primary Founder Syndicate Admin account cannot be demoted or suspended.');
@@ -1175,6 +1177,72 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
     return updatedMember;
+  }
+
+  /**
+   * Primary Founder Governance: Permanently delete a syndicate member (including other admins)
+   */
+  public async deleteMember(params: {
+    targetMemberId: string;
+    actor: SyndicateMember;
+    reason?: string;
+  }): Promise<void> {
+    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
+    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
+      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can delete syndicate members.');
+    }
+
+    const target = this.state.members.find(
+      (m) => m.id === params.targetMemberId || (m.uid && m.uid === params.targetMemberId)
+    );
+    if (!target) throw new Error('Target member record not found.');
+
+    const targetEmail = (target.email || target.phoneOrEmail || '').trim().toLowerCase();
+    if (targetEmail === PRIMARY_ADMIN_EMAIL) {
+      throw new Error('Zero-Trust Protection: The primary Founder Syndicate Admin account cannot be deleted.');
+    }
+
+    const now = new Date().toISOString();
+    const reason = params.reason?.trim() || 'Account permanently deleted by Primary Founder Admin';
+
+    // 1. Remove from local state
+    const nextMembers = this.state.members.filter(
+      (m) => m.id !== target.id && (!m.uid || m.uid !== target.uid)
+    );
+
+    // 2. Chained Audit Event
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: target.assignedLocationId || 'ALL',
+      locationName: 'All Locations (Master Syndicate)',
+      eventType: 'MEMBER_DELETED',
+      severity: 'WARNING_CONTRA',
+      title: `Member Permanently Deleted: ${target.fullName}`,
+      message: `${target.fullName} (${target.phoneOrEmail}, role: ${target.role}) was permanently deleted from the syndicate by Primary Admin. Reason: ${reason}.`,
+      referenceEntityId: target.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      members: nextMembers,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+
+    // 3. Delete from Cloud Firestore
+    if (firestoreDb) {
+      try {
+        await deleteDoc(doc(firestoreDb, 'members', target.id));
+        if (target.uid && target.uid !== target.id) {
+          await deleteDoc(doc(firestoreDb, 'members', target.uid));
+        }
+      } catch (e) {
+        console.warn('Cloud member deletion notice:', e);
+      }
+    }
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
   }
 
   /**
@@ -1359,60 +1427,51 @@ class AgroDataService {
           const cloudMembers = (docs as SyndicateMember[]).filter(
             (x) => !isLegacySeedId('members', x.id)
           );
-          if (cloudMembers.length > 0) {
-            const creds = getStoredLocalCredentials();
-            const byId = new Map<string, SyndicateMember>();
-            this.state.members.forEach((m) => {
-              if (!isLegacySeedId('members', m.id)) byId.set(m.id, m);
-            });
-            cloudMembers.forEach((cloudM) => {
-              const localM =
-                byId.get(cloudM.id) ||
-                Array.from(byId.values()).find(
-                  (x) =>
-                    (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
-                    (x.uid && cloudM.uid && x.uid === cloudM.uid)
-                );
-              const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
-              const credRec = email ? creds[email] : null;
+          const creds = getStoredLocalCredentials();
+          const existingLocalMap = new Map<string, SyndicateMember>();
+          this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
 
-              const hasPassword = Boolean(
-                cloudM.hasPasswordSetup ||
-                  localM?.hasPasswordSetup ||
-                  cloudM.passwordVerifierHash ||
-                  localM?.passwordVerifierHash ||
-                  credRec?.hasPasswordSetup
+          // AUTHORITATIVE CLOUD SYNCHRONIZATION:
+          // Deleted members in Firestore online are purged from state and localStorage.
+          this.state.members = cloudMembers.map((cloudM) => {
+            const localM =
+              existingLocalMap.get(cloudM.id) ||
+              Array.from(existingLocalMap.values()).find(
+                (x) =>
+                  (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
+                  (x.uid && cloudM.uid && x.uid === cloudM.uid)
               );
-              const passwordVerifierHash =
+            const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
+            const credRec = email ? creds[email] : null;
+
+            const hasPassword = Boolean(
+              cloudM.hasPasswordSetup ||
+                localM?.hasPasswordSetup ||
                 cloudM.passwordVerifierHash ||
                 localM?.passwordVerifierHash ||
-                credRec?.verifierHash;
+                credRec?.hasPasswordSetup
+            );
+            const passwordVerifierHash =
+              cloudM.passwordVerifierHash ||
+              localM?.passwordVerifierHash ||
+              credRec?.verifierHash;
 
-              const mergedProviders = Array.from(
-                new Set([
-                  ...(cloudM.authProviders || []),
-                  ...(localM?.authProviders || []),
-                  ...(hasPassword ? ['password'] : []),
-                ])
-              );
+            const mergedProviders = Array.from(
+              new Set([
+                ...(cloudM.authProviders || []),
+                ...(localM?.authProviders || []),
+                ...(hasPassword ? ['password'] : []),
+              ])
+            );
 
-              const mergedMember: SyndicateMember = {
-                ...localM,
-                ...cloudM,
-                hasPasswordSetup: hasPassword,
-                passwordVerifierHash,
-                authProviders: mergedProviders,
-              };
-
-              byId.set(cloudM.id, mergedMember);
-
-              // If cloud document lacked the password flag, update Firestore so cloud catches up
-              if (hasPassword && (!cloudM.hasPasswordSetup || !cloudM.passwordVerifierHash)) {
-                void this.persistDocumentToCloudIfActive('members', cloudM.id, mergedMember);
-              }
-            });
-            this.state.members = Array.from(byId.values());
-          }
+            return {
+              ...localM,
+              ...cloudM,
+              hasPasswordSetup: hasPassword,
+              passwordVerifierHash,
+              authProviders: mergedProviders,
+            };
+          });
         },
       },
       {
@@ -1508,6 +1567,134 @@ class AgroDataService {
       );
       this.firestoreUnsubscribes.push(unsub);
     });
+  }
+
+  /**
+   * Authoritative Cloud Synchronization:
+   * Direct server roundtrip bypassing local IndexedDB cache via getDocsFromServer.
+   * Completely purges locally deleted records so Cloud is 100% source of truth.
+   */
+  public async syncWithCloudServer(): Promise<{ success: boolean; itemCount: number; message: string }> {
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (!firestoreDb) {
+      throw new Error('Firestore is not initialized. Please check network connectivity.');
+    }
+
+    const collections = [
+      'locations',
+      'members',
+      'capital_contributions',
+      'expense_ledger',
+      'fixed_assets_ledger',
+      'livestock_entries',
+      'livestock_lifecycle_events',
+      'feed_ledger',
+      'audit_notifications',
+    ];
+
+    const fetchCol = async (colPath: string) => {
+      try {
+        const snap = await getDocsFromServer(collection(firestoreDb!, colPath));
+        return { colPath, docs: snap.docs.map((d) => d.data()) };
+      } catch (err) {
+        console.warn(`Direct server query failed for ${colPath}, falling back to cache:`, err);
+        const snap = await getDocs(collection(firestoreDb!, colPath));
+        return { colPath, docs: snap.docs.map((d) => d.data()) };
+      }
+    };
+
+    const results = await Promise.all(collections.map((c) => fetchCol(c)));
+    let totalSynced = 0;
+
+    for (const { colPath, docs } of results) {
+      totalSynced += docs.length;
+      if (colPath === 'locations') {
+        this.state.locations = (docs as FarmLocation[]).filter((x) => !isLegacySeedId('locations', x.id));
+      } else if (colPath === 'members') {
+        const cloudMembers = (docs as SyndicateMember[]).filter((x) => !isLegacySeedId('members', x.id));
+        const creds = getStoredLocalCredentials();
+        const existingLocalMap = new Map<string, SyndicateMember>();
+        this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
+
+        this.state.members = cloudMembers.map((cloudM) => {
+          const localM =
+            existingLocalMap.get(cloudM.id) ||
+            Array.from(existingLocalMap.values()).find(
+              (x) =>
+                (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
+                (x.uid && cloudM.uid && x.uid === cloudM.uid)
+            );
+          const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
+          const credRec = email ? creds[email] : null;
+
+          const hasPassword = Boolean(
+            cloudM.hasPasswordSetup ||
+              localM?.hasPasswordSetup ||
+              cloudM.passwordVerifierHash ||
+              localM?.passwordVerifierHash ||
+              credRec?.hasPasswordSetup
+          );
+          const passwordVerifierHash =
+            cloudM.passwordVerifierHash ||
+            localM?.passwordVerifierHash ||
+            credRec?.verifierHash;
+
+          const mergedProviders = Array.from(
+            new Set([
+              ...(cloudM.authProviders || []),
+              ...(localM?.authProviders || []),
+              ...(hasPassword ? ['password'] : []),
+            ])
+          );
+
+          return {
+            ...localM,
+            ...cloudM,
+            hasPasswordSetup: hasPassword,
+            passwordVerifierHash,
+            authProviders: mergedProviders,
+          };
+        });
+      } else if (colPath === 'capital_contributions') {
+        this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
+          (x) => !isLegacySeedId('capitalContributions', x.id)
+        );
+      } else if (colPath === 'expense_ledger') {
+        this.state.expenses = (docs as ExpenseLedgerEvent[]).filter(
+          (x) => !isLegacySeedId('expenses', x.id)
+        );
+      } else if (colPath === 'fixed_assets_ledger') {
+        this.state.fixedAssets = (docs as FixedAssetLedgerEvent[]).filter(
+          (x) => !isLegacySeedId('fixedAssets', x.id)
+        );
+      } else if (colPath === 'livestock_entries') {
+        this.state.livestockEntries = (docs as LivestockEntry[]).filter(
+          (x) => !isLegacySeedId('livestockEntries', x.id)
+        );
+      } else if (colPath === 'livestock_lifecycle_events') {
+        this.state.livestockEvents = (docs as LivestockLifecycleEvent[]).filter(
+          (x) => !isLegacySeedId('livestockEvents', x.id)
+        );
+      } else if (colPath === 'feed_ledger') {
+        this.state.feedLedger = (docs as FeedLedgerEvent[]).filter(
+          (x) => !isLegacySeedId('feedLedger', x.id)
+        );
+      } else if (colPath === 'audit_notifications') {
+        const valid = (docs as AuditNotificationEvent[]).filter(
+          (x) => !isLegacySeedId('auditNotifications', x.id)
+        );
+        this.state.auditNotifications = valid.sort((a, b) => b.sequenceNumber - a.sequenceNumber);
+      }
+    }
+
+    this.saveLocalState({ ...this.state }, true);
+    return {
+      success: true,
+      itemCount: totalSynced,
+      message: `Synchronized ${totalSynced} records live from cloud servers.`,
+    };
   }
 
   private async persistDocumentToCloudIfActive(collectionPath: string, docId: string, data: object) {
@@ -1655,6 +1842,11 @@ class AgroDataService {
     contributionNote?: string;
     actor: SyndicateMember;
   }): SyndicateMember {
+    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
+    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
+      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can pre-authorize or create syndicate members.');
+    }
+
     const now = new Date().toISOString();
     const id = `mem-${Date.now().toString(36)}`;
     const contact = params.phoneOrEmail.trim().slice(0, 160);

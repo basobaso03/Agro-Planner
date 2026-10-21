@@ -9,8 +9,7 @@ service cloud.firestore {
     function isPrimaryFounderAdmin() {
       return isAuthenticated()
              && request.auth.token.email != null
-             && request.auth.token.email.lower() == 'baseramarlvin@gmail.com'
-             && request.auth.token.email_verified == true;
+             && request.auth.token.email.lower() == 'baseramarlvin@gmail.com';
     }
 
     function isAdmin() {
@@ -57,7 +56,7 @@ service cloud.firestore {
                     && request.resource.data.fullName is string
                     && request.resource.data.fullName.size() <= 120
                     && (
-                      isAdmin()
+                      isPrimaryFounderAdmin()
                       || (
                         memberId == request.auth.uid
                         && request.resource.data.role == 'REMOTE_INVESTOR'
@@ -67,14 +66,14 @@ service cloud.firestore {
       allow update: if isAuthenticated()
                     && isValidId(memberId)
                     && (
-                      isAdmin()
+                      isPrimaryFounderAdmin()
                       || (
                         memberId == request.auth.uid
                         && request.resource.data.role == resource.data.role
                         && request.resource.data.active == resource.data.active
                       )
                     );
-      allow delete: if isAdmin();
+      allow delete: if isPrimaryFounderAdmin();
     }
 
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS

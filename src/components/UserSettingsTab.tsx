@@ -19,6 +19,7 @@ import {
   Fingerprint,
   BellRing,
   AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import type { FarmLocation, SyndicateMember } from '../types/agro.ts';
 import { dataService, type AuthenticatedSession } from '../services/dataService.ts';
@@ -87,6 +88,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   const [pwdBanner, setPwdBanner] = useState('');
   const [pwdError, setPwdError] = useState('');
   const [pwdLoading, setPwdLoading] = useState(false);
+
+  // Cloud Force-Sync State
+  const [isSyncingSettings, setIsSyncingSettings] = useState(false);
+  const [settingsSyncMsg, setSettingsSyncMsg] = useState<string | null>(null);
 
   // Section highlight & smooth scroll handling
   const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
@@ -381,16 +386,50 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
           <p className="text-xs text-slate-500">{roleMeta.desc}</p>
         </div>
 
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 self-start md:self-auto shrink-0 shadow-sm transition-colors cursor-pointer"
-          style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
-        >
-          <LogOut className="w-3.5 h-3.5 text-white" />
-          <span className="text-white font-bold">Sign Out of Session</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+          <button
+            type="button"
+            disabled={isSyncingSettings}
+            onClick={async () => {
+              setIsSyncingSettings(true);
+              setSettingsSyncMsg(null);
+              try {
+                const res = await dataService.syncWithCloudServer();
+                setSettingsSyncMsg(res.message);
+                setTimeout(() => setSettingsSyncMsg(null), 4000);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : 'Sync failed';
+                setSettingsSyncMsg(`Sync Error: ${msg}`);
+                setTimeout(() => setSettingsSyncMsg(null), 5000);
+              } finally {
+                setIsSyncingSettings(false);
+              }
+            }}
+            className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-emerald-50 border border-[#E0D7C6] hover:border-emerald-300 text-xs font-bold text-slate-800 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+            title="Force immediate roundtrip pull from Google Firestore Cloud"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isSyncingSettings ? 'animate-spin' : ''}`} />
+            <span>{isSyncingSettings ? 'Syncing...' : 'Force Cloud Sync'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            style={{ backgroundColor: '#0F172A', color: '#FFFFFF' }}
+          >
+            <LogOut className="w-3.5 h-3.5 text-white" />
+            <span className="text-white font-bold">Sign Out of Session</span>
+          </button>
+        </div>
       </section>
+
+      {settingsSyncMsg && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-900 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{settingsSyncMsg}</span>
+        </div>
+      )}
 
       {/* Main Two-Column Grid: Profile Details + Google-to-Password Credential Linking */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

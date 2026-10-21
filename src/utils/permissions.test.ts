@@ -65,3 +65,39 @@ test('getRoleMeta returns distinct badge classes and human-readable titles', () 
   assert.equal(getRoleMeta('REMOTE_INVESTOR').label, 'Remote Investor');
   assert.equal(getRoleMeta('GROUND_OPERATOR').label, 'Ground Operator');
 });
+
+test('canManageMemberCRUD: Only primary founder email has user CRUD privileges', () => {
+  const founderMember = {
+    id: 'mem-admin-1',
+    email: 'baseramarlvin@gmail.com',
+    fullName: 'Marlvin Basera',
+    phoneOrEmail: 'baseramarlvin@gmail.com',
+    role: 'SYNDICATE_ADMIN' as const,
+    joinedAt: '2026-01-01',
+    active: true,
+  };
+  const secondaryAdmin = {
+    id: 'mem-admin-2',
+    email: 'other.admin@gmail.com',
+    fullName: 'Second Admin',
+    phoneOrEmail: 'other.admin@gmail.com',
+    role: 'SYNDICATE_ADMIN' as const,
+    joinedAt: '2026-01-01',
+    active: true,
+  };
+  const regularUser = {
+    id: 'mem-investor-1',
+    email: 'investor@gmail.com',
+    fullName: 'Investor User',
+    phoneOrEmail: 'investor@gmail.com',
+    role: 'REMOTE_INVESTOR' as const,
+    joinedAt: '2026-01-01',
+    active: true,
+  };
+
+  assert.equal(PERMISSIONS.canManageMemberCRUD(founderMember), true);
+  assert.equal(PERMISSIONS.canManageMemberCRUD(secondaryAdmin), false);
+  assert.equal(PERMISSIONS.canManageMemberCRUD(regularUser), false);
+  assert.equal(PERMISSIONS.canManageMemberCRUD(null), false);
+});
+

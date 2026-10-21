@@ -13,12 +13,16 @@ import {
   Eye,
   EyeOff,
   UserCog,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { FarmLocation, SyndicateMember } from '../types/agro.ts';
 import type { ActiveTab } from '../App.tsx';
 import { useOnlineStatus } from '../hooks/usePWAInstall.ts';
 import { LogoSvg } from './BrandLogos.tsx';
 import { PERMISSIONS, getRoleMeta } from '../utils/permissions.ts';
+import { dataService } from '../services/dataService.ts';
 
 interface HeaderProps {
   locations: FarmLocation[];
@@ -69,6 +73,27 @@ export const Header: React.FC<HeaderProps> = ({
   const [siteGps, setSiteGps] = useState('-17.8500, 30.9200');
   const [siteOperator, setSiteOperator] = useState(activeMember.fullName);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Live Cloud Force-Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<{ message: string; isError?: boolean } | null>(null);
+
+  const handleCloudSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncToast(null);
+    try {
+      const res = await dataService.syncWithCloudServer();
+      setSyncToast({ message: res.message });
+      setTimeout(() => setSyncToast(null), 4000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      setSyncToast({ message: msg, isError: true });
+      setTimeout(() => setSyncToast(null), 5000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleCreateSite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,6 +208,22 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
 
+            {/* Live Cloud Force-Sync / Refresh Button */}
+            <button
+              type="button"
+              disabled={isSyncing}
+              onClick={handleCloudSync}
+              title="Force Sync / Refresh from Live Cloud Database"
+              aria-label="Force Sync from Cloud"
+              className={`flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border shadow-xs transition-colors cursor-pointer ${
+                isSyncing
+                  ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                  : 'bg-white border-[#E0D7C6] text-slate-700 hover:text-emerald-700 hover:border-emerald-400'
+              }`}
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-emerald-600' : ''}`} />
+            </button>
+
             <button
               type="button"
               onClick={onToggleMobileFrame}
@@ -261,6 +302,22 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Floating Cloud Sync Notification Toast */}
+      {syncToast && (
+        <div className={`fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl shadow-xl border text-xs font-bold flex items-center gap-2 transition-all ${
+          syncToast.isError
+            ? 'bg-rose-50 border-rose-300 text-rose-900'
+            : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+        }`}>
+          {syncToast.isError ? (
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          )}
+          <span>{syncToast.message}</span>
+        </div>
+      )}
 
       {/* Global Location Filter Bar (Below Header) */}
       <div className="bg-[#FAF7F2]/95 border-b border-[#E8DFCE] px-4 py-1.5">

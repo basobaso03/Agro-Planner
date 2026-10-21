@@ -1,4 +1,6 @@
-import type { Role } from '../types/agro.ts';
+import type { Role, SyndicateMember } from '../types/agro.ts';
+
+export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
 
 /**
  * Role-Based Access Control (RBAC) & Data Redaction Engine
@@ -16,9 +18,16 @@ export const PERMISSIONS = {
     return role === 'SYNDICATE_ADMIN' || role === 'TREASURER' || role === 'REMOTE_INVESTOR';
   },
 
-  // Inviting / Creating New Syndicate Members & Assigning Roles
+  // Accessing the Syndicate Members management tab
   canManageMembers: (role: Role): boolean => {
     return role === 'SYNDICATE_ADMIN';
+  },
+
+  // Founder-Only Zero-Trust Clearance: Only the primary founder email can add, edit, suspend, or delete members
+  canManageMemberCRUD: (member?: SyndicateMember | null): boolean => {
+    if (!member) return false;
+    const email = (member.email || member.phoneOrEmail || '').trim().toLowerCase();
+    return email === PRIMARY_ADMIN_EMAIL;
   },
 
   // Adding Legal Farm Locations
