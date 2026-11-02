@@ -17,6 +17,9 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  Maximize2,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import type {
   ExpenseCategory,
@@ -29,6 +32,7 @@ import type {
   SyndicateMember,
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
+import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
 
 interface ExpensesFeedTabProps {
   expenses: ExpenseLedgerEvent[];
@@ -101,7 +105,9 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
   const [expAmount, setExpAmount] = useState('');
   const [expBatchId, setExpBatchId] = useState('');
   const [expNote, setExpNote] = useState('');
-  const [expReceiptAttached, setExpReceiptAttached] = useState(false);
+  const [expReceiptDataUrl, setExpReceiptDataUrl] = useState<string | null>(null);
+  const [isCompressingReceipt, setIsCompressingReceipt] = useState(false);
+  const [receiptLightbox, setReceiptLightbox] = useState<{ url: string; title: string } | null>(null);
   const [expError, setExpError] = useState('');
 
   // Contra-Entry Reversal Modal State
@@ -129,6 +135,24 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
 
   const pendingExpenses = expenses.filter((e) => e.approvalStatus === 'PENDING_MULTISIG');
 
+  const handleReceiptUpload = async (file: File | undefined) => {
+    if (!file) return;
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      alert(validation.error || 'Invalid receipt image.');
+      return;
+    }
+    setIsCompressingReceipt(true);
+    try {
+      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.75 });
+      setExpReceiptDataUrl(compressed);
+    } catch (err) {
+      console.error('Failed to compress receipt photo:', err);
+    } finally {
+      setIsCompressingReceipt(false);
+    }
+  };
+
   const handleCreateExpense = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(expAmount);
@@ -141,21 +165,29 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       return;
     }
     const loc = locations.find((l) => l.id === expLocationId) || locations[0];
-    onLogExpense({
-      locationId: loc.id,
-      batchOrAnimalId: expBatchId || undefined,
-      category: expCategory,
-      direction: 'DEDUCTION',
-      amount: amt,
-      note: expNote.trim(),
-      gpsStamp: loc.gpsCoordinates,
-      receiptPhotoDataUrl: expReceiptAttached ? 'RECEIPT_VERIFIED_STAMP' : undefined,
-    });
-    setExpAmount('');
-    setExpNote('');
-    setExpReceiptAttached(false);
-    setExpError('');
-    setShowExpenseModal(false);
+    if (!loc) {
+      setExpError('Please register a farm site location first before logging expenses.');
+      return;
+    }
+    try {
+      onLogExpense({
+        locationId: loc.id,
+        batchOrAnimalId: expBatchId || undefined,
+        category: expCategory,
+        direction: 'DEDUCTION',
+        amount: amt,
+        note: expNote.trim(),
+        gpsStamp: loc.gpsCoordinates,
+        receiptPhotoDataUrl: expReceiptDataUrl || undefined,
+      });
+      setExpAmount('');
+      setExpNote('');
+      setExpReceiptDataUrl(null);
+      setExpError('');
+      setShowExpenseModal(false);
+    } catch (err) {
+      setExpError(err instanceof Error ? err.message : 'Failed to log expense.');
+    }
   };
 
   const handleOpenContraModal = (exp: ExpenseLedgerEvent) => {
@@ -182,17 +214,20 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
     // If reducing an overstated expense, amount is negative (restores cash to Left Money)
     const signedAmount = contraMode === 'REDUCE_EXPENSE' ? -Math.abs(rawDelta) : Math.abs(rawDelta);
 
-    onLogExpense({
-      locationId: contraTargetExpense.locationId,
-      batchOrAnimalId: contraTargetExpense.batchOrAnimalId,
-      category: contraTargetExpense.category,
-      direction: 'CONTRA_REVERSAL',
-      amount: signedAmount,
-      referenceTransactionId: contraTargetExpense.id,
-      note: `CONTRA-ENTRY REVERSAL for ${contraTargetExpense.id}: ${contraNote.trim()}`,
-    });
-
-    setContraTargetExpense(null);
+    try {
+      onLogExpense({
+        locationId: contraTargetExpense.locationId,
+        batchOrAnimalId: contraTargetExpense.batchOrAnimalId,
+        category: contraTargetExpense.category,
+        direction: 'CONTRA_REVERSAL',
+        amount: signedAmount,
+        referenceTransactionId: contraTargetExpense.id,
+        note: `CONTRA-ENTRY REVERSAL for ${contraTargetExpense.id}: ${contraNote.trim()}`,
+      });
+      setContraTargetExpense(null);
+    } catch (err) {
+      setContraError(err instanceof Error ? err.message : 'Failed to post contra reversal.');
+    }
   };
 
   const handleCreateFeedEvent = (e: React.FormEvent) => {
@@ -207,18 +242,27 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       setFeedError('Mandatory note (at least 4 characters) is required.');
       return;
     }
+    const targetLocId = feedLocId || locations[0]?.id;
+    if (!targetLocId) {
+      setFeedError('Please register a farm site location first before logging feed.');
+      return;
+    }
 
-    onLogFeedEvent({
-      locationId: feedLocId || locations[0].id,
-      feedType: feedType.trim(),
-      direction: showFeedModal.direction,
-      bagsDelta: bags,
-      kgPerBag: parseFloat(feedKgPerBag) || 50,
-      linkedLivestockId: feedLivestockId || undefined,
-      referenceTransactionId: showFeedModal.referenceId,
-      note: feedNote.trim(),
-    });
-    setShowFeedModal(null);
+    try {
+      onLogFeedEvent({
+        locationId: targetLocId,
+        feedType: feedType.trim(),
+        direction: showFeedModal.direction,
+        bagsDelta: bags,
+        kgPerBag: parseFloat(feedKgPerBag) || 50,
+        linkedLivestockId: feedLivestockId || undefined,
+        referenceTransactionId: showFeedModal.referenceId,
+        note: feedNote.trim(),
+      });
+      setShowFeedModal(null);
+    } catch (err) {
+      setFeedError(err instanceof Error ? err.message : 'Failed to log feed event.');
+    }
   };
 
   const canApproveMultiSig = PERMISSIONS.canApproveMultiSig(activeMember.role);
@@ -233,11 +277,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
           <button
             type="button"
             onClick={() => setSubTab('LEDGER')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${
-              subTab === 'LEDGER'
-                ? 'tab-brand-active'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${subTab === 'LEDGER'
+              ? 'tab-brand-active'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             Ledger ({!showNumbers ? '••' : expenses.length})
           </button>
@@ -245,11 +288,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
             <button
               type="button"
               onClick={() => setSubTab('MULTISIG')}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${
-                subTab === 'MULTISIG'
-                  ? 'tab-brand-active'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${subTab === 'MULTISIG'
+                ? 'tab-brand-active'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Multi-Sig ({!showNumbers ? '••' : pendingExpenses.length})
             </button>
@@ -257,11 +299,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
           <button
             type="button"
             onClick={() => setSubTab('FEED')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${
-              subTab === 'FEED'
-                ? 'tab-brand-active'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${subTab === 'FEED'
+              ? 'tab-brand-active'
+              : 'text-slate-600 hover:text-slate-900'
+              }`}
           >
             Feed Store ({!showNumbers ? '••' : feedSummaries.length})
           </button>
@@ -470,13 +511,12 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
             return (
               <div
                 key={exp.id}
-                className={`rounded-3xl border p-4 sm:p-5 space-y-3 shadow-2xs transition-all ${
-                  isContra
-                    ? 'bg-amber-50/60 border-amber-200'
-                    : isPending
+                className={`rounded-3xl border p-4 sm:p-5 space-y-3 shadow-2xs transition-all ${isContra
+                  ? 'bg-amber-50/60 border-amber-200'
+                  : isPending
                     ? 'bg-amber-50/30 border-amber-300'
                     : 'bg-white border-[#E8DFCE]'
-                }`}
+                  }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 min-w-0">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono min-w-0">
@@ -518,9 +558,19 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       Verified Ledger Receipt · Ref #{exp.id.slice(-6).toUpperCase()}
                       {exp.receiptPhotoDataUrl && (
-                        <span className="ml-1 text-[10px] font-bold text-sky-800 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
-                          Receipt Photo Verified
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReceiptLightbox({
+                              url: exp.receiptPhotoDataUrl!,
+                              title: `Expense Receipt #${exp.id.slice(-6).toUpperCase()} · $${Math.abs(exp.amount).toFixed(2)} (${exp.category.replace('_', ' ')})`,
+                            })
+                          }
+                          className="ml-1 inline-flex items-center gap-1 text-[11px] font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded-lg border border-sky-200 cursor-pointer transition-colors"
+                        >
+                          <Camera className="w-3 h-3 text-sky-600" />
+                          <span>View Receipt Photo</span>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -528,13 +578,12 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-right">
                       <p
-                        className={`text-base font-black font-mono tabular-nums ${
-                          leftMoneyDelta > 0
-                            ? 'text-emerald-700'
-                            : isPending
+                        className={`text-base font-black font-mono tabular-nums ${leftMoneyDelta > 0
+                          ? 'text-emerald-700'
+                          : isPending
                             ? 'text-slate-600'
                             : 'text-amber-800'
-                        }`}
+                          }`}
                       >
                         {!showNumbers ? '••••••••' : (leftMoneyDelta > 0 ? `+$${leftMoneyDelta.toFixed(2)}` : `-$${Math.abs(leftMoneyDelta).toFixed(2)}`)}
                       </p>
@@ -542,8 +591,8 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                         {isPending
                           ? 'PENDING MULTI-SIG'
                           : leftMoneyDelta > 0
-                          ? 'Restored to Left Money'
-                          : 'Deducted from Left Money'}
+                            ? 'Restored to Left Money'
+                            : 'Deducted from Left Money'}
                       </p>
                     </div>
 
@@ -685,17 +734,16 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 >
                   <div className="flex items-start justify-between gap-2 min-w-0">
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-slate-500 truncate">{item.locationName}</p>
-                      <h3 className="text-base font-bold text-slate-900 mt-0.5 truncate">{item.feedType}</h3>
+                      <p className="text-xs font-semibold text-slate-500 break-words">{item.locationName}</p>
+                      <h3 className="text-base font-bold text-slate-900 mt-0.5 break-words whitespace-normal">{item.feedType}</h3>
                     </div>
                     <span
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${
-                        isLowFeed
-                          ? 'bg-rose-50 text-rose-800 border-rose-200'
-                          : isWarnFeed
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${isLowFeed
+                        ? 'bg-rose-50 text-rose-800 border-rose-200'
+                        : isWarnFeed
                           ? 'bg-amber-50 text-amber-800 border-amber-200'
                           : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                      }`}
+                        }`}
                     >
                       {isLowFeed ? 'Critical Stock Alert' : isWarnFeed ? 'Order Soon' : 'Sufficient Feed'}
                     </span>
@@ -709,9 +757,8 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                     </div>
                     <div className="w-full h-2.5 rounded-full bg-[#FAF8F5] border border-[#E8DFCE] overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          isLowFeed ? 'bg-rose-500' : isWarnFeed ? 'bg-amber-500' : 'bg-emerald-500'
-                        }`}
+                        className={`h-full rounded-full transition-all duration-300 ${isLowFeed ? 'bg-rose-500' : isWarnFeed ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
                         style={{
                           width: `${Math.min(100, Math.max(8, (item.remainingBags / Math.max(1, item.totalBagsStockedIn)) * 100))}%`,
                         }}
@@ -748,9 +795,8 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                     <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E8DFCE]">
                       <p className="text-[11px] text-slate-500">Days Remaining</p>
                       <p
-                        className={`font-mono font-black text-sm mt-0.5 ${
-                          isLowFeed ? 'text-rose-600' : isWarnFeed ? 'text-amber-700' : 'text-emerald-700'
-                        }`}
+                        className={`font-mono font-black text-sm mt-0.5 ${isLowFeed ? 'text-rose-600' : isWarnFeed ? 'text-amber-700' : 'text-emerald-700'
+                          }`}
                       >
                         {!showNumbers ? '•• Days Left' : `~${item.daysRemaining} Days Left`}
                       </p>
@@ -819,13 +865,12 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                                 <div className="flex items-center justify-between font-mono text-[11px]">
                                   <div className="flex items-center gap-1.5">
                                     <span
-                                      className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${
-                                        isStockIn
-                                          ? 'bg-emerald-100 text-emerald-800'
-                                          : isContra
+                                      className={`font-bold px-1.5 py-0.2 rounded text-[10px] ${isStockIn
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : isContra
                                           ? 'bg-amber-100 text-amber-800'
                                           : 'bg-rose-100 text-rose-800'
-                                      }`}
+                                        }`}
                                     >
                                       {isStockIn ? '+STOCK IN' : isContra ? 'CONTRA ADJ' : '-DAILY RATION'}
                                     </span>
@@ -986,23 +1031,53 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                <span className="flex items-center gap-1 font-mono">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                  GPS Stamp Auto-Attached
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setExpReceiptAttached(!expReceiptAttached)}
-                  className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
-                    expReceiptAttached
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                      : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700 hover:bg-[#F0EBE1]'
-                  }`}
-                >
-                  <Camera className="w-3.5 h-3.5 text-amber-600" />
-                  {expReceiptAttached ? 'Receipt Photo Attached ✓' : 'Attach Receipt Photo'}
-                </button>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span className="flex items-center gap-1 font-mono">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    GPS Stamp Auto-Attached
+                  </span>
+                  {expReceiptDataUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setExpReceiptDataUrl(null)}
+                      className="text-[11px] text-rose-600 hover:text-rose-700 underline cursor-pointer"
+                    >
+                      Remove Receipt
+                    </button>
+                  )}
+                </div>
+
+                {expReceiptDataUrl ? (
+                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/60 p-2.5 flex items-center gap-3">
+                    <img
+                      src={expReceiptDataUrl}
+                      alt="Receipt preview"
+                      className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shadow-2xs"
+                    />
+                    <div className="text-xs text-slate-700 min-w-0">
+                      <p className="font-bold text-emerald-900 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Receipt Photo Attached
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Compressed for instant sync &amp; multi-sig verification.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#E0D7C6] hover:border-amber-500 bg-[#FAF8F5] hover:bg-[#F0EBE1] text-xs font-semibold text-slate-700 cursor-pointer transition-all">
+                    <Camera className="w-4 h-4 text-amber-600" />
+                    <span>{isCompressingReceipt ? 'Compressing receipt...' : 'Attach Receipt Photo (Camera / File)'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingReceipt}
+                      onChange={(e) => handleReceiptUpload(e.target.files?.[0])}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="pt-2 flex items-center gap-2.5">
@@ -1068,22 +1143,20 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setContraMode('REDUCE_EXPENSE')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    contraMode === 'REDUCE_EXPENSE'
-                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                      : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
-                  }`}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${contraMode === 'REDUCE_EXPENSE'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                    : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
+                    }`}
                 >
                   Reverse / Restore Cash (+Left Money)
                 </button>
                 <button
                   type="button"
                   onClick={() => setContraMode('INCREASE_EXPENSE')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                    contraMode === 'INCREASE_EXPENSE'
-                      ? 'bg-amber-500 border-amber-500 text-white shadow-xs'
-                      : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
-                  }`}
+                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${contraMode === 'INCREASE_EXPENSE'
+                    ? 'bg-amber-500 border-amber-500 text-white shadow-xs'
+                    : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
+                    }`}
                 >
                   Add Understated Cost (-Left Money)
                 </button>
@@ -1280,20 +1353,55 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className={`flex-1 py-2.5 px-4 rounded-xl text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center ${
-                    showFeedModal.direction === 'DAILY_CONSUMPTION'
-                      ? 'bg-amber-500 hover:bg-amber-600'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center ${showFeedModal.direction === 'DAILY_CONSUMPTION'
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
                 >
                   {showFeedModal.direction === 'DAILY_CONSUMPTION'
                     ? 'Log Daily Feed Ration'
                     : showFeedModal.direction === 'CONTRA_REVERSAL'
-                    ? 'Post Feed Contra-Entry'
-                    : 'Append Feed Event'}
+                      ? 'Post Feed Contra-Entry'
+                      : 'Append Feed Event'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* RECEIPT HIGH-RES LIGHTBOX MODAL */}
+      {receiptLightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setReceiptLightbox(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-3xl max-h-[90vh] bg-white border border-[#E8DFCE] rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-[#F0EBE1] bg-[#FAF8F5]">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 truncate">
+                <Camera className="w-4 h-4 text-amber-600" />
+                {receiptLightbox.title}
+              </span>
+              <button
+                type="button"
+                onClick={() => setReceiptLightbox(null)}
+                aria-label="Close receipt preview"
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-2 sm:p-4 overflow-auto flex items-center justify-center bg-slate-100/60">
+              <img
+                src={receiptLightbox.url}
+                alt="High resolution receipt"
+                className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-md"
+              />
+            </div>
           </div>
         </div>
       )}

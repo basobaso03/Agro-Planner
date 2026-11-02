@@ -63,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMobileFrame,
   isCloudConnected,
   showNumbers = true,
-  onToggleShowNumbers = () => {},
+  onToggleShowNumbers = () => { },
   isAuthenticatingPrivacy = false,
 }) => {
   const isOnline = useOnlineStatus();
@@ -101,21 +101,25 @@ export const Header: React.FC<HeaderProps> = ({
       setErrorMsg('Please enter a valid farm site name and province/region.');
       return;
     }
-    onAddLocation({
-      name: siteName,
-      region: siteRegion,
-      gpsCoordinates: siteGps,
-      primaryOperatorName: siteOperator || activeMember.fullName,
-    });
-    setSiteName('');
-    setSiteRegion('');
-    setErrorMsg('');
-    setShowAddSiteModal(false);
+    try {
+      onAddLocation({
+        name: siteName,
+        region: siteRegion,
+        gpsCoordinates: siteGps,
+        primaryOperatorName: siteOperator || activeMember.fullName,
+      });
+      setSiteName('');
+      setSiteRegion('');
+      setErrorMsg('');
+      setShowAddSiteModal(false);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create farm site.');
+    }
   };
 
-  const canAddLocations = PERMISSIONS.canAddLocations(activeMember.role);
-  const canManageRoles = PERMISSIONS.canManageMembers(activeMember.role);
-  const roleMeta = getRoleMeta(activeMember.role);
+  const canAddLocations = PERMISSIONS.canAddLocations(activeMember?.role || 'REMOTE_INVESTOR');
+  const canManageRoles = PERMISSIONS.canManageMembers(activeMember?.role || 'REMOTE_INVESTOR');
+  const roleMeta = getRoleMeta(activeMember?.role);
 
   return (
     <>
@@ -159,123 +163,121 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Zone 2: Quick Actions (Admin Users, Settings, Notifications, Sign Out) */}
             <div className="flex items-center gap-1.5 shrink-0 self-center">
-            {!isOnline && (
-              <span
-                title="Offline Mode — Local Queue Active"
-                className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 px-2 py-1"
-              >
-                <WifiOff className="w-3 h-3 text-amber-600" />
-                Offline
-              </span>
-            )}
-            {isCloudConnected && (
-              <span
-                title="Live Cloud Firestore Synchronized"
-                className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 px-2 py-1"
-              >
-                <Cloud className="w-3 h-3 text-emerald-600" />
-                Sync
-              </span>
-            )}
-
-            {/* Privacy Number Mask / Eye Toggle Button */}
-            <button
-              type="button"
-              onClick={onToggleShowNumbers}
-              disabled={isAuthenticatingPrivacy}
-              title={
-                isAuthenticatingPrivacy
-                  ? 'Verifying Biometric Sensor...'
-                  : showNumbers
-                  ? 'Hide System Numbers (Privacy Mode)'
-                  : 'Reveal System Numbers (Quick Unlock)'
-              }
-              aria-label={showNumbers ? 'Hide System Numbers' : 'Reveal System Numbers'}
-              className={`flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border shadow-xs transition-colors cursor-pointer ${
-                isAuthenticatingPrivacy
-                  ? 'bg-amber-100 border-amber-400 text-amber-700 animate-pulse'
-                  : showNumbers
-                  ? 'bg-white border-[#E0D7C6] text-slate-700 hover:text-amber-600 hover:border-amber-400'
-                  : 'bg-amber-500 text-white border-amber-600 shadow-sm'
-              }`}
-            >
-              {isAuthenticatingPrivacy ? (
-                <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
-              ) : showNumbers ? (
-                <Eye className="w-4 h-4" />
-              ) : (
-                <EyeOff className="w-4 h-4" />
+              {!isOnline && (
+                <span
+                  title="Offline Mode — Local Queue Active"
+                  className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 px-2 py-1"
+                >
+                  <WifiOff className="w-3 h-3 text-amber-600" />
+                  Offline
+                </span>
               )}
-            </button>
+              {isCloudConnected && (
+                <span
+                  title="Live Cloud Firestore Synchronized"
+                  className="hidden md:inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 px-2 py-1"
+                >
+                  <Cloud className="w-3 h-3 text-emerald-600" />
+                  Sync
+                </span>
+              )}
 
-            {/* Live Cloud Force-Sync / Refresh Button */}
-            <button
-              type="button"
-              disabled={isSyncing}
-              onClick={handleCloudSync}
-              title="Force Sync / Refresh from Live Cloud Database"
-              aria-label="Force Sync from Cloud"
-              className={`flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border shadow-xs transition-colors cursor-pointer ${
-                isSyncing
-                  ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
-                  : 'bg-white border-[#E0D7C6] text-slate-700 hover:text-emerald-700 hover:border-emerald-400'
-              }`}
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-emerald-600' : ''}`} />
-            </button>
-
-            <button
-              type="button"
-              onClick={onToggleMobileFrame}
-              aria-label={mobileFrameMode ? 'Switch to Full Width View' : 'Switch to Mobile Phone Frame'}
-              title={mobileFrameMode ? 'Expand to Full Screen' : 'Preview Mobile Handset Frame'}
-              className="hidden lg:flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-slate-900 hover:border-slate-300 shadow-xs transition-colors cursor-pointer"
-            >
-              {mobileFrameMode ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
-            </button>
-
-            {/* Quick Admin Pending Approvals Alert Badge */}
-            {canManageRoles && (pendingUsersCount || 0) > 0 && (
+              {/* Privacy Number Mask / Eye Toggle Button */}
               <button
                 type="button"
-                onClick={() => onNavigateTab('USERS')}
-                title={`${pendingUsersCount} new user${(pendingUsersCount || 0) > 1 ? 's' : ''} awaiting admin approval`}
-                aria-label={`View ${pendingUsersCount} pending user approvals`}
-                className="relative flex items-center gap-1.5 px-2.5 min-h-[38px] rounded-xl bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-xs transition-colors cursor-pointer animate-pulse"
+                onClick={onToggleShowNumbers}
+                disabled={isAuthenticatingPrivacy}
+                title={
+                  isAuthenticatingPrivacy
+                    ? 'Verifying Biometric Sensor...'
+                    : showNumbers
+                      ? 'Hide System Numbers (Privacy Mode)'
+                      : 'Reveal System Numbers (Quick Unlock)'
+                }
+                aria-label={showNumbers ? 'Hide System Numbers' : 'Reveal System Numbers'}
+                className={`flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border shadow-xs transition-colors cursor-pointer ${isAuthenticatingPrivacy
+                  ? 'bg-amber-100 border-amber-400 text-amber-700 animate-pulse'
+                  : showNumbers
+                    ? 'bg-white border-[#E0D7C6] text-slate-700 hover:text-amber-600 hover:border-amber-400'
+                    : 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                  }`}
               >
-                <UserCog className="w-4 h-4" />
-                <span className="text-[11px] font-bold whitespace-nowrap hidden sm:inline">
-                  {pendingUsersCount} Pending
-                </span>
-                <span className="sm:hidden text-[11px] font-bold">
-                  {pendingUsersCount}
-                </span>
+                {isAuthenticatingPrivacy ? (
+                  <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                ) : showNumbers ? (
+                  <Eye className="w-4 h-4" />
+                ) : (
+                  <EyeOff className="w-4 h-4" />
+                )}
               </button>
-            )}
 
-            <button
-              type="button"
-              onClick={onOpenNotifications}
-              aria-label={`Open Ground Broadcasts and Notifications (${unreadCount} unread)`}
-              className="relative flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-slate-900 hover:border-amber-400 shadow-xs transition-colors cursor-pointer"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold font-mono flex items-center justify-center shadow-xs">
-                  {unreadCount}
-                </span>
+              {/* Live Cloud Force-Sync / Refresh Button */}
+              <button
+                type="button"
+                disabled={isSyncing}
+                onClick={handleCloudSync}
+                title="Force Sync / Refresh from Live Cloud Database"
+                aria-label="Force Sync from Cloud"
+                className={`flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl border shadow-xs transition-colors cursor-pointer ${isSyncing
+                  ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                  : 'bg-white border-[#E0D7C6] text-slate-700 hover:text-emerald-700 hover:border-emerald-400'
+                  }`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-emerald-600' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleMobileFrame}
+                aria-label={mobileFrameMode ? 'Switch to Full Width View' : 'Switch to Mobile Phone Frame'}
+                title={mobileFrameMode ? 'Expand to Full Screen' : 'Preview Mobile Handset Frame'}
+                className="hidden lg:flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-slate-900 hover:border-slate-300 shadow-xs transition-colors cursor-pointer"
+              >
+                {mobileFrameMode ? <Monitor className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+              </button>
+
+              {/* Quick Admin Pending Approvals Alert Badge */}
+              {canManageRoles && (pendingUsersCount || 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('USERS')}
+                  title={`${pendingUsersCount} new user${(pendingUsersCount || 0) > 1 ? 's' : ''} awaiting admin approval`}
+                  aria-label={`View ${pendingUsersCount} pending user approvals`}
+                  className="relative flex items-center gap-1.5 px-2.5 min-h-[38px] rounded-xl bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-xs transition-colors cursor-pointer animate-pulse"
+                >
+                  <UserCog className="w-4 h-4" />
+                  <span className="text-[11px] font-bold whitespace-nowrap hidden sm:inline">
+                    {pendingUsersCount} Pending
+                  </span>
+                  <span className="sm:hidden text-[11px] font-bold">
+                    {pendingUsersCount}
+                  </span>
+                </button>
               )}
-            </button>
 
-            <button
-              type="button"
-              onClick={onSignOut}
-              title="Sign Out of Syndicate Portal"
-              aria-label="Sign Out"
-              className="flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-rose-600 hover:border-rose-300 shadow-xs transition-colors cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                aria-label={`Open Ground Broadcasts and Notifications (${unreadCount} unread)`}
+                className="relative flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-slate-900 hover:border-amber-400 shadow-xs transition-colors cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold font-mono flex items-center justify-center shadow-xs">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onSignOut}
+                title="Sign Out of Syndicate Portal"
+                aria-label="Sign Out"
+                className="flex items-center justify-center min-w-[38px] min-h-[38px] rounded-xl bg-white border border-[#E0D7C6] text-slate-700 hover:text-rose-600 hover:border-rose-300 shadow-xs transition-colors cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -305,11 +307,10 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Floating Cloud Sync Notification Toast */}
       {syncToast && (
-        <div className={`fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl shadow-xl border text-xs font-bold flex items-center gap-2 transition-all ${
-          syncToast.isError
-            ? 'bg-rose-50 border-rose-300 text-rose-900'
-            : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-        }`}>
+        <div className={`fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl shadow-xl border text-xs font-bold flex items-center gap-2 transition-all ${syncToast.isError
+          ? 'bg-rose-50 border-rose-300 text-rose-900'
+          : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+          }`}>
           {syncToast.isError ? (
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
           ) : (
@@ -325,11 +326,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => onSelectLocation('ALL')}
-            className={`px-3.5 py-1.5 rounded-full text-xs transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
-              selectedLocationId === 'ALL'
-                ? 'tab-brand-active'
-                : 'tab-brand-inactive'
-            }`}
+            className={`px-3.5 py-1.5 rounded-full text-xs transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${selectedLocationId === 'ALL'
+              ? 'tab-brand-active'
+              : 'tab-brand-inactive'
+              }`}
           >
             <MapPin className="w-3.5 h-3.5" />
             All Sites (Master)
@@ -340,11 +340,10 @@ export const Header: React.FC<HeaderProps> = ({
               key={loc.id}
               type="button"
               onClick={() => onSelectLocation(loc.id)}
-              className={`px-3.5 py-1.5 rounded-full text-xs transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                selectedLocationId === loc.id
-                  ? 'tab-brand-active'
-                  : 'tab-brand-inactive'
-              }`}
+              className={`px-3.5 py-1.5 rounded-full text-xs transition-all whitespace-nowrap shrink-0 cursor-pointer ${selectedLocationId === loc.id
+                ? 'tab-brand-active'
+                : 'tab-brand-inactive'
+                }`}
             >
               {loc.name}
             </button>

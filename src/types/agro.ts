@@ -119,6 +119,7 @@ export interface FixedAssetLedgerEvent {
   referenceTransactionId?: string;
   note: string; // Mandatory note
   loggedByName: string;
+  photoUrl?: string;
   createdAt: string;
   auditHash: string;
 }
@@ -142,6 +143,8 @@ export interface LivestockEntry {
   targetSaleWeightKg?: number;
   notes: string;
   createdByMemberName: string;
+  imageUrl?: string;
+  gallery?: string[];
   createdAt: string;
 }
 
@@ -153,6 +156,7 @@ export type LivestockEventType =
   | 'HEADCOUNT_CONTRA_ADJUSTMENT'
   | 'VACCINATION_HEALTH'
   | 'WEIGHT_CHECK'
+  | 'PHOTO_PROGRESS'
   | 'TRANSFER_OUT'
   | 'TRANSFER_IN';
 
@@ -169,6 +173,7 @@ export interface LivestockLifecycleEvent {
   referenceTransactionId?: string; // Populated if correcting a previous log
   note: string; // Mandatory note
   loggedByName: string;
+  photoUrl?: string;
   createdAt: string;
   auditHash: string;
 }
@@ -240,6 +245,7 @@ export interface AuditNotificationEvent {
   previousHash: string;
   currentHash: string;
   readByMemberIds: string[];
+  photoUrl?: string;
 }
 
 // DERIVED COMPUTED INTERFACES FOR REAL-TIME DASHBOARD

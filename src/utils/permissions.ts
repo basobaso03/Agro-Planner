@@ -120,7 +120,7 @@ export function maskContact(contact: string, isPrivileged: boolean = false): str
 /**
  * Returns user-facing badge configuration for the member's security role
  */
-export function getRoleMeta(role: Role): {
+export function getRoleMeta(role?: Role | null): {
   label: string;
   badgeClass: string;
   desc: string;
@@ -149,6 +149,12 @@ export function getRoleMeta(role: Role): {
         label: 'Ground Operator',
         badgeClass: 'bg-sky-900/80 text-sky-200 border-sky-700/60',
         desc: 'Field station operator managing daily livestock feeding, weigh-ins, receipts, and site dispatches.',
+      };
+    default:
+      return {
+        label: 'Syndicate Member',
+        badgeClass: 'bg-slate-800 text-slate-200 border-slate-700',
+        desc: 'Authorized syndicate participant.',
       };
   }
 }

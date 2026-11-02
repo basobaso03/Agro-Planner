@@ -7,6 +7,9 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  Camera,
+  Maximize2,
+  Upload,
 } from 'lucide-react';
 import type {
   AssetCondition,
@@ -17,6 +20,7 @@ import type {
   SyndicateMember,
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
+import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
 
 interface AssetsTabProps {
   assetGroups: FixedAssetGroupSummary[];
@@ -35,6 +39,7 @@ interface AssetsTabProps {
     referenceTransactionId?: string;
     note: string;
     deductFromLeftMoney?: boolean;
+    photoUrl?: string;
   }) => void;
   onTransferAsset: (data: {
     assetGroupId: string;
@@ -83,7 +88,12 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
   const [astCondition, setAstCondition] = useState<AssetCondition>('EXCELLENT');
   const [astDeductCash, setAstDeductCash] = useState(true);
   const [astNote, setAstNote] = useState('');
+  const [astPhoto, setAstPhoto] = useState<string | null>(null);
+  const [isCompressingAstPhoto, setIsCompressingAstPhoto] = useState(false);
   const [astError, setAstError] = useState('');
+
+  // Lightbox Viewer
+  const [lightboxPhoto, setLightboxPhoto] = useState<{ url: string; title: string } | null>(null);
 
   // Valuation / Quantity Adjustment Modal (Contra-Entry)
   const [adjustTarget, setAdjustTarget] = useState<FixedAssetGroupSummary | null>(null);
@@ -103,30 +113,61 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
 
   const totalValuation = assetGroups.reduce((acc, g) => acc + g.currentValue, 0);
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setAstError(validation.error || 'Invalid file format');
+      return;
+    }
+    setIsCompressingAstPhoto(true);
+    try {
+      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+      setAstPhoto(compressed);
+      setAstError('');
+    } catch (err: unknown) {
+      setAstError(err instanceof Error ? err.message : 'Photo compression failed');
+    } finally {
+      setIsCompressingAstPhoto(false);
+    }
+  };
+
   const handleCreateAsset = (e: React.FormEvent) => {
     e.preventDefault();
     if (!astName.trim() || astNote.trim().length < 4) {
       setAstError('Please provide the asset name and a mandatory audit note (min 4 chars).');
       return;
     }
+    const targetLocId = astLocId || locations[0]?.id;
+    if (!targetLocId) {
+      setAstError('Please register a farm site location first before adding fixed assets.');
+      return;
+    }
     const qty = Math.max(1, parseInt(astQty, 10) || 1);
     const val = Math.max(0, parseFloat(astValue) || 0);
 
-    onLogAssetEvent({
-      assetName: astName.trim(),
-      category: astCategory,
-      locationId: astLocId || locations[0].id,
-      direction: 'INITIAL',
-      quantityDelta: qty,
-      valueDelta: val,
-      condition: astCondition,
-      note: astNote.trim(),
-      deductFromLeftMoney: astDeductCash,
-    });
-    setAstName('');
-    setAstNote('');
-    setAstError('');
-    setShowNewAssetModal(false);
+    try {
+      onLogAssetEvent({
+        assetName: astName.trim(),
+        category: astCategory,
+        locationId: targetLocId,
+        direction: 'INITIAL',
+        quantityDelta: qty,
+        valueDelta: val,
+        condition: astCondition,
+        note: astNote.trim(),
+        deductFromLeftMoney: astDeductCash,
+        photoUrl: astPhoto || undefined,
+      });
+      setAstName('');
+      setAstNote('');
+      setAstPhoto(null);
+      setAstError('');
+      setShowNewAssetModal(false);
+    } catch (err) {
+      setAstError(err instanceof Error ? err.message : 'Failed to register asset.');
+    }
   };
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
@@ -143,19 +184,23 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
       return;
     }
 
-    onLogAssetEvent({
-      assetGroupId: adjustTarget.assetGroupId,
-      assetName: adjustTarget.assetName,
-      category: adjustTarget.category,
-      locationId: adjustTarget.locationId,
-      direction: 'CONTRA_REVERSAL',
-      quantityDelta: qDelta,
-      valueDelta: vDelta,
-      condition: adjCondition,
-      referenceTransactionId: adjustTarget.events[0]?.id,
-      note: adjNote.trim(),
-    });
-    setAdjustTarget(null);
+    try {
+      onLogAssetEvent({
+        assetGroupId: adjustTarget.assetGroupId,
+        assetName: adjustTarget.assetName,
+        category: adjustTarget.category,
+        locationId: adjustTarget.locationId,
+        direction: 'CONTRA_REVERSAL',
+        quantityDelta: qDelta,
+        valueDelta: vDelta,
+        condition: adjCondition,
+        referenceTransactionId: adjustTarget.events[0]?.id,
+        note: adjNote.trim(),
+      });
+      setAdjustTarget(null);
+    } catch (err) {
+      setAdjError(err instanceof Error ? err.message : 'Failed to log asset adjustment.');
+    }
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {
@@ -176,18 +221,22 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
       return;
     }
 
-    onTransferAsset({
-      assetGroupId: transferTarget.assetGroupId,
-      assetName: transferTarget.assetName,
-      category: transferTarget.category,
-      fromLocationId: transferTarget.locationId,
-      toLocationId: trToLocId,
-      quantityToTransfer: q,
-      valueToTransfer: v,
-      condition: transferTarget.latestCondition,
-      note: trNote.trim(),
-    });
-    setTransferTarget(null);
+    try {
+      onTransferAsset({
+        assetGroupId: transferTarget.assetGroupId,
+        assetName: transferTarget.assetName,
+        category: transferTarget.category,
+        fromLocationId: transferTarget.locationId,
+        toLocationId: trToLocId,
+        quantityToTransfer: q,
+        valueToTransfer: v,
+        condition: transferTarget.latestCondition,
+        note: trNote.trim(),
+      });
+      setTransferTarget(null);
+    } catch (err) {
+      setTrError(err instanceof Error ? err.message : 'Failed to transfer asset.');
+    }
   };
 
   const isGroundOperator = activeMember.role === 'GROUND_OPERATOR';
@@ -206,8 +255,8 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
             {!showNumbers
               ? '••••••••'
               : isGroundOperator
-              ? `${totalQuantityUnits} Units Installed`
-              : `$${totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                ? `${totalQuantityUnits} Units Installed`
+                : `$${totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
             {!showNumbers ? '••' : assetGroups.length} active infrastructure & equipment groups tracked
@@ -229,19 +278,37 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
         {assetGroups.map((group) => {
           const groupKey = `${group.assetGroupId}-${group.locationId}`;
           const isOpen = expandedGroupKey === groupKey;
+          const primaryPhoto = group.events.slice().reverse().find((e) => e.photoUrl)?.photoUrl;
 
           return (
             <div
               key={groupKey}
               className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3"
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className="text-xs text-slate-400">
-                    {group.locationName} · {group.category.replace(/_/g, ' ')} · Condition:{' '}
-                    <strong className="text-emerald-300">{group.latestCondition}</strong>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  {primaryPhoto && (
+                    <div
+                      onClick={() => setLightboxPhoto({ url: primaryPhoto, title: group.assetName })}
+                      className="relative w-14 h-14 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shrink-0 cursor-pointer group/thumb"
+                    >
+                      <img
+                        src={primaryPhoto}
+                        alt={group.assetName}
+                        className="w-full h-full object-cover group-hover/thumb:scale-110 transition-transform"
+                      />
+                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
+                        <Maximize2 className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-xs text-slate-400">
+                      {group.locationName} · {group.category.replace(/_/g, ' ')} · Condition:{' '}
+                      <strong className="text-emerald-300">{group.latestCondition}</strong>
+                    </div>
+                    <h3 className="text-base font-bold text-white mt-0.5">{group.assetName}</h3>
                   </div>
-                  <h3 className="text-base font-bold text-white mt-0.5">{group.assetName}</h3>
                 </div>
 
                 <div className="text-right font-mono">
@@ -328,6 +395,23 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                         </span>
                       </div>
                       <p className="text-slate-200">{ev.note}</p>
+                      {ev.photoUrl && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLightboxPhoto({
+                                url: ev.photoUrl!,
+                                title: `${group.assetName} - Event #${ev.id.slice(-6).toUpperCase()}`,
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-850 hover:bg-slate-800 text-[11px] text-emerald-400 font-medium border border-slate-700 cursor-pointer"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            View Attached Asset Photo
+                          </button>
+                        </div>
+                      )}
                       <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 font-medium">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                         Verified Asset Entry · Logged by {ev.loggedByName}
@@ -481,6 +565,50 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                   </span>
                 </label>
               )}
+
+              {/* Photo Evidence Upload */}
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Asset Photo Evidence (Optional)
+                </label>
+                {astPhoto ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-slate-950 p-2 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={astPhoto}
+                        alt="Asset preview"
+                        className="w-14 h-14 object-cover rounded-lg border border-slate-700"
+                      />
+                      <div className="text-xs">
+                        <p className="font-semibold text-emerald-400">Photo attached & compressed</p>
+                        <p className="text-slate-400 text-[11px]">Will be saved with ledger entry</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAstPhoto(null)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-950/60 text-rose-300 hover:bg-rose-900 border border-rose-800 text-xs cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center p-3.5 border border-dashed border-slate-700 rounded-xl hover:border-emerald-500 bg-slate-950/50 cursor-pointer transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      disabled={isCompressingAstPhoto}
+                      className="hidden"
+                    />
+                    <Upload className="w-5 h-5 text-slate-400 mb-1" />
+                    <span className="text-xs text-slate-300 font-medium">
+                      {isCompressingAstPhoto ? 'Compressing photo...' : 'Upload Asset / Machinery Photo'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WebP · Auto-compressed</span>
+                  </label>
+                )}
+              </div>
 
               <div>
                 <label htmlFor="ast-note" className="block text-xs font-medium text-slate-300 mb-1">
@@ -746,6 +874,38 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Photo Lightbox Modal */}
+      {lightboxPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950">
+              <h4 className="text-sm font-semibold text-white truncate">{lightboxPhoto.title}</h4>
+              <button
+                type="button"
+                onClick={() => setLightboxPhoto(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex items-center justify-center bg-black/50">
+              <img
+                src={lightboxPhoto.url}
+                alt={lightboxPhoto.title}
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg"
+              />
+            </div>
           </div>
         </div>
       )}

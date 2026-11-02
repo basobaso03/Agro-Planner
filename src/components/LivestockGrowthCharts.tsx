@@ -135,33 +135,30 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
           <button
             type="button"
             onClick={() => setChartMode('GROWTH')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              chartMode === 'GROWTH'
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'GROWTH'
                 ? 'bg-amber-500 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-            }`}
+              }`}
           >
             Growth & Weight
           </button>
           <button
             type="button"
             onClick={() => setChartMode('FCR')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              chartMode === 'FCR'
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'FCR'
                 ? 'bg-amber-500 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-            }`}
+              }`}
           >
             Feed Conversion (FCR)
           </button>
           <button
             type="button"
             onClick={() => setChartMode('HERD_BIOMASS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-              chartMode === 'HERD_BIOMASS'
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'HERD_BIOMASS'
                 ? 'bg-amber-500 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-            }`}
+              }`}
           >
             Herd Biomass
           </button>
@@ -181,11 +178,10 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                 key={st.entry.id}
                 type="button"
                 onClick={() => setSelectedBatchId(st.entry.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer border ${
-                  isSelected
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer border ${isSelected
                     ? 'bg-emerald-50 text-emerald-900 border-emerald-500 shadow-xs'
                     : 'bg-[#FAF8F5] text-slate-600 border-[#E8DFCE] hover:bg-white'
-                }`}
+                  }`}
               >
                 {st.entry.nameOrTag}
                 <span className="ml-1.5 opacity-70 font-normal">
@@ -195,17 +191,6 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
             );
           })}
         </div>
-
-        {onOpenWeightCheckModal && (
-          <button
-            type="button"
-            onClick={() => onOpenWeightCheckModal(activeStatus)}
-            className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all shrink-0 cursor-pointer min-h-[40px]"
-          >
-            <Scale className="w-3.5 h-3.5 shrink-0" />
-            + Log Weight Check
-          </button>
-        )}
       </div>
 
       {/* KPI Telemetry Ribbon for Active Batch */}
@@ -520,7 +505,7 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
             <Award className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 truncate">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-700 break-words">
               Lifecycle Milestones & Weight Checks for {activeStatus.entry.nameOrTag}
             </span>
           </div>
@@ -559,20 +544,18 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                     setSelectedMilestonePoint(pt);
                   }
                 }}
-                className={`p-3.5 rounded-2xl border flex flex-col justify-between gap-2.5 text-xs transition-all cursor-pointer hover:border-amber-400 hover:shadow-xs active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-500 ${
-                  isCompleted
+                className={`p-3.5 rounded-2xl border flex flex-col justify-between gap-2.5 text-xs transition-all cursor-pointer hover:border-amber-400 hover:shadow-xs active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-500 ${isCompleted
                     ? 'bg-emerald-50/40 border-emerald-300/80'
                     : 'bg-[#FAF8F5] border-[#E8DFCE]'
-                }`}
+                  }`}
               >
                 <div>
                   <div className="flex items-start gap-2.5">
                     <div
-                      className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${
-                        isCompleted
+                      className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${isCompleted
                           ? 'bg-emerald-600 text-white'
                           : 'bg-amber-100 text-amber-800'
-                      }`}
+                        }`}
                     >
                       {isCompleted ? (
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -582,7 +565,7 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-900 truncate">
+                        <span className="font-bold text-slate-900 break-words whitespace-normal">
                           {pt.milestone || `Day ${pt.day} Check`}
                         </span>
                         <span className="font-mono text-[10px] text-slate-500 shrink-0">
@@ -635,11 +618,10 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
-                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center ${
-                    typeof selectedMilestonePoint.actualWeightKg === 'number'
+                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center ${typeof selectedMilestonePoint.actualWeightKg === 'number'
                       ? 'bg-emerald-600 text-white'
                       : 'bg-amber-100 text-amber-800'
-                  }`}
+                    }`}
                 >
                   {typeof selectedMilestonePoint.actualWeightKg === 'number' ? (
                     <CheckCircle2 className="w-4 h-4" />
@@ -814,9 +796,8 @@ const CustomGrowthTooltip: React.FC<any> = ({ active, payload, label }) => {
         <div className="pt-1 border-t border-[#F0EBE1] flex items-center justify-between text-[11px]">
           <span className="text-slate-500">Trajectory Variance:</span>
           <span
-            className={`font-bold font-mono ${
-              diffKg >= 0 ? 'text-emerald-700' : 'text-amber-700'
-            }`}
+            className={`font-bold font-mono ${diffKg >= 0 ? 'text-emerald-700' : 'text-amber-700'
+              }`}
           >
             {diffKg >= 0 ? `+${diffKg} kg` : `${diffKg} kg`} ({diffKg >= 0 ? 'Ahead' : 'Below Target'})
           </span>

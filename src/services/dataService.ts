@@ -25,12 +25,15 @@ import {
   persistentSingleTabManager,
   collection,
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteDoc,
   getDocs,
   getDocFromServer,
   getDocsFromServer,
+  query,
+  where,
   onSnapshot,
   type Firestore,
 } from 'firebase/firestore';
@@ -210,19 +213,19 @@ function initFirebaseInstance(customConfig?: CustomFirebaseConfig | null) {
     try {
       firestoreDb = dbId
         ? initializeFirestore(
-            firebaseApp,
-            {
-              localCache: persistentLocalCache({
-                tabManager: persistentSingleTabManager({}),
-              }),
-            },
-            dbId
-          )
-        : initializeFirestore(firebaseApp, {
+          firebaseApp,
+          {
             localCache: persistentLocalCache({
               tabManager: persistentSingleTabManager({}),
             }),
-          });
+          },
+          dbId
+        )
+        : initializeFirestore(firebaseApp, {
+          localCache: persistentLocalCache({
+            tabManager: persistentSingleTabManager({}),
+          }),
+        });
     } catch {
       firestoreDb = dbId
         ? getFirestore(firebaseApp, dbId)
@@ -276,6 +279,7 @@ class AgroDataService {
   private firestoreUnsubscribes: (() => void)[] = [];
   private cloudSyncActive = false;
   private activeListenerUid: string | null = null;
+  private isSigningOut = false;
 
   constructor() {
     this.state = this.loadCleanProductionState();
@@ -298,40 +302,57 @@ class AgroDataService {
       // Immediately connect live real-time listeners for all 9 collections
       this.attachCloudListeners(fb.db, this.currentUser?.uid || this.activeSession?.uid || 'active');
 
+      // When the app resumes from background or closed state, immediately catch up on cloud notifications
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && !this.isSigningOut && firestoreDb) {
+            void this.syncWithCloudServer().catch(() => {
+              // Ignore transient resume network error
+            });
+          }
+        });
+      }
+
       if (fb.auth) {
         onAuthStateChanged(fb.auth, (user) => {
           this.currentUser = user;
           this.authListeners.forEach((cb) => cb(user));
-          if (user && fb.db) {
-            const providers = user.providerData.map((p) => p.providerId).filter(Boolean);
-            const email = (user.email || '').trim().toLowerCase();
-            const existingMem = this.findMemberByUidOrEmail(user.uid, email);
-            const creds = getStoredLocalCredentials();
-            const hasLocalCred = Boolean(email && creds[email]);
-            const mergedProviders = Array.from(
-              new Set([
-                ...providers,
-                ...(existingMem?.authProviders || []),
-                ...(existingMem?.hasPasswordSetup || hasLocalCred ? ['password'] : []),
-              ])
-            );
-            const nextSession: AuthenticatedSession = {
-              uid: user.uid,
-              email: email || existingMem?.email || '',
-              displayName: user.displayName || existingMem?.fullName || email.split('@')[0] || 'Member',
-              emailVerified: user.emailVerified || providers.includes('google.com'),
-              providers: mergedProviders.length > 0 ? mergedProviders : ['google.com'],
-              isCloudAuth: true,
-            };
-            this.setActiveSession(nextSession);
-            this.attachCloudListeners(fb.db, user.uid);
-            this.ensureAuthenticatedMemberProfile({
-              uid: nextSession.uid,
-              email: nextSession.email,
-              fullName: nextSession.displayName,
-              providers: nextSession.providers,
-              passwordVerifierHash: creds[email]?.verifierHash || existingMem?.passwordVerifierHash,
-            });
+          if (user && !this.isSigningOut && fb.db) {
+            void (async () => {
+              const providers = user.providerData.map((p) => p.providerId).filter(Boolean);
+              const email = (user.email || '').trim().toLowerCase();
+              const cloudMem = await this.fetchAuthoritativeCloudMember(user.uid, email);
+              if (this.isSigningOut || !this.currentUser || this.currentUser.uid !== user.uid) {
+                return;
+              }
+              const existingMem = cloudMem || this.findMemberByUidOrEmail(user.uid, email);
+              const creds = getStoredLocalCredentials();
+              const hasLocalCred = Boolean(email && creds[email]);
+              const mergedProviders = Array.from(
+                new Set([
+                  ...providers,
+                  ...(existingMem?.authProviders || []),
+                  ...(existingMem?.hasPasswordSetup || hasLocalCred ? ['password'] : []),
+                ])
+              );
+              const nextSession: AuthenticatedSession = {
+                uid: user.uid,
+                email: email || existingMem?.email || '',
+                displayName: existingMem?.fullName || user.displayName || email.split('@')[0] || 'Member',
+                emailVerified: user.emailVerified || providers.includes('google.com'),
+                providers: mergedProviders.length > 0 ? mergedProviders : ['google.com'],
+                isCloudAuth: true,
+              };
+              this.setActiveSession(nextSession);
+              this.attachCloudListeners(fb.db!, user.uid);
+              this.ensureAuthenticatedMemberProfile({
+                uid: nextSession.uid,
+                email: nextSession.email,
+                fullName: nextSession.displayName,
+                providers: nextSession.providers,
+                passwordVerifierHash: creds[email]?.verifierHash || existingMem?.passwordVerifierHash,
+              });
+            })();
           }
           // Do NOT detach real-time listeners on mobile app startup or guest mode;
           // Listeners are only detached when the user explicitly clicks "Sign Out" via signOutCloud()
@@ -423,11 +444,11 @@ class AgroDataService {
     const now = Date.now();
     const enrichedSession: AuthenticatedSession | null = session
       ? {
-          ...session,
-          signedInAt: session.signedInAt || now,
-          expiresAt: session.expiresAt || (now + SESSION_TTL_MS),
-          freshlyAuthenticated: session.freshlyAuthenticated ?? true,
-        }
+        ...session,
+        signedInAt: session.signedInAt || now,
+        expiresAt: session.expiresAt || (now + SESSION_TTL_MS),
+        freshlyAuthenticated: session.freshlyAuthenticated ?? true,
+      }
       : null;
 
     this.activeSession = enrichedSession;
@@ -520,15 +541,149 @@ class AgroDataService {
     this.notifyListeners();
   }
 
+  private pickBestMemberRecord(candidates: SyndicateMember[]): SyndicateMember | undefined {
+    if (candidates.length === 0) return undefined;
+    if (candidates.length === 1) return candidates[0];
+
+    const statusScore = (s?: MemberApprovalStatus, active?: boolean) => {
+      if (s === 'APPROVED' || active) return 3;
+      if (s === 'SUSPENDED') return 2;
+      return 1; // PENDING_APPROVAL
+    };
+    const roleScore = (r?: Role) => {
+      if (r === 'SYNDICATE_ADMIN') return 4;
+      if (r === 'TREASURER') return 3;
+      if (r === 'GROUND_OPERATOR') return 2;
+      return 1; // REMOTE_INVESTOR
+    };
+
+    const sorted = [...candidates].sort((a, b) => {
+      const sDiff = statusScore(b.approvalStatus, b.active) - statusScore(a.approvalStatus, a.active);
+      if (sDiff !== 0) return sDiff;
+      const rDiff = roleScore(b.role) - roleScore(a.role);
+      if (rDiff !== 0) return rDiff;
+      return new Date(b.updatedAt || b.joinedAt || 0).getTime() - new Date(a.updatedAt || a.joinedAt || 0).getTime();
+    });
+
+    const winner = sorted[0];
+    const allProviders = Array.from(new Set(candidates.flatMap((c) => c.authProviders || [])));
+    const hasPwd = candidates.some((c) => c.hasPasswordSetup || Boolean(c.passwordVerifierHash));
+    const verifierHash = candidates.find((c) => Boolean(c.passwordVerifierHash))?.passwordVerifierHash;
+    const assignedLoc = winner.assignedLocationId || candidates.find((c) => Boolean(c.assignedLocationId))?.assignedLocationId;
+    const phone = winner.phone || candidates.find((c) => Boolean(c.phone))?.phone;
+    const jobTitle =
+      winner.jobTitle && winner.jobTitle !== 'Syndicate Member'
+        ? winner.jobTitle
+        : candidates.find((c) => c.jobTitle && c.jobTitle !== 'Syndicate Member')?.jobTitle || winner.jobTitle;
+
+    return {
+      ...winner,
+      assignedLocationId: assignedLoc,
+      phone,
+      jobTitle,
+      authProviders: allProviders,
+      hasPasswordSetup: hasPwd,
+      passwordVerifierHash: verifierHash,
+    };
+  }
+
   public findMemberByUidOrEmail(uid?: string, email?: string): SyndicateMember | undefined {
     const normEmail = (email || '').trim().toLowerCase();
-    return this.state.members.find(
+    const matches = this.state.members.filter(
       (m) =>
         (uid && (m.id === uid || m.uid === uid)) ||
         (normEmail &&
           ((m.email || '').trim().toLowerCase() === normEmail ||
-            m.phoneOrEmail.trim().toLowerCase() === normEmail))
+            (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
     );
+    return this.pickBestMemberRecord(matches);
+  }
+
+  /**
+   * Queries Cloud Firestore directly for any existing member matching uid or email
+   * (including pre-authorized mem-xxx records or deterministic usr-xxx records),
+   * merges them taking the highest clearance / APPROVED status, and caches into local state.
+   */
+  public async fetchAuthoritativeCloudMember(
+    uid?: string,
+    email?: string
+  ): Promise<SyndicateMember | undefined> {
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    const normEmail = (email || '').trim().toLowerCase();
+    const foundDocs: SyndicateMember[] = [];
+
+    if (firestoreDb) {
+      // 1. Check direct UID doc
+      if (uid) {
+        try {
+          const snap = await getDocFromServer(doc(firestoreDb, 'members', uid)).catch(() =>
+            getDoc(doc(firestoreDb!, 'members', uid))
+          );
+          if (snap.exists()) {
+            foundDocs.push(snap.data() as SyndicateMember);
+          }
+        } catch {
+          // Ignore lookup error
+        }
+      }
+
+      // 2. Check deterministic email-hash doc (usr-...)
+      if (normEmail) {
+        const detId = `usr-${sha256Hex(normEmail).slice(0, 16)}`;
+        if (detId !== uid) {
+          try {
+            const detSnap = await getDocFromServer(doc(firestoreDb, 'members', detId)).catch(() =>
+              getDoc(doc(firestoreDb!, 'members', detId))
+            );
+            if (detSnap.exists()) {
+              foundDocs.push(detSnap.data() as SyndicateMember);
+            }
+          } catch {
+            // Ignore lookup error
+          }
+        }
+
+        // 3. Query by email == normEmail and phoneOrEmail == normEmail
+        try {
+          const qEmail = query(collection(firestoreDb, 'members'), where('email', '==', normEmail));
+          const qsEmail = await getDocsFromServer(qEmail).catch(() => getDocs(qEmail));
+          qsEmail.docs.forEach((d) => foundDocs.push(d.data() as SyndicateMember));
+        } catch {
+          // Ignore query error
+        }
+
+        try {
+          const qContact = query(collection(firestoreDb, 'members'), where('phoneOrEmail', '==', normEmail));
+          const qsContact = await getDocsFromServer(qContact).catch(() => getDocs(qContact));
+          qsContact.docs.forEach((d) => foundDocs.push(d.data() as SyndicateMember));
+        } catch {
+          // Ignore query error
+        }
+      }
+    }
+
+    const localMatch = this.findMemberByUidOrEmail(uid, normEmail);
+    if (localMatch) {
+      foundDocs.push(localMatch);
+    }
+
+    const best = this.pickBestMemberRecord(foundDocs);
+    if (best) {
+      const otherMembers = this.state.members.filter(
+        (m) =>
+          m.id !== best.id &&
+          !(uid && (m.id === uid || m.uid === uid)) &&
+          !(
+            normEmail &&
+            ((m.email || '').trim().toLowerCase() === normEmail ||
+              (m.phoneOrEmail || '').trim().toLowerCase() === normEmail)
+          )
+      );
+      this.state.members = [...otherMembers, best];
+    }
+    return best;
   }
 
   public ensureAuthenticatedMemberProfile(params: {
@@ -551,10 +706,10 @@ class AgroDataService {
     if (existing) {
       const hasPassword = Boolean(
         params.passwordVerifierHash ||
-          existing.passwordVerifierHash ||
-          existing.hasPasswordSetup ||
-          credRec?.hasPasswordSetup ||
-          params.providers.includes('password')
+        existing.passwordVerifierHash ||
+        existing.hasPasswordSetup ||
+        credRec?.hasPasswordSetup ||
+        params.providers.includes('password')
       );
       const passwordVerifierHash =
         params.passwordVerifierHash ||
@@ -586,11 +741,28 @@ class AgroDataService {
         lastLoginAt: now,
       };
 
-      const nextMembers = this.state.members.map((m) =>
-        m.id === existing.id ? updatedMember : m
-      );
+      const nextMembers = [
+        ...this.state.members.filter(
+          (m) =>
+            m.id !== existing.id &&
+            !(params.uid && (m.id === params.uid || m.uid === params.uid)) &&
+            !(
+              normEmail &&
+              ((m.email || '').trim().toLowerCase() === normEmail ||
+                (m.phoneOrEmail || '').trim().toLowerCase() === normEmail)
+            )
+        ),
+        updatedMember,
+      ];
       this.saveLocalState({ ...this.state, members: nextMembers });
       void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+      if (params.uid && params.uid !== updatedMember.id) {
+        void this.persistDocumentToCloudIfActive('members', params.uid, {
+          ...updatedMember,
+          id: params.uid,
+          uid: params.uid,
+        });
+      }
       return updatedMember;
     }
 
@@ -699,7 +871,8 @@ class AgroDataService {
       displayName = user.displayName || email.split('@')[0] || 'Member';
     }
 
-    const existing = this.findMemberByUidOrEmail(uid, email);
+    const existing = await this.fetchAuthoritativeCloudMember(uid, email);
+
     const mergedProviders = Array.from(
       new Set([
         'google.com',
@@ -711,7 +884,7 @@ class AgroDataService {
     const session: AuthenticatedSession = {
       uid,
       email,
-      displayName: displayName || existing?.fullName || 'Member',
+      displayName: existing?.fullName || displayName || 'Member',
       emailVerified: true,
       providers: mergedProviders,
       isCloudAuth: true,
@@ -751,7 +924,12 @@ class AgroDataService {
       throw new Error('Password must be at least 8 characters long for account security.');
     }
 
-    const existing = this.findMemberByUidOrEmail(undefined, cleanEmail);
+    if (!firebaseAuth) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+
+    // Check Cloud Firestore first (in case user was pre-authorized by Admin or previously registered)
+    let existing = await this.fetchAuthoritativeCloudMember(undefined, cleanEmail);
     if (existing && existing.hasPasswordSetup) {
       throw new Error('An account with this email already has a password configured. Please sign in instead.');
     }
@@ -760,16 +938,17 @@ class AgroDataService {
     let resolvedUid = existing?.uid || existing?.id || `usr-${sha256Hex(cleanEmail).slice(0, 16)}`;
     let isCloudUser = false;
 
-    if (!firebaseAuth) {
-      initFirebaseInstance(this.getCustomFirebaseConfig());
-    }
-
     if (firebaseAuth) {
       try {
         const cred = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
         resolvedUid = cred.user.uid;
         isCloudUser = true;
         await updateProfile(cred.user, { displayName: cleanName });
+        // Re-fetch with authenticated session token in case Firestore rules blocked unauthenticated read
+        const postAuthExisting = await this.fetchAuthoritativeCloudMember(resolvedUid, cleanEmail);
+        if (postAuthExisting) {
+          existing = postAuthExisting;
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('auth/email-already-in-use')) {
@@ -779,6 +958,8 @@ class AgroDataService {
         // proceed seamlessly with our cryptographic Zero-Trust verifier vault
       }
     }
+
+    saveStoredLocalCredential(cleanEmail, verifierHash);
 
     const mergedProviders = Array.from(
       new Set([...(existing?.authProviders || []), 'password'])
@@ -795,7 +976,7 @@ class AgroDataService {
     });
 
     const session: AuthenticatedSession = {
-      uid: member.id,
+      uid: resolvedUid,
       email: cleanEmail,
       displayName: member.fullName,
       emailVerified: cleanEmail === PRIMARY_ADMIN_EMAIL || isCloudUser,
@@ -821,17 +1002,22 @@ class AgroDataService {
     }
 
     const verifierHash = computePasswordVerifier(cleanEmail, params.password);
-    const existingLocal = this.findMemberByUidOrEmail(undefined, cleanEmail);
-
     if (!firebaseAuth) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
+
+    let existingLocal = await this.fetchAuthoritativeCloudMember(undefined, cleanEmail);
 
     // 1. Try Firebase Auth Email/Password sign in first
     if (firebaseAuth) {
       try {
         const cred = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
         const user = cred.user;
+        // Now that Firebase Auth is authenticated, query Firestore again to ensure we get any approved profile
+        const cloudConfirmed = await this.fetchAuthoritativeCloudMember(user.uid, cleanEmail);
+        if (cloudConfirmed) {
+          existingLocal = cloudConfirmed;
+        }
         const providers = Array.from(
           new Set([
             ...user.providerData.map((p) => p.providerId),
@@ -842,12 +1028,12 @@ class AgroDataService {
         const member = this.ensureAuthenticatedMemberProfile({
           uid: user.uid,
           email: cleanEmail,
-          fullName: user.displayName || existingLocal?.fullName || cleanEmail.split('@')[0],
+          fullName: existingLocal?.fullName || user.displayName || cleanEmail.split('@')[0],
           providers,
           passwordVerifierHash: verifierHash,
         });
         this.setActiveSession({
-          uid: member.id,
+          uid: user.uid,
           email: cleanEmail,
           displayName: member.fullName,
           emailVerified: true,
@@ -882,7 +1068,7 @@ class AgroDataService {
         passwordVerifierHash: verifierHash,
       });
       this.setActiveSession({
-        uid: updated.id,
+        uid: updated.uid || updated.id,
         email: cleanEmail,
         displayName: updated.fullName,
         emailVerified: true,
@@ -909,7 +1095,7 @@ class AgroDataService {
    */
   public async signInWithBiometrics(): Promise<SyndicateMember> {
     const enrolled = await verifyDeviceBiometric();
-    const existing = this.findMemberByUidOrEmail(enrolled.memberId, enrolled.email);
+    const existing = await this.fetchAuthoritativeCloudMember(enrolled.memberId, enrolled.email);
     const providers = Array.from(
       new Set([...(existing?.authProviders || ['google.com']), 'biometric'])
     );
@@ -921,7 +1107,7 @@ class AgroDataService {
     });
 
     this.setActiveSession({
-      uid: member.id,
+      uid: member.uid || member.id,
       email: enrolled.email,
       displayName: member.fullName,
       emailVerified: true,
@@ -1003,18 +1189,18 @@ class AgroDataService {
       ...this.state,
       members: this.state.members.map((m) =>
         m.id === updatedMember.id ||
-        (m.uid && updatedMember.uid && m.uid === updatedMember.uid) ||
-        (m.email && m.email.trim().toLowerCase() === email) ||
-        (m.phoneOrEmail && m.phoneOrEmail.trim().toLowerCase() === email)
+          (m.uid && updatedMember.uid && m.uid === updatedMember.uid) ||
+          (m.email && m.email.trim().toLowerCase() === email) ||
+          (m.phoneOrEmail && m.phoneOrEmail.trim().toLowerCase() === email)
           ? {
-              ...m,
-              ...updatedMember,
-              id: m.id,
-              uid: m.uid || updatedMember.uid,
-              hasPasswordSetup: true,
-              passwordVerifierHash: verifierHash,
-              authProviders: mergedProviders,
-            }
+            ...m,
+            ...updatedMember,
+            id: m.id,
+            uid: m.uid || updatedMember.uid,
+            hasPasswordSetup: true,
+            passwordVerifierHash: verifierHash,
+            authProviders: mergedProviders,
+          }
           : m
       ),
       auditNotifications: [audit, ...this.state.auditNotifications],
@@ -1082,7 +1268,7 @@ class AgroDataService {
     };
 
     if (firebaseAuth?.currentUser) {
-      updateProfile(firebaseAuth.currentUser, { displayName: cleanName }).catch(() => {});
+      updateProfile(firebaseAuth.currentUser, { displayName: cleanName }).catch(() => { });
     }
 
     const audit = this.createChainedAuditEvent({
@@ -1162,8 +1348,8 @@ class AgroDataService {
       params.approvalStatus === 'SUSPENDED'
         ? 'MEMBER_SUSPENDED'
         : wasPending && params.approvalStatus === 'APPROVED'
-        ? 'MEMBER_APPROVED'
-        : 'MEMBER_ROLE_CHANGED';
+          ? 'MEMBER_APPROVED'
+          : 'MEMBER_ROLE_CHANGED';
 
     const assignedSiteName =
       params.assignedLocationId && params.assignedLocationId !== 'ALL'
@@ -1180,8 +1366,8 @@ class AgroDataService {
         eventType === 'MEMBER_APPROVED'
           ? `Member Approved & Cleared: ${updatedMember.fullName} (${params.role.replace('_', ' ')})`
           : eventType === 'MEMBER_SUSPENDED'
-          ? `Member Access Suspended: ${updatedMember.fullName}`
-          : `Role & Access Updated: ${updatedMember.fullName} → ${params.role.replace('_', ' ')}`,
+            ? `Member Access Suspended: ${updatedMember.fullName}`
+            : `Role & Access Updated: ${updatedMember.fullName} → ${params.role.replace('_', ' ')}`,
       message: `${params.actor.fullName} updated ${updatedMember.fullName}: Role=${params.role}, Status=${params.approvalStatus}, Site=${assignedSiteName}.${params.note ? ` Note: ${params.note}` : ''}`,
       referenceEntityId: updatedMember.id,
       timestamp: now,
@@ -1205,7 +1391,28 @@ class AgroDataService {
     const cleanData = JSON.parse(JSON.stringify(updatedMember));
     await setDoc(doc(firestoreDb, 'members', updatedMember.id), cleanData);
     if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
-      await setDoc(doc(firestoreDb, 'members', updatedMember.uid), cleanData);
+      await setDoc(doc(firestoreDb, 'members', updatedMember.uid), {
+        ...cleanData,
+        id: updatedMember.uid,
+        uid: updatedMember.uid,
+      });
+    }
+    const targetEmail = (updatedMember.email || updatedMember.phoneOrEmail || '').trim().toLowerCase();
+    if (targetEmail && targetEmail.includes('@')) {
+      try {
+        const q = query(collection(firestoreDb, 'members'), where('email', '==', targetEmail));
+        const qs = await getDocs(q);
+        for (const d of qs.docs) {
+          if (d.id !== updatedMember.id && d.id !== updatedMember.uid) {
+            await setDoc(doc(firestoreDb, 'members', d.id), {
+              ...cleanData,
+              id: d.id,
+            });
+          }
+        }
+      } catch {
+        // Ignore secondary doc sync warning
+      }
     }
 
     // 2. Only after Cloud confirms the write, update local state
@@ -1410,16 +1617,143 @@ class AgroDataService {
   }
 
   public async signOutCloud(): Promise<void> {
-    if (firebaseAuth) {
-      try {
-        await signOut(firebaseAuth);
-      } catch {
-        // Ignore signOut error
+    this.isSigningOut = true;
+    try {
+      this.detachCloudListeners();
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await FirebaseAuthentication.signOut();
+        } catch {
+          // Ignore native signOut error
+        }
+      }
+
+      if (firebaseAuth) {
+        try {
+          await signOut(firebaseAuth);
+        } catch {
+          // Ignore web signOut error
+        }
+      }
+
+      this.currentUser = null;
+      this.activeSession = null;
+
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.clear();
+        } catch {
+          // Ignore storage clear error
+        }
+        try {
+          window.sessionStorage.clear();
+        } catch {
+          // Ignore session storage clear error
+        }
+      }
+
+      const emptyState = createEmptyProductionSnapshot();
+      this.state = emptyState;
+      this.authListeners.forEach((cb) => cb(null));
+      this.sessionListeners.forEach((cb) => cb(null));
+      this.notifyListeners();
+    } finally {
+      this.isSigningOut = false;
+    }
+  }
+
+  private mergeAndDeduplicateCloudMembers(rawDocs: unknown[]): SyndicateMember[] {
+    const cloudMembers = (rawDocs as SyndicateMember[]).filter(
+      (x) => x && x.id && !isLegacySeedId('members', x.id)
+    );
+    const creds = getStoredLocalCredentials();
+    const existingLocalMap = new Map<string, SyndicateMember>();
+    this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
+
+    const enriched = cloudMembers.map((cloudM) => {
+      const localM =
+        existingLocalMap.get(cloudM.id) ||
+        Array.from(existingLocalMap.values()).find(
+          (x) =>
+            (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
+            (x.uid && cloudM.uid && x.uid === cloudM.uid)
+        );
+      const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
+      const credRec = email ? creds[email] : null;
+
+      const hasPassword = Boolean(
+        cloudM.hasPasswordSetup ||
+        localM?.hasPasswordSetup ||
+        cloudM.passwordVerifierHash ||
+        localM?.passwordVerifierHash ||
+        credRec?.hasPasswordSetup
+      );
+      const passwordVerifierHash =
+        cloudM.passwordVerifierHash ||
+        localM?.passwordVerifierHash ||
+        credRec?.verifierHash;
+
+      const mergedProviders = Array.from(
+        new Set([
+          ...(cloudM.authProviders || []),
+          ...(localM?.authProviders || []),
+          ...(hasPassword ? ['password'] : []),
+        ])
+      );
+
+      // Preserve APPROVED status and assigned role if either cloud or local record was approved
+      const resolvedApproval: MemberApprovalStatus =
+        email === PRIMARY_ADMIN_EMAIL ||
+          cloudM.approvalStatus === 'APPROVED' ||
+          localM?.approvalStatus === 'APPROVED' ||
+          cloudM.active
+          ? 'APPROVED'
+          : cloudM.approvalStatus || localM?.approvalStatus || 'PENDING_APPROVAL';
+
+      const resolvedRole: Role =
+        email === PRIMARY_ADMIN_EMAIL
+          ? 'SYNDICATE_ADMIN'
+          : cloudM.role && cloudM.role !== 'REMOTE_INVESTOR'
+            ? cloudM.role
+            : localM?.role && localM.role !== 'REMOTE_INVESTOR'
+              ? localM.role
+              : cloudM.role || localM?.role || 'REMOTE_INVESTOR';
+
+      return {
+        ...localM,
+        ...cloudM,
+        phoneOrEmail: cloudM.phoneOrEmail || localM?.phoneOrEmail || cloudM.email || localM?.email || email || 'member',
+        role: resolvedRole,
+        approvalStatus: resolvedApproval,
+        active: resolvedApproval === 'APPROVED',
+        assignedLocationId: cloudM.assignedLocationId || localM?.assignedLocationId,
+        hasPasswordSetup: hasPassword,
+        passwordVerifierHash,
+        authProviders: mergedProviders,
+      };
+    });
+
+    // Deduplicate by email / uid so a stale PENDING_APPROVAL doc never shadows an APPROVED doc for the same user
+    const groupsByIdentity = new Map<string, SyndicateMember[]>();
+    for (const mem of enriched) {
+      const normEmail = (mem.email || (mem.phoneOrEmail?.includes('@') ? mem.phoneOrEmail : '') || '')
+        .trim()
+        .toLowerCase();
+      const key = normEmail || mem.uid || mem.id;
+      const list = groupsByIdentity.get(key) || [];
+      list.push(mem);
+      groupsByIdentity.set(key, list);
+    }
+
+    const deduplicated: SyndicateMember[] = [];
+    for (const group of groupsByIdentity.values()) {
+      const best = this.pickBestMemberRecord(group);
+      if (best) {
+        deduplicated.push(best);
       }
     }
-    this.detachCloudListeners();
-    this.setActiveSession(null);
-    this.notifyListeners();
+    return deduplicated;
   }
 
   private detachCloudListeners() {
@@ -1435,6 +1769,108 @@ class AgroDataService {
     this.activeListenerUid = null;
   }
 
+  private processIncomingAuditNotifications(rawDocs: unknown[]): void {
+    const valid = (rawDocs as AuditNotificationEvent[])
+      .filter((x) => x && x.id && !isLegacySeedId('auditNotifications', x.id))
+      .map((n) => ({
+        ...n,
+        readByMemberIds: Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [],
+      }));
+    const sorted = valid.sort((a, b) => (b.sequenceNumber || 0) - (a.sequenceNumber || 0));
+
+    if (sorted.length === 0) {
+      this.state.auditNotifications = [];
+      return;
+    }
+
+    const NOTIFIED_IDS_STORAGE_KEY = 'agro_planner_notified_audit_ids_v1';
+    let notifiedSet = new Set<string>();
+    let hasPersistedHistory = false;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const rawNotified = window.localStorage.getItem(NOTIFIED_IDS_STORAGE_KEY);
+        if (rawNotified) {
+          const parsedIds = JSON.parse(rawNotified);
+          if (Array.isArray(parsedIds)) {
+            notifiedSet = new Set<string>(parsedIds);
+            hasPersistedHistory = true;
+          }
+        }
+      } catch {
+        // Ignore storage parse error
+      }
+    }
+
+    const activeUid = this.activeSession?.uid || this.currentUser?.uid || '';
+    const activeEmail = (this.activeSession?.email || this.currentUser?.email || '').trim().toLowerCase();
+    const activeMember = this.findMemberByUidOrEmail(activeUid, activeEmail);
+    const myIdentityIds = new Set<string>(
+      [activeUid, activeMember?.id, activeMember?.uid].filter((x): x is string => Boolean(x))
+    );
+
+    const now = Date.now();
+    const toDispatch: AuditNotificationEvent[] = [];
+
+    if (!hasPersistedHistory) {
+      // First time initializing persistent notification tracker on this device:
+      // Dispatch up to 3 unread notifications from the last 24 hours so closed-app alerts are caught,
+      // then mark all existing IDs as seen so old historical logs don't spam.
+      for (const item of sorted) {
+        const isAuthoredByMe = Boolean(item.actorId && myIdentityIds.has(item.actorId));
+        const isAlreadyRead = Array.isArray(item.readByMemberIds) && item.readByMemberIds.some((id) => myIdentityIds.has(id));
+        const eventAgeMs = now - new Date(item.timestamp).getTime();
+        const isWithin24Hours = eventAgeMs >= 0 && eventAgeMs <= 24 * 60 * 60 * 1000;
+
+        if (!isAuthoredByMe && !isAlreadyRead && isWithin24Hours && toDispatch.length < 3) {
+          toDispatch.push(item);
+        }
+        notifiedSet.add(item.id);
+      }
+    } else {
+      // Device has a persisted notification history:
+      // Any notification in Cloud that is NOT in notifiedSet was created while the app was closed,
+      // backgrounded, or live! Dispatch all unread ones not authored by the current user (up to 5).
+      for (const item of sorted) {
+        if (!notifiedSet.has(item.id)) {
+          notifiedSet.add(item.id);
+          const isAuthoredByMe = Boolean(item.actorId && myIdentityIds.has(item.actorId));
+          const isAlreadyRead = Array.isArray(item.readByMemberIds) && item.readByMemberIds.some((id) => myIdentityIds.has(id));
+
+          if (!isAuthoredByMe && !isAlreadyRead && toDispatch.length < 5) {
+            toDispatch.push(item);
+          }
+        }
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        // Keep the most recent 500 IDs in localStorage to bound storage size
+        const boundedIds = Array.from(notifiedSet).slice(-500);
+        window.localStorage.setItem(NOTIFIED_IDS_STORAGE_KEY, JSON.stringify(boundedIds));
+      } catch {
+        // Ignore storage quota warning
+      }
+    }
+
+    if (toDispatch.length > 0 && areSystemNotificationsEnabled()) {
+      // Dispatch in chronological order (oldest missed first, newest on top)
+      for (const item of [...toDispatch].reverse()) {
+        void dispatchSystemNotification({
+          title: `Agro Planner · ${item.title || 'Broadcast'}`,
+          body: item.message || '',
+          tag: item.id,
+          urgent: item.severity === 'URGENT_GROUND' || item.severity === 'WARNING_CONTRA',
+          severity: item.severity,
+          sequenceNumber: item.sequenceNumber,
+        });
+      }
+    }
+
+    this.state.auditNotifications = sorted;
+  }
+
   private attachCloudListeners(db: Firestore, uid?: string) {
     if (this.cloudSyncActive && uid && this.activeListenerUid === uid) {
       return;
@@ -1447,145 +1883,75 @@ class AgroDataService {
       path: string;
       apply: (docs: unknown[]) => void;
     }[] = [
-      {
-        path: 'locations',
-        apply: (docs) => {
-          this.state.locations = (docs as FarmLocation[]).filter(
-            (x) => !isLegacySeedId('locations', x.id)
-          );
-        },
-      },
-      {
-        path: 'members',
-        apply: (docs) => {
-          const cloudMembers = (docs as SyndicateMember[]).filter(
-            (x) => !isLegacySeedId('members', x.id)
-          );
-          const creds = getStoredLocalCredentials();
-          const existingLocalMap = new Map<string, SyndicateMember>();
-          this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
-
-          // AUTHORITATIVE CLOUD SYNCHRONIZATION:
-          // Deleted members in Firestore online are purged from state and localStorage.
-          this.state.members = cloudMembers.map((cloudM) => {
-            const localM =
-              existingLocalMap.get(cloudM.id) ||
-              Array.from(existingLocalMap.values()).find(
-                (x) =>
-                  (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
-                  (x.uid && cloudM.uid && x.uid === cloudM.uid)
-              );
-            const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
-            const credRec = email ? creds[email] : null;
-
-            const hasPassword = Boolean(
-              cloudM.hasPasswordSetup ||
-                localM?.hasPasswordSetup ||
-                cloudM.passwordVerifierHash ||
-                localM?.passwordVerifierHash ||
-                credRec?.hasPasswordSetup
+        {
+          path: 'locations',
+          apply: (docs) => {
+            this.state.locations = (docs as FarmLocation[]).filter(
+              (x) => !isLegacySeedId('locations', x.id)
             );
-            const passwordVerifierHash =
-              cloudM.passwordVerifierHash ||
-              localM?.passwordVerifierHash ||
-              credRec?.verifierHash;
-
-            const mergedProviders = Array.from(
-              new Set([
-                ...(cloudM.authProviders || []),
-                ...(localM?.authProviders || []),
-                ...(hasPassword ? ['password'] : []),
-              ])
+          },
+        },
+        {
+          path: 'members',
+          apply: (docs) => {
+            this.state.members = this.mergeAndDeduplicateCloudMembers(docs);
+          },
+        },
+        {
+          path: 'capital_contributions',
+          apply: (docs) => {
+            this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
+              (x) => !isLegacySeedId('capitalContributions', x.id)
             );
-
-            return {
-              ...localM,
-              ...cloudM,
-              hasPasswordSetup: hasPassword,
-              passwordVerifierHash,
-              authProviders: mergedProviders,
-            };
-          });
+          },
         },
-      },
-      {
-        path: 'capital_contributions',
-        apply: (docs) => {
-          this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
-            (x) => !isLegacySeedId('capitalContributions', x.id)
-          );
+        {
+          path: 'expense_ledger',
+          apply: (docs) => {
+            this.state.expenses = (docs as ExpenseLedgerEvent[]).filter(
+              (x) => !isLegacySeedId('expenses', x.id)
+            );
+          },
         },
-      },
-      {
-        path: 'expense_ledger',
-        apply: (docs) => {
-          this.state.expenses = (docs as ExpenseLedgerEvent[]).filter(
-            (x) => !isLegacySeedId('expenses', x.id)
-          );
+        {
+          path: 'fixed_assets_ledger',
+          apply: (docs) => {
+            this.state.fixedAssets = (docs as FixedAssetLedgerEvent[]).filter(
+              (x) => !isLegacySeedId('fixedAssets', x.id)
+            );
+          },
         },
-      },
-      {
-        path: 'fixed_assets_ledger',
-        apply: (docs) => {
-          this.state.fixedAssets = (docs as FixedAssetLedgerEvent[]).filter(
-            (x) => !isLegacySeedId('fixedAssets', x.id)
-          );
+        {
+          path: 'livestock_entries',
+          apply: (docs) => {
+            this.state.livestockEntries = (docs as LivestockEntry[]).filter(
+              (x) => !isLegacySeedId('livestockEntries', x.id)
+            );
+          },
         },
-      },
-      {
-        path: 'livestock_entries',
-        apply: (docs) => {
-          this.state.livestockEntries = (docs as LivestockEntry[]).filter(
-            (x) => !isLegacySeedId('livestockEntries', x.id)
-          );
+        {
+          path: 'livestock_lifecycle_events',
+          apply: (docs) => {
+            this.state.livestockEvents = (docs as LivestockLifecycleEvent[]).filter(
+              (x) => !isLegacySeedId('livestockEvents', x.id)
+            );
+          },
         },
-      },
-      {
-        path: 'livestock_lifecycle_events',
-        apply: (docs) => {
-          this.state.livestockEvents = (docs as LivestockLifecycleEvent[]).filter(
-            (x) => !isLegacySeedId('livestockEvents', x.id)
-          );
+        {
+          path: 'feed_ledger',
+          apply: (docs) => {
+            this.state.feedLedger = (docs as FeedLedgerEvent[]).filter(
+              (x) => !isLegacySeedId('feedLedger', x.id)
+            );
+          },
         },
-      },
-      {
-        path: 'feed_ledger',
-        apply: (docs) => {
-          this.state.feedLedger = (docs as FeedLedgerEvent[]).filter(
-            (x) => !isLegacySeedId('feedLedger', x.id)
-          );
+        {
+          path: 'audit_notifications',
+          apply: (docs) => {
+            this.processIncomingAuditNotifications(docs);
+          },
         },
-      },
-      {
-        path: 'audit_notifications',
-        apply: (docs) => {
-          const valid = (docs as AuditNotificationEvent[]).filter(
-            (x) => !isLegacySeedId('auditNotifications', x.id)
-          );
-          const sorted = valid.sort((a, b) => b.sequenceNumber - a.sequenceNumber);
-          if (sorted.length > 0) {
-            // Check for new incoming notifications authored by other members
-            const existingIds = new Set(this.state.auditNotifications.map((n) => n.id));
-            const currentUserId = this.currentUser?.uid;
-            for (const item of sorted) {
-              if (!existingIds.has(item.id) && item.actorId !== currentUserId) {
-                if (areSystemNotificationsEnabled()) {
-                  void dispatchSystemNotification({
-                    title: `Agro Planner · ${item.title}`,
-                    body: item.message,
-                    tag: item.id,
-                    urgent: item.severity === 'URGENT_GROUND' || item.severity === 'WARNING_CONTRA',
-                    severity: item.severity,
-                    sequenceNumber: item.sequenceNumber,
-                  });
-                }
-              }
-            }
-            this.state.auditNotifications = sorted;
-          }
-        },
-      },
-    ];
+      ];
 
     collectionsMap.forEach(({ path, apply }) => {
       const unsub = onSnapshot(
@@ -1661,50 +2027,7 @@ class AgroDataService {
       if (colPath === 'locations') {
         this.state.locations = (docs as FarmLocation[]).filter((x) => !isLegacySeedId('locations', x.id));
       } else if (colPath === 'members') {
-        const cloudMembers = (docs as SyndicateMember[]).filter((x) => !isLegacySeedId('members', x.id));
-        const creds = getStoredLocalCredentials();
-        const existingLocalMap = new Map<string, SyndicateMember>();
-        this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
-
-        this.state.members = cloudMembers.map((cloudM) => {
-          const localM =
-            existingLocalMap.get(cloudM.id) ||
-            Array.from(existingLocalMap.values()).find(
-              (x) =>
-                (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
-                (x.uid && cloudM.uid && x.uid === cloudM.uid)
-            );
-          const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
-          const credRec = email ? creds[email] : null;
-
-          const hasPassword = Boolean(
-            cloudM.hasPasswordSetup ||
-              localM?.hasPasswordSetup ||
-              cloudM.passwordVerifierHash ||
-              localM?.passwordVerifierHash ||
-              credRec?.hasPasswordSetup
-          );
-          const passwordVerifierHash =
-            cloudM.passwordVerifierHash ||
-            localM?.passwordVerifierHash ||
-            credRec?.verifierHash;
-
-          const mergedProviders = Array.from(
-            new Set([
-              ...(cloudM.authProviders || []),
-              ...(localM?.authProviders || []),
-              ...(hasPassword ? ['password'] : []),
-            ])
-          );
-
-          return {
-            ...localM,
-            ...cloudM,
-            hasPasswordSetup: hasPassword,
-            passwordVerifierHash,
-            authProviders: mergedProviders,
-          };
-        });
+        this.state.members = this.mergeAndDeduplicateCloudMembers(docs);
       } else if (colPath === 'capital_contributions') {
         this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
           (x) => !isLegacySeedId('capitalContributions', x.id)
@@ -1730,10 +2053,7 @@ class AgroDataService {
           (x) => !isLegacySeedId('feedLedger', x.id)
         );
       } else if (colPath === 'audit_notifications') {
-        const valid = (docs as AuditNotificationEvent[]).filter(
-          (x) => !isLegacySeedId('auditNotifications', x.id)
-        );
-        this.state.auditNotifications = valid.sort((a, b) => b.sequenceNumber - a.sequenceNumber);
+        this.processIncomingAuditNotifications(docs);
       }
     }
 
@@ -1752,16 +2072,68 @@ class AgroDataService {
     if (firestoreDb) {
       try {
         const cleanData = JSON.parse(JSON.stringify(data));
+        // Protect against demoting an already approved member on app reinstall or new phone:
+        if (collectionPath === 'members' && cleanData.approvalStatus === 'PENDING_APPROVAL') {
+          try {
+            const snap = await getDoc(doc(firestoreDb, 'members', docId));
+            if (snap.exists()) {
+              const cloud = snap.data() as SyndicateMember;
+              if (cloud && cloud.approvalStatus === 'APPROVED') {
+                console.log(`[Cloud] Preserved existing APPROVED status for member ${docId} from cloud.`);
+                return;
+              }
+            }
+            const targetEmail = (cleanData.email || cleanData.phoneOrEmail || '').trim().toLowerCase();
+            if (targetEmail && targetEmail.includes('@')) {
+              const q = query(collection(firestoreDb, 'members'), where('email', '==', targetEmail));
+              const qs = await getDocs(q);
+              const approvedMatch = qs.docs
+                .map((d) => d.data() as SyndicateMember)
+                .find((m) => m.approvalStatus === 'APPROVED' || m.active);
+              if (approvedMatch) {
+                console.log(`[Cloud] Preserved existing APPROVED status for email ${targetEmail} from cloud.`);
+                await setDoc(doc(firestoreDb, 'members', docId), {
+                  ...cleanData,
+                  role: approvedMatch.role || cleanData.role,
+                  approvalStatus: 'APPROVED',
+                  active: true,
+                  assignedLocationId: approvedMatch.assignedLocationId || cleanData.assignedLocationId,
+                });
+                return;
+              }
+            }
+          } catch {
+            // Ignore pre-check warning and continue
+          }
+        }
         await setDoc(doc(firestoreDb, collectionPath, docId), cleanData);
       } catch (error) {
-        console.warn(`Cloud persistence error (${collectionPath}/${docId}):`, error);
-        const msg = error instanceof Error ? error.message : String(error);
-        if (msg.includes('permission') || msg.includes('Missing or insufficient permissions')) {
-          throw new Error('Cloud update rejected: Active Founder session required. Please sign out and sign in with Google (baseramarlvin@gmail.com) on the latest APK to activate Cloud permissions.');
-        }
-        throw error;
+        console.warn(`Cloud persistence notice (${collectionPath}/${docId}):`, error);
       }
     }
+  }
+
+  /**
+   * Directly queries Cloud Firestore to check if the member's account has been approved by the admin.
+   * If approved in the cloud, updates local state and wakes up reactive listeners immediately.
+   */
+  public async checkMemberApprovalStatus(memberId: string): Promise<SyndicateMember | null> {
+    const targetEmail =
+      this.activeSession?.email ||
+      this.state.members.find((m) => m.id === memberId || m.uid === memberId)?.email;
+    const targetUid = this.activeSession?.uid || memberId;
+
+    const cloudDoc = await this.fetchAuthoritativeCloudMember(targetUid, targetEmail);
+    if (cloudDoc) {
+      this.saveLocalState({ ...this.state });
+      return cloudDoc;
+    }
+
+    return (
+      this.state.members.find(
+        (m) => m.id === memberId || (m.uid && m.uid === memberId)
+      ) || null
+    );
   }
 
   /**
@@ -1779,6 +2151,7 @@ class AgroDataService {
     deltaHeadcount?: number;
     referenceEntityId?: string;
     timestamp?: string;
+    photoUrl?: string;
   }): AuditNotificationEvent {
     const existingSorted = [...this.state.auditNotifications].sort(
       (a, b) => a.sequenceNumber - b.sequenceNumber
@@ -1816,6 +2189,7 @@ class AgroDataService {
       previousHash,
       currentHash,
       readByMemberIds: [params.actor.id],
+      photoUrl: params.photoUrl,
     };
 
     void this.persistDocumentToCloudIfActive(
@@ -1823,6 +2197,20 @@ class AgroDataService {
       newAuditEvent.id,
       newAuditEvent
     );
+
+    if (typeof window !== 'undefined') {
+      try {
+        const NOTIFIED_IDS_STORAGE_KEY = 'agro_planner_notified_audit_ids_v1';
+        const raw = window.localStorage.getItem(NOTIFIED_IDS_STORAGE_KEY);
+        const list = raw ? (JSON.parse(raw) as string[]) : [];
+        if (Array.isArray(list)) {
+          list.push(newAuditEvent.id);
+          window.localStorage.setItem(NOTIFIED_IDS_STORAGE_KEY, JSON.stringify(list.slice(-500)));
+        }
+      } catch {
+        // Ignore storage error
+      }
+    }
 
     if (areSystemNotificationsEnabled()) {
       void dispatchSystemNotification({
@@ -2117,8 +2505,8 @@ class AgroDataService {
       title: isContra
         ? `Expense Contra-Reversal (${leftMoneyImpact >= 0 ? '+' : ''}$${leftMoneyImpact.toFixed(2)} Left Money)`
         : requiresMultiSig
-        ? `Multi-Sig Approval Needed: $${cleanAmount.toFixed(2)} (${params.category.replace('_', ' ')})`
-        : `Expense Deducted: -$${cleanAmount.toFixed(2)} (${params.category.replace('_', ' ')})`,
+          ? `Multi-Sig Approval Needed: $${cleanAmount.toFixed(2)} (${params.category.replace('_', ' ')})`
+          : `Expense Deducted: -$${cleanAmount.toFixed(2)} (${params.category.replace('_', ' ')})`,
       message: isContra
         ? `${id} linked to ${params.referenceTransactionId}: ${cleanNote}. Left Money impact: ${leftMoneyImpact >= 0 ? '+' : ''}$${leftMoneyImpact.toFixed(2)}.`
         : `${id} at ${loc.name}: ${cleanNote}${requiresMultiSig ? ' [Status: PENDING MULTI-SIG APPROVAL > $150]' : ' [Deducted from Left Money]'}.`,
@@ -2194,6 +2582,8 @@ class AgroDataService {
     targetSaleWeightKg?: number;
     notes: string;
     autoDeductPurchaseFromLeftMoney: boolean;
+    imageUrl?: string;
+    gallery?: string[];
     actor: SyndicateMember;
   }): LivestockEntry {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
@@ -2209,6 +2599,8 @@ class AgroDataService {
       params.targetDurationValue,
       params.targetDurationUnit
     );
+
+    const galleryPhotos = params.gallery || (params.imageUrl ? [params.imageUrl] : []);
 
     const newEntry: LivestockEntry = {
       id,
@@ -2228,6 +2620,8 @@ class AgroDataService {
       targetSaleWeightKg: params.targetSaleWeightKg,
       notes: params.notes.trim().slice(0, 500),
       createdByMemberName: params.actor.fullName,
+      imageUrl: params.imageUrl || galleryPhotos[0],
+      gallery: galleryPhotos,
       createdAt: now,
     };
 
@@ -2241,6 +2635,7 @@ class AgroDataService {
       headcountDelta: params.initialHeadcount,
       note: `Initial registration of ${params.initialHeadcount}x ${newEntry.species} (${newEntry.nameOrTag}). ${params.notes.trim()}`,
       loggedByName: params.actor.fullName,
+      photoUrl: params.imageUrl || galleryPhotos[0],
       createdAt: now,
       auditHash: computeLedgerRecordHash(
         'LIVESTOCK_EVENT',
@@ -2265,6 +2660,7 @@ class AgroDataService {
       deltaHeadcount: params.initialHeadcount,
       deltaFinancial: params.autoDeductPurchaseFromLeftMoney ? -params.purchaseCostTotal : 0,
       referenceEntityId: newEntry.id,
+      photoUrl: params.imageUrl || galleryPhotos[0],
       timestamp: now,
     });
     updatedAudits.unshift(regAudit);
@@ -2285,6 +2681,7 @@ class AgroDataService {
         loggedByMemberId: params.actor.id,
         loggedByName: params.actor.fullName,
         gpsStamp: loc.gpsCoordinates,
+        receiptPhotoDataUrl: params.imageUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
         createdAt: now,
@@ -2313,6 +2710,78 @@ class AgroDataService {
     return newEntry;
   }
 
+  public addLivestockGalleryPhoto(params: {
+    livestockId: string;
+    photoUrl: string;
+    caption?: string;
+    actor: SyndicateMember;
+  }): LivestockLifecycleEvent {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error('Livestock batch or animal not found.');
+    if (!params.photoUrl) throw new Error('Photo URL or image data is required.');
+
+    const now = new Date().toISOString();
+    const id = `EV-LSTK-PHOTO-${Date.now().toString(36).toUpperCase()}`;
+    const cleanCaption = (params.caption || `Ground photo update for ${entry.nameOrTag}`).trim().slice(0, 500);
+
+    const newEvent: LivestockLifecycleEvent = {
+      id,
+      livestockId: entry.id,
+      livestockName: entry.nameOrTag,
+      locationId: entry.locationId,
+      eventType: 'PHOTO_PROGRESS',
+      headcountDelta: 0,
+      note: cleanCaption,
+      loggedByName: params.actor.fullName,
+      photoUrl: params.photoUrl,
+      createdAt: now,
+      auditHash: computeLedgerRecordHash(
+        'LIVESTOCK_EVENT',
+        id,
+        now,
+        0,
+        cleanCaption
+      ),
+    };
+
+    const currentGallery = entry.gallery || [];
+    const updatedGallery = currentGallery.includes(params.photoUrl)
+      ? currentGallery
+      : [...currentGallery, params.photoUrl];
+
+    const updatedEntry: LivestockEntry = {
+      ...entry,
+      imageUrl: entry.imageUrl || params.photoUrl,
+      gallery: updatedGallery,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'GROUND_BROADCAST',
+      severity: 'INFO',
+      title: `Ground Photo Uploaded: ${entry.nameOrTag}`,
+      message: `${entry.nameOrTag} photo evidence added by ${params.actor.fullName}: ${cleanCaption}`,
+      referenceEntityId: entry.id,
+      photoUrl: params.photoUrl,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === entry.id ? updatedEntry : l)),
+      livestockEvents: [newEvent, ...this.state.livestockEvents],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', newEvent.id, newEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return newEvent;
+  }
+
   public logLivestockLifecycleEvent(params: {
     livestockId: string;
     eventType: LivestockLifecycleEvent['eventType'];
@@ -2322,6 +2791,7 @@ class AgroDataService {
     reinvestmentPercentage?: number;
     referenceTransactionId?: string;
     note: string;
+    photoUrl?: string;
     actor: SyndicateMember;
   }): LivestockLifecycleEvent {
     const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
@@ -2347,6 +2817,7 @@ class AgroDataService {
       referenceTransactionId: params.referenceTransactionId,
       note: cleanNote,
       loggedByName: params.actor.fullName,
+      photoUrl: params.photoUrl,
       createdAt: now,
       auditHash: computeLedgerRecordHash(
         'LIVESTOCK_EVENT',
@@ -2400,11 +2871,29 @@ class AgroDataService {
       deltaFinancial,
       deltaHeadcount: params.headcountDelta !== 0 ? params.headcountDelta : undefined,
       referenceEntityId: id,
+      photoUrl: params.photoUrl,
       timestamp: now,
     });
 
+    let nextLivestockEntries = this.state.livestockEntries;
+    if (params.photoUrl) {
+      const currentGallery = entry.gallery || [];
+      if (!currentGallery.includes(params.photoUrl)) {
+        const updatedEntry: LivestockEntry = {
+          ...entry,
+          imageUrl: entry.imageUrl || params.photoUrl,
+          gallery: [...currentGallery, params.photoUrl],
+        };
+        nextLivestockEntries = this.state.livestockEntries.map((l) =>
+          l.id === entry.id ? updatedEntry : l
+        );
+        void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+      }
+    }
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
+      livestockEntries: nextLivestockEntries,
       livestockEvents: [newEvent, ...this.state.livestockEvents],
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
@@ -2427,6 +2916,7 @@ class AgroDataService {
     referenceTransactionId?: string;
     note: string;
     deductFromLeftMoney?: boolean;
+    photoUrl?: string;
     actor: SyndicateMember;
   }): FixedAssetLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
@@ -2453,6 +2943,7 @@ class AgroDataService {
       referenceTransactionId: params.referenceTransactionId,
       note: cleanNote,
       loggedByName: params.actor.fullName,
+      photoUrl: params.photoUrl,
       createdAt: now,
       auditHash: computeLedgerRecordHash(
         'ASSET',
@@ -2481,6 +2972,7 @@ class AgroDataService {
       message: `${id} at ${loc.name}: Qty ${params.quantityDelta >= 0 ? '+' : ''}${params.quantityDelta}, Val ${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)}. Note: ${cleanNote}`,
       deltaFinancial: params.deductFromLeftMoney ? -Math.abs(params.valueDelta) : undefined,
       referenceEntityId: id,
+      photoUrl: params.photoUrl,
       timestamp: now,
     });
     updatedAudits.unshift(assetAudit);
@@ -2500,6 +2992,7 @@ class AgroDataService {
         loggedByMemberId: params.actor.id,
         loggedByName: params.actor.fullName,
         gpsStamp: loc.gpsCoordinates,
+        receiptPhotoDataUrl: params.photoUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
         createdAt: now,
@@ -2644,8 +3137,8 @@ class AgroDataService {
       params.direction === 'DAILY_CONSUMPTION'
         ? -Math.abs(params.bagsDelta)
         : params.direction === 'STOCK_IN'
-        ? Math.abs(params.bagsDelta)
-        : params.bagsDelta;
+          ? Math.abs(params.bagsDelta)
+          : params.bagsDelta;
 
     const newFeedEvent: FeedLedgerEvent = {
       id,
@@ -2698,6 +3191,7 @@ class AgroDataService {
     severity: NotificationSeverity;
     title: string;
     message: string;
+    photoUrl?: string;
     actor: SyndicateMember;
   }): AuditNotificationEvent {
     if (params.message.trim().length < 4) {
@@ -2716,6 +3210,7 @@ class AgroDataService {
       severity: params.severity,
       title: params.title.trim() || `Ground Update from ${params.actor.fullName}`,
       message: params.message.trim(),
+      photoUrl: params.photoUrl,
     });
 
     const nextState: AgroStateSnapshot = {
@@ -2730,9 +3225,10 @@ class AgroDataService {
 
   public markAllNotificationsRead(memberId: string): void {
     const updated = this.state.auditNotifications.map((n) => {
-      if (n.readByMemberIds.includes(memberId)) return n;
-      const nextRead = [...n.readByMemberIds, memberId];
-      if (firestoreDb) {
+      const readList = Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [];
+      if (readList.includes(memberId)) return n;
+      const nextRead = [...readList, memberId];
+      if (firestoreDb && !n.id.startsWith('local-')) {
         updateDoc(doc(firestoreDb, 'audit_notifications', n.id), {
           readByMemberIds: nextRead,
         }).catch((err) => console.warn('Cloud notification read update warning:', err));

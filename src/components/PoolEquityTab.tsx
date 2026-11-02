@@ -91,20 +91,24 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
       return;
     }
     const initUsd = parseFloat(memInitDeposit) || 0;
-    onAddMember({
-      fullName: memName.trim(),
-      phoneOrEmail: memContact.trim(),
-      role: memRole,
-      assignedLocationId: memLocationId || undefined,
-      initialContributionUsd: initUsd > 0 ? initUsd : undefined,
-      contributionNote:
-        memNote.trim() || `Initial syndicate equity contribution by ${memName.trim()}`,
-    });
-    setMemName('');
-    setMemContact('');
-    setMemNote('');
-    setMemError('');
-    setShowAddMemberModal(false);
+    try {
+      onAddMember({
+        fullName: memName.trim(),
+        phoneOrEmail: memContact.trim(),
+        role: memRole,
+        assignedLocationId: memLocationId || undefined,
+        initialContributionUsd: initUsd > 0 ? initUsd : undefined,
+        contributionNote:
+          memNote.trim() || `Initial syndicate equity contribution by ${memName.trim()}`,
+      });
+      setMemName('');
+      setMemContact('');
+      setMemNote('');
+      setMemError('');
+      setShowAddMemberModal(false);
+    } catch (err) {
+      setMemError(err instanceof Error ? err.message : 'Failed to add member.');
+    }
   };
 
   const handleOpenContribModal = (
@@ -141,15 +145,19 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           : Math.abs(rawAmt)
         : Math.abs(rawAmt);
 
-    onLogContribution({
-      memberId: cMemberId,
-      direction: contribModal.mode,
-      amount: signedAmount,
-      referenceTransactionId:
-        contribModal.mode === 'CONTRA_REVERSAL' ? cRefId : undefined,
-      note: cNote.trim(),
-    });
-    setContribModal(null);
+    try {
+      onLogContribution({
+        memberId: cMemberId,
+        direction: contribModal.mode,
+        amount: signedAmount,
+        referenceTransactionId:
+          contribModal.mode === 'CONTRA_REVERSAL' ? cRefId : undefined,
+        note: cNote.trim(),
+      });
+      setContribModal(null);
+    } catch (err) {
+      setCError(err instanceof Error ? err.message : 'Failed to log contribution.');
+    }
   };
 
   // Role-Based Access Guard for Ground Operators
@@ -176,6 +184,7 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
   }
 
   const canManageMembers = PERMISSIONS.canManageMembers(activeMember.role);
+  const canCreateMembers = PERMISSIONS.canManageMemberCRUD(activeMember);
   const canLogCapital = PERMISSIONS.canLogCapitalDeposit(activeMember.role);
   const canPostContra = PERMISSIONS.canPostContraReversals(activeMember.role);
   const canViewUnmasked = PERMISSIONS.canViewUnmaskedPII(activeMember.role);
@@ -200,7 +209,7 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {canManageMembers && (
+            {canCreateMembers && (
               <button
                 type="button"
                 onClick={() => setShowAddMemberModal(true)}
@@ -210,11 +219,11 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                 Add New Member
               </button>
             )}
-            {canLogCapital && (
+            {canLogCapital && memberEquities.length > 0 && (
               <button
                 type="button"
                 onClick={() =>
-                  handleOpenContribModal('ADDITION', memberEquities[0]?.member.id || 'mem-chipo')
+                  handleOpenContribModal('ADDITION', memberEquities[0]?.member.id || activeMember.id)
                 }
                 className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
               >
@@ -316,11 +325,10 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
             return (
               <div
                 key={eq.member.id}
-                className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-3.5 transition-all shadow-xs ${
-                  isCurrentViewer
+                className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-3.5 transition-all shadow-xs ${isCurrentViewer
                     ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-md shadow-emerald-950/5'
                     : 'bg-white border-[#E8DFCE] hover:border-[#D5C9B3]'
-                }`}
+                  }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
@@ -432,9 +440,8 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
               </div>
               <div className="text-right font-mono">
                 <p
-                  className={`text-sm font-bold ${
-                    c.amount >= 0 ? 'text-emerald-700' : 'text-amber-700'
-                  }`}
+                  className={`text-sm font-bold ${c.amount >= 0 ? 'text-emerald-700' : 'text-amber-700'
+                    }`}
                 >
                   {!showNumbers ? '••••••••' : (c.amount >= 0 ? `+$${c.amount.toFixed(2)}` : `-$${Math.abs(c.amount).toFixed(2)}`)}
                 </p>
@@ -666,22 +673,20 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setCContraSign('DEDUCT')}
-                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                        cContraSign === 'DEDUCT'
+                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${cContraSign === 'DEDUCT'
                           ? 'bg-amber-600 border-amber-600 text-white shadow-xs'
                           : 'bg-white border-[#E0D7C6] text-slate-700 hover:bg-slate-50'
-                      }`}
+                        }`}
                     >
                       - Reduce Overstated Deposit
                     </button>
                     <button
                       type="button"
                       onClick={() => setCContraSign('ADD')}
-                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                        cContraSign === 'ADD'
+                      className={`py-2 rounded-xl text-xs font-semibold border transition-all ${cContraSign === 'ADD'
                           ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
                           : 'bg-white border-[#E0D7C6] text-slate-700 hover:bg-slate-50'
-                      }`}
+                        }`}
                     >
                       + Add Understated Deposit
                     </button>

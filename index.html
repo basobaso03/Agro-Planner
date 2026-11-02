@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500..800;1,500..800&family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..800&display=swap"
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500..800;1,500..800&family=Plus+Jakarta+Sans:ital,wght@0,400..800;1,400..800&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900;1,400;1,700&display=swap"
     rel="stylesheet" />
   <title>Agro Planner</title>
   <meta name="description" content="Multi-location livestock management platform. Built by BASOBASO SOFTWARES." />
@@ -69,33 +69,34 @@
     (function () {
       var params = new URLSearchParams(window.location.search);
       var hash = window.location.hash || '';
+      var isGitHubPages = window.location.hostname.includes('github.io');
       var isCapacitorNative = Boolean(
-        window.Capacitor &&
-        window.Capacitor.isNativePlatform &&
-        window.Capacitor.isNativePlatform()
+        (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ||
+        window.location.protocol === 'capacitor:' ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        !isGitHubPages
       );
 
-      // Determine if user explicitly wants app or public website
-      var wantsApp = params.get('app') === 'true' || hash === '#app' || isCapacitorNative;
-      var wantsWebsite = params.get('website') === 'true' || hash === '#website' || hash === '#download' || hash === '#features' || hash === '#contact';
+      // On non-GitHub environments (Android APK, local development, emulator, etc.), ALWAYS show the app!
+      // On GitHub Pages, default to presentation website unless ?app=true or #app is provided.
+      var wantsApp = isCapacitorNative || params.get('app') === 'true' || hash === '#app';
+      var wantsWebsite = isGitHubPages && (params.get('website') === 'true' || hash === '#website' || hash === '#download' || hash === '#features' || hash === '#contact');
 
-      // Check stored view preference if no query parameters exist
-      if (!wantsApp && !wantsWebsite) {
-        var saved = localStorage.getItem('agro_view_mode');
-        if (saved === 'app' && !window.location.hostname.includes('github.io')) {
-          wantsApp = true;
-        }
+      if (!isGitHubPages) {
+        wantsApp = true;
+        wantsWebsite = false;
       }
 
       var iframe = document.getElementById('public-website-view');
       var rootDiv = document.getElementById('root');
 
-      if (wantsApp) {
+      if (wantsApp || !wantsWebsite) {
         if (iframe) iframe.style.display = 'none';
         if (rootDiv) rootDiv.style.display = 'block';
-        localStorage.setItem('agro_view_mode', 'app');
+        try { localStorage.setItem('agro_view_mode', 'app'); } catch (e) { }
       } else {
-        // Default to public website view (loads public-website/index.html cleanly on GitHub Pages root)
+        // Default to public website view only on GitHub Pages root
         if (iframe) {
           iframe.style.display = 'block';
           if (hash && hash !== '#website') {
@@ -103,7 +104,7 @@
           }
         }
         if (rootDiv) rootDiv.style.display = 'none';
-        localStorage.setItem('agro_view_mode', 'website');
+        try { localStorage.setItem('agro_view_mode', 'website'); } catch (e) { }
       }
 
       // Handle message event from iframe when user clicks "Launch Web App"
@@ -111,7 +112,7 @@
         if (event.data && event.data.type === 'LAUNCH_AGRO_APP') {
           if (iframe) iframe.style.display = 'none';
           if (rootDiv) rootDiv.style.display = 'block';
-          localStorage.setItem('agro_view_mode', 'app');
+          try { localStorage.setItem('agro_view_mode', 'app'); } catch (e) { }
           try {
             var u = new URL(window.location.href);
             u.searchParams.set('app', 'true');

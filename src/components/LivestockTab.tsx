@@ -14,6 +14,10 @@ import {
   ShieldCheck,
   X,
   TrendingUp,
+  Camera,
+  Image as ImageIcon,
+  Upload,
+  Maximize2,
 } from 'lucide-react';
 import { LivestockGrowthCharts } from './LivestockGrowthCharts.tsx';
 import type {
@@ -27,6 +31,21 @@ import type {
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { computeDividendDistribution } from '../utils/calculations.ts';
+import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
+
+const SPECIES_PRESETS = [
+  { id: 'Broilers', name: 'Broilers', emoji: '🐔', cycle: '42-Day Meat Cycle' },
+  { id: 'Layers', name: 'Layers', emoji: '🥚', cycle: '72-Week Egg Cycle' },
+  { id: 'Boer Goats', name: 'Boer Goats', emoji: '🐐', cycle: '8-Month Stud/Market' },
+  { id: 'Indigenous Goats', name: 'Indigenous Goats', emoji: '🐐', cycle: '8-Month Hardy' },
+  { id: 'Cattle', name: 'Cattle', emoji: '🐄', cycle: '18-Month Beef/Dairy' },
+  { id: 'Sheep', name: 'Sheep', emoji: '🐑', cycle: '8-Month Dorper' },
+  { id: 'Pigs', name: 'Pigs / Swine', emoji: '🐖', cycle: '6-Month Pork' },
+  { id: 'Zebras', name: 'Zebras', emoji: '🦓', cycle: '24-Month Game' },
+  { id: 'Ostriches', name: 'Ostriches', emoji: '🪶', cycle: '12-Month Feathers/Meat' },
+  { id: 'Rabbits', name: 'Rabbits', emoji: '🐇', cycle: '4-Month Micro-Herd' },
+  { id: 'CUSTOM', name: 'Custom Species', emoji: '✨', cycle: 'Custom Parameters' },
+];
 
 interface LivestockTabProps {
   livestockStatuses: LivestockComputedStatus[];
@@ -49,6 +68,8 @@ interface LivestockTabProps {
     targetSaleWeightKg?: number;
     notes: string;
     autoDeductPurchaseFromLeftMoney: boolean;
+    imageUrl?: string;
+    gallery?: string[];
   }) => void;
   onLogLifecycleEvent: (data: {
     livestockId: string;
@@ -59,7 +80,9 @@ interface LivestockTabProps {
     reinvestmentPercentage?: number;
     referenceTransactionId?: string;
     note: string;
+    photoUrl?: string;
   }) => void;
+  onAddLivestockPhoto?: (livestockId: string, photoUrl: string, caption?: string) => void;
   showNumbers?: boolean;
 }
 
@@ -71,6 +94,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   memberEquities,
   onRegisterLivestock,
   onLogLifecycleEvent,
+  onAddLivestockPhoto,
   showNumbers = true,
 }) => {
   const [speciesFilter, setSpeciesFilter] = useState('All');
@@ -99,6 +123,36 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [regNotes, setRegNotes] = useState('');
   const [regError, setRegError] = useState('');
 
+  // Ground Photo & Gallery State
+  const [regImage, setRegImage] = useState<string | null>(null);
+  const [evPhoto, setEvPhoto] = useState<string | null>(null);
+  const [galleryTarget, setGalleryTarget] = useState<LivestockComputedStatus | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; caption?: string } | null>(null);
+  const [newGalleryPhoto, setNewGalleryPhoto] = useState<string | null>(null);
+  const [newGalleryCaption, setNewGalleryCaption] = useState('');
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+
+  const handlePhotoFileChange = async (
+    file: File | undefined,
+    targetSetter: (url: string | null) => void
+  ) => {
+    if (!file) return;
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      alert(validation.error || 'Invalid image file.');
+      return;
+    }
+    setIsCompressingPhoto(true);
+    try {
+      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.75 });
+      targetSetter(compressed);
+    } catch (err) {
+      console.error('Failed to compress photo:', err);
+    } finally {
+      setIsCompressingPhoto(false);
+    }
+  };
+
   // Recharts Growth Telemetry Chart Toggle State
   const [showGrowthCharts, setShowGrowthCharts] = useState(true);
 
@@ -106,12 +160,12 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [activeActionModal, setActiveActionModal] = useState<{
     status: LivestockComputedStatus;
     mode:
-      | 'MORTALITY_LOSS'
-      | 'BIRTH_OFFSPRING'
-      | 'VACCINATION_HEALTH'
-      | 'SALE_DISPATCH'
-      | 'HEADCOUNT_CONTRA_ADJUSTMENT'
-      | 'WEIGHT_CHECK';
+    | 'MORTALITY_LOSS'
+    | 'BIRTH_OFFSPRING'
+    | 'VACCINATION_HEALTH'
+    | 'SALE_DISPATCH'
+    | 'HEADCOUNT_CONTRA_ADJUSTMENT'
+    | 'WEIGHT_CHECK';
   } | null>(null);
 
   const [evQuantity, setEvQuantity] = useState('1');
@@ -257,6 +311,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
     setEvReferenceId(status.lifecycleEvents[0]?.id || status.entry.id);
     setEvContraSign('ADD');
     setEvNote(mode === 'WEIGHT_CHECK' ? 'Routine sample weigh-in and growth trajectory verification.' : '');
+    setEvPhoto(null);
     setEvError('');
   };
 
@@ -271,29 +326,41 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
       setRegError('Please provide a Batch/Ear-Tag name and mandatory notes (min 4 chars).');
       return;
     }
+    const targetLocId = regLocationId || locations[0]?.id;
+    if (!targetLocId) {
+      setRegError('Please register a farm site location first before adding livestock.');
+      return;
+    }
     const hc = Math.max(1, parseInt(regHeadcount, 10) || 1);
     const cost = Math.max(0, parseFloat(regCost) || 0);
-    onRegisterLivestock({
-      locationId: regLocationId || locations[0].id,
-      species: finalSpecies,
-      nameOrTag: regNameOrTag.trim(),
-      trackingMode: regMode,
-      entryDate: new Date().toISOString(),
-      initialAgeValue: Math.max(0, parseFloat(regInitialAgeVal) || 0),
-      initialAgeUnit: regInitialAgeUnit,
-      targetDurationValue: Math.max(1, parseFloat(regTargetDurVal) || 1),
-      targetDurationUnit: regTargetDurUnit,
-      initialHeadcount: regMode === 'INDIVIDUAL_TAG' ? 1 : hc,
-      purchaseCostTotal: cost,
-      targetSaleWeightKg: parseFloat(regTargetWeight) || undefined,
-      notes: regNotes.trim(),
-      autoDeductPurchaseFromLeftMoney: regAutoExpense,
-    });
-    setRegNameOrTag('');
-    setCustomSpeciesName('');
-    setRegNotes('');
-    setRegError('');
-    setShowRegisterModal(false);
+    try {
+      onRegisterLivestock({
+        locationId: targetLocId,
+        species: finalSpecies,
+        nameOrTag: regNameOrTag.trim(),
+        trackingMode: regMode,
+        entryDate: new Date().toISOString(),
+        initialAgeValue: Math.max(0, parseFloat(regInitialAgeVal) || 0),
+        initialAgeUnit: regInitialAgeUnit,
+        targetDurationValue: Math.max(1, parseFloat(regTargetDurVal) || 1),
+        targetDurationUnit: regTargetDurUnit,
+        initialHeadcount: regMode === 'INDIVIDUAL_TAG' ? 1 : hc,
+        purchaseCostTotal: cost,
+        targetSaleWeightKg: parseFloat(regTargetWeight) || undefined,
+        notes: regNotes.trim(),
+        autoDeductPurchaseFromLeftMoney: regAutoExpense,
+        imageUrl: regImage || undefined,
+        gallery: regImage ? [regImage] : [],
+      });
+      setRegNameOrTag('');
+      setCustomSpeciesName('');
+      setRegNotes('');
+      setRegImage(null);
+      setRegError('');
+      setShowRegisterModal(false);
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : 'Failed to register livestock.');
+    }
   };
 
   const handleActionSubmit = (e: React.FormEvent) => {
@@ -339,19 +406,43 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
       headcountDelta = 0;
     }
 
-    onLogLifecycleEvent({
-      livestockId: status.entry.id,
-      eventType: mode,
-      headcountDelta,
-      weightAvgKg: evWeightKg ? parseFloat(evWeightKg) : undefined,
-      saleRevenueAmount: mode === 'SALE_DISPATCH' ? Math.max(0, parseFloat(evSaleRevenue) || 0) : undefined,
-      reinvestmentPercentage: mode === 'SALE_DISPATCH' ? evReinvestPct : undefined,
-      referenceTransactionId:
-        mode === 'HEADCOUNT_CONTRA_ADJUSTMENT' ? evReferenceId || status.entry.id : undefined,
-      note: evNote.trim(),
-    });
+    try {
+      onLogLifecycleEvent({
+        livestockId: status.entry.id,
+        eventType: mode,
+        headcountDelta,
+        weightAvgKg: evWeightKg ? parseFloat(evWeightKg) : undefined,
+        saleRevenueAmount: mode === 'SALE_DISPATCH' ? Math.max(0, parseFloat(evSaleRevenue) || 0) : undefined,
+        reinvestmentPercentage: mode === 'SALE_DISPATCH' ? evReinvestPct : undefined,
+        referenceTransactionId:
+          mode === 'HEADCOUNT_CONTRA_ADJUSTMENT' ? evReferenceId || status.entry.id : undefined,
+        note: evNote.trim(),
+        photoUrl: evPhoto || undefined,
+      });
 
-    setActiveActionModal(null);
+      setEvPhoto(null);
+      setActiveActionModal(null);
+    } catch (err) {
+      setEvError(err instanceof Error ? err.message : 'Failed to log lifecycle event.');
+    }
+  };
+
+  const handleAddNewGalleryPhoto = () => {
+    if (!galleryTarget || !newGalleryPhoto) return;
+    const caption = newGalleryCaption.trim() || `Ground progress photo for ${galleryTarget.entry.nameOrTag}`;
+    if (onAddLivestockPhoto) {
+      onAddLivestockPhoto(galleryTarget.entry.id, newGalleryPhoto, caption);
+    } else {
+      onLogLifecycleEvent({
+        livestockId: galleryTarget.entry.id,
+        eventType: 'PHOTO_PROGRESS',
+        headcountDelta: 0,
+        note: caption,
+        photoUrl: newGalleryPhoto,
+      });
+    }
+    setNewGalleryPhoto(null);
+    setNewGalleryCaption('');
   };
 
   return (
@@ -364,11 +455,10 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
               key={sp}
               type="button"
               onClick={() => setSpeciesFilter(sp)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
-                speciesFilter === sp
-                  ? 'tab-brand-active'
-                  : 'tab-brand-inactive'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer ${speciesFilter === sp
+                ? 'tab-brand-active'
+                : 'tab-brand-inactive'
+                }`}
             >
               {sp}
             </button>
@@ -379,11 +469,10 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
           <button
             type="button"
             onClick={() => setShowGrowthCharts(!showGrowthCharts)}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              showGrowthCharts
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
-                : 'bg-[#FAF8F5] hover:bg-[#F0EBE1] text-slate-700 border border-[#E8DFCE] shadow-sm'
-            }`}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${showGrowthCharts
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
+              : 'bg-[#FAF8F5] hover:bg-[#F0EBE1] text-slate-700 border border-[#E8DFCE] shadow-sm'
+              }`}
           >
             <TrendingUp className="w-3.5 h-3.5" />
             {showGrowthCharts ? 'Hide Growth Charts' : 'Show Growth Charts'}
@@ -462,13 +551,12 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   {/* Countdown Status Text */}
                   <div className="text-right">
                     <div
-                      className={`inline-flex items-center gap-1.5 text-xs font-bold font-mono ${
-                        isUrgent
-                          ? 'text-rose-400'
-                          : isWarn
+                      className={`inline-flex items-center gap-1.5 text-xs font-bold font-mono ${isUrgent
+                        ? 'text-rose-400'
+                        : isWarn
                           ? 'text-amber-300'
                           : 'text-emerald-400'
-                      }`}
+                        }`}
                     >
                       {isUrgent ? (
                         <AlertTriangle className="w-4 h-4" />
@@ -485,6 +573,69 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   </div>
                 </div>
 
+                {/* Ground Visual Gallery Strip */}
+                {Boolean(
+                  status.entry.imageUrl ||
+                  (status.entry.gallery && status.entry.gallery.length > 0) ||
+                  status.lifecycleEvents.some((e) => e.photoUrl)
+                ) && (
+                    <div className="pt-1 pb-1">
+                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+                        <span className="flex items-center gap-1.5 font-semibold text-amber-300">
+                          <Camera className="w-3.5 h-3.5 text-amber-400" />
+                          Live Ground Evidence &amp; Progress Photos
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryTarget(status)}
+                          className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
+                        >
+                          Open Full Gallery
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                        {Array.from(
+                          new Set([
+                            ...(status.entry.imageUrl ? [status.entry.imageUrl] : []),
+                            ...(status.entry.gallery || []),
+                            ...(status.lifecycleEvents.map((e) => e.photoUrl).filter(Boolean) as string[]),
+                          ])
+                        )
+                          .slice(0, 6)
+                          .map((imgUrl, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() =>
+                                setLightboxImage({
+                                  url: imgUrl,
+                                  caption: `${status.entry.nameOrTag} · Photo #${idx + 1}`,
+                                })
+                              }
+                              className="relative group shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-700 hover:border-amber-400 transition-all cursor-pointer shadow-xs"
+                            >
+                              <img
+                                src={imgUrl}
+                                alt={`${status.entry.nameOrTag} ground photo`}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-900/30 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                                <Maximize2 className="w-3.5 h-3.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </button>
+                          ))}
+                        <button
+                          type="button"
+                          onClick={() => setGalleryTarget(status)}
+                          className="shrink-0 h-16 sm:h-20 px-3 rounded-xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-950/60 hover:bg-slate-900 text-[11px] font-semibold text-amber-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4 text-amber-400" />
+                          <span>+ Add Photo</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 {/* Progress Bar */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1.5">
@@ -499,13 +650,12 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   </div>
                   <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-transform duration-200 ${
-                        isUrgent
-                          ? 'bg-rose-500'
-                          : isWarn
+                      className={`h-full rounded-full transition-transform duration-200 ${isUrgent
+                        ? 'bg-rose-500'
+                        : isWarn
                           ? 'bg-amber-500'
                           : 'bg-emerald-500'
-                      }`}
+                        }`}
                       style={{ width: `${status.progressPercentage}%` }}
                     />
                   </div>
@@ -548,12 +698,27 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   </div>
                 </div>
 
-                {/* 5 Append-Only Action Buttons */}
+                {/* 6 Append-Only Action Buttons + Ground Gallery */}
                 <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => setGalleryTarget(status)}
+                    className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    Ground Gallery ({
+                      new Set([
+                        ...(status.entry.imageUrl ? [status.entry.imageUrl] : []),
+                        ...(status.entry.gallery || []),
+                        ...(status.lifecycleEvents.map((e) => e.photoUrl).filter(Boolean) as string[]),
+                      ]).size
+                    })
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => handleOpenActionModal(status, 'MORTALITY_LOSS')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-700/60 text-xs font-medium text-rose-300 flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-700/60 text-xs font-medium text-rose-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <MinusCircle className="w-3.5 h-3.5" />
                     Log Mortality / Loss
@@ -562,7 +727,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'BIRTH_OFFSPRING')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
                     Log Birth / Offspring
@@ -571,7 +736,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'VACCINATION_HEALTH')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-sky-300 flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-sky-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Syringe className="w-3.5 h-3.5" />
                     Log Vaccine
@@ -580,7 +745,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'WEIGHT_CHECK')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Scale className="w-3.5 h-3.5" />
                     Weigh-In Check
@@ -589,7 +754,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'SALE_DISPATCH')}
-                    className="px-3 py-2 rounded-xl bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-600/60 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 rounded-xl bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-600/60 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <DollarSign className="w-3.5 h-3.5" />
                     {activeMember.role === 'GROUND_OPERATOR'
@@ -601,7 +766,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenActionModal(status, 'HEADCOUNT_CONTRA_ADJUSTMENT')}
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/60 border border-slate-700 hover:border-amber-700/60 text-xs font-medium text-amber-300 flex items-center gap-1.5 transition-colors"
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/60 border border-slate-700 hover:border-amber-700/60 text-xs font-medium text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Scale className="w-3.5 h-3.5" />
                       Post Contra-Adjustment
@@ -655,9 +820,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                         >
                           <div className="flex items-center gap-2">
                             <CheckCircle2
-                              className={`w-4 h-4 shrink-0 ${
-                                proto.completed ? 'text-emerald-400' : 'text-slate-600'
-                              }`}
+                              className={`w-4 h-4 shrink-0 ${proto.completed ? 'text-emerald-400' : 'text-slate-600'
+                                }`}
                             />
                             <div>
                               <span
@@ -708,8 +872,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                                 ev.headcountDelta > 0
                                   ? 'text-emerald-400 font-bold'
                                   : ev.headcountDelta < 0
-                                  ? 'text-rose-400 font-bold'
-                                  : 'text-slate-300'
+                                    ? 'text-rose-400 font-bold'
+                                    : 'text-slate-300'
                               }
                             >
                               {!showNumbers ? '•••• hd' : `${ev.headcountDelta > 0 ? `+${ev.headcountDelta}` : ev.headcountDelta} hd`}
@@ -759,7 +923,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label htmlFor="reg-loc" className="block text-xs font-medium text-slate-300 mb-1">
                     Farm Location *
@@ -768,7 +932,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     id="reg-loc"
                     value={regLocationId}
                     onChange={(e) => setRegLocationId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70 cursor-pointer"
                   >
                     {locations.map((l) => (
                       <option key={l.id} value={l.id}>
@@ -777,38 +941,70 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     ))}
                   </select>
                 </div>
+
                 <div>
-                  <label htmlFor="reg-species" className="block text-xs font-medium text-slate-300 mb-1">
-                    Species / Category *
-                  </label>
-                  <select
-                    id="reg-species"
-                    value={regSpecies}
-                    onChange={(e) => handleSpeciesChange(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
-                  >
-                    <optgroup label="Poultry">
-                      <option value="Broilers">Broilers (Meat Birds)</option>
-                      <option value="Layers">Layers (Egg Production)</option>
-                    </optgroup>
-                    <optgroup label="Livestock & Ruminants">
-                      <option value="Boer Goats">Boer Goats</option>
-                      <option value="Indigenous Goats">Indigenous Goats</option>
-                      <option value="Cattle">Cattle (Beef / Dairy)</option>
-                      <option value="Sheep">Sheep (Dorper / Meat)</option>
-                      <option value="Pigs">Pigs / Swine</option>
-                    </optgroup>
-                    <optgroup label="Game, Wildlife & Equines">
-                      <option value="Zebras">Zebras (Game / Wildlife)</option>
-                      <option value="Ostriches">Ostriches</option>
-                    </optgroup>
-                    <optgroup label="Micro-Livestock">
-                      <option value="Rabbits">Rabbits</option>
-                    </optgroup>
-                    <optgroup label="Custom / Other">
-                      <option value="CUSTOM">+ Other / Custom Species (Type Name)...</option>
-                    </optgroup>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="reg-species" className="block text-xs font-medium text-slate-300">
+                      Species / Category *
+                    </label>
+                    <span className="text-[10px] text-amber-400 font-mono">
+                      {SPECIES_PRESETS.find((p) => p.id === regSpecies)?.cycle || 'Standard Cycle'}
+                    </span>
+                  </div>
+
+                  {/* Modern Visual Quick-Select Chips */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-1 mb-2 no-scrollbar">
+                    {SPECIES_PRESETS.map((p) => {
+                      const isSelected = regSpecies === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSpeciesChange(p.id)}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1 transition-all cursor-pointer border ${isSelected
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 ring-1 ring-emerald-500 shadow-xs'
+                              : 'bg-slate-900/90 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600'
+                            }`}
+                        >
+                          <span>{p.emoji}</span>
+                          <span>{p.name.split(' ')[0]}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative">
+                    <select
+                      id="reg-species"
+                      value={regSpecies}
+                      onChange={(e) => handleSpeciesChange(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/70"
+                    >
+                      <optgroup label="Poultry">
+                        <option value="Broilers">🐔 Broilers (Meat Birds — 42-day cycle)</option>
+                        <option value="Layers">🥚 Layers (Egg Production — 72-week cycle)</option>
+                      </optgroup>
+                      <optgroup label="Livestock & Ruminants">
+                        <option value="Boer Goats">🐐 Boer Goats (Stud / Commercial — 8 months)</option>
+                        <option value="Indigenous Goats">🐐 Indigenous Goats (Hardy Breed — 8 months)</option>
+                        <option value="Cattle">🐄 Cattle (Beef / Dairy — 18 months)</option>
+                        <option value="Sheep">🐑 Sheep (Dorper / Meat — 8 months)</option>
+                        <option value="Pigs">🐖 Pigs / Swine (6 months)</option>
+                      </optgroup>
+                      <optgroup label="Game, Wildlife & Equines">
+                        <option value="Zebras">🦓 Zebras (Game / Wildlife — 24 months)</option>
+                        <option value="Ostriches">🪶 Ostriches (Game / Feathers — 12 months)</option>
+                      </optgroup>
+                      <optgroup label="Micro-Livestock">
+                        <option value="Rabbits">🐇 Rabbits (Meat / Breeding — 4 months)</option>
+                      </optgroup>
+                      <optgroup label="Custom / Other">
+                        <option value="CUSTOM">✨ + Other / Custom Species (Type Name)...</option>
+                      </optgroup>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+
                   {regSpecies === 'CUSTOM' && (
                     <div className="mt-2.5">
                       <label htmlFor="reg-custom-species" className="block text-xs font-semibold text-emerald-400 mb-1">
@@ -829,7 +1025,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label htmlFor="reg-mode" className="block text-xs font-medium text-slate-300 mb-1">
                     Tracking Mode
@@ -842,7 +1038,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       setRegMode(nextMode);
                       if (nextMode === 'INDIVIDUAL_TAG') setRegHeadcount('1');
                     }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70 cursor-pointer"
                   >
                     <option value="BATCH">Batch / Flock / Herd</option>
                     <option value="INDIVIDUAL_TAG">Individual Ear-Tag</option>
@@ -859,7 +1055,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     disabled={regMode === 'INDIVIDUAL_TAG'}
                     value={regMode === 'INDIVIDUAL_TAG' ? '1' : regHeadcount}
                     onChange={(e) => setRegHeadcount(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white disabled:opacity-50"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-500/70"
                   />
                 </div>
               </div>
@@ -875,29 +1071,30 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   placeholder="e.g. Broiler Batch #14 or Boer Stud Buck #ZW-22"
                   value={regNameOrTag}
                   onChange={(e) => setRegNameOrTag(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Initial Age & Target Duration Compound Inputs (Clean mobile layout) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label htmlFor="reg-init-age" className="block text-xs font-medium text-slate-300 mb-1">
                     Initial Age at Entry
                   </label>
-                  <div className="flex gap-1.5">
+                  <div className="flex items-center rounded-xl overflow-hidden border border-slate-700 bg-slate-950 focus-within:ring-2 focus-within:ring-amber-500/70 focus-within:border-transparent transition-all">
                     <input
                       id="reg-init-age"
                       type="number"
                       min="0"
                       value={regInitialAgeVal}
                       onChange={(e) => setRegInitialAgeVal(e.target.value)}
-                      className="w-20 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs font-mono text-white"
+                      className="w-24 px-3 py-2.5 bg-transparent text-sm font-mono text-white border-r border-slate-800 focus:outline-none"
                     />
                     <select
                       aria-label="Initial Age Unit"
                       value={regInitialAgeUnit}
                       onChange={(e) => setRegInitialAgeUnit(e.target.value as DurationUnit)}
-                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white"
+                      className="flex-1 px-3 py-2.5 bg-slate-900 hover:bg-slate-850 text-xs font-semibold text-slate-200 border-none focus:outline-none cursor-pointer"
                     >
                       <option value="DAYS">Days</option>
                       <option value="WEEKS">Weeks</option>
@@ -911,20 +1108,20 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <label htmlFor="reg-target-dur" className="block text-xs font-medium text-slate-300 mb-1">
                     Target Sale Duration *
                   </label>
-                  <div className="flex gap-1.5">
+                  <div className="flex items-center rounded-xl overflow-hidden border border-slate-700 bg-slate-950 focus-within:ring-2 focus-within:ring-amber-500/70 focus-within:border-transparent transition-all">
                     <input
                       id="reg-target-dur"
                       type="number"
                       min="1"
                       value={regTargetDurVal}
                       onChange={(e) => setRegTargetDurVal(e.target.value)}
-                      className="w-20 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-xs font-mono text-white"
+                      className="w-24 px-3 py-2.5 bg-transparent text-sm font-mono text-white border-r border-slate-800 focus:outline-none"
                     />
                     <select
                       aria-label="Target Duration Unit"
                       value={regTargetDurUnit}
                       onChange={(e) => setRegTargetDurUnit(e.target.value as DurationUnit)}
-                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white"
+                      className="flex-1 px-3 py-2.5 bg-slate-900 hover:bg-slate-850 text-xs font-semibold text-slate-200 border-none focus:outline-none cursor-pointer"
                     >
                       <option value="DAYS">Days</option>
                       <option value="WEEKS">Weeks</option>
@@ -935,7 +1132,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label htmlFor="reg-cost" className="block text-xs font-medium text-slate-300 mb-1">
                     Total Purchase Cost ($)
@@ -947,7 +1144,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     step="0.01"
                     value={regCost}
                     onChange={(e) => setRegCost(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70"
                   />
                 </div>
                 <div>
@@ -961,7 +1158,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     step="0.1"
                     value={regTargetWeight}
                     onChange={(e) => setRegTargetWeight(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70"
                   />
                 </div>
               </div>
@@ -991,6 +1188,59 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   onChange={(e) => setRegNotes(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    Livestock Arrival / Ear-Tag Photo
+                  </span>
+                  {regImage && (
+                    <button
+                      type="button"
+                      onClick={() => setRegImage(null)}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                    >
+                      Remove Photo
+                    </button>
+                  )}
+                </label>
+                {regImage ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-amber-500/40 bg-slate-950 p-2.5 flex items-center gap-3">
+                    <img
+                      src={regImage}
+                      alt="Arrival preview"
+                      className="w-16 h-16 rounded-xl object-cover shrink-0 border border-slate-700 shadow-sm"
+                    />
+                    <div className="text-xs text-slate-300 min-w-0">
+                      <p className="font-semibold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Arrival Photo Attached
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        High-resolution photo compressed to ~40KB for instant mobile sync and visual gallery verification.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center p-4 rounded-2xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all">
+                    <Camera className="w-6 h-6 text-amber-400 mb-1" />
+                    <span className="text-xs text-slate-200 font-semibold">
+                      {isCompressingPhoto ? 'Optimizing photo...' : 'Snap or Upload Arrival Photo'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      JPG, PNG, WebP (Camera or Gallery)
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingPhoto}
+                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setRegImage)}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="pt-2 flex items-center gap-2.5">
@@ -1084,22 +1334,20 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setEvContraSign('ADD')}
-                      className={`py-2 rounded-xl text-xs font-semibold border ${
-                        evContraSign === 'ADD'
-                          ? 'bg-emerald-600 border-emerald-500 text-white'
-                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                      }`}
+                      className={`py-2 rounded-xl text-xs font-semibold border ${evContraSign === 'ADD'
+                        ? 'bg-emerald-600 border-emerald-500 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
                     >
                       + Restore / Add Headcount
                     </button>
                     <button
                       type="button"
                       onClick={() => setEvContraSign('SUBTRACT')}
-                      className={`py-2 rounded-xl text-xs font-semibold border ${
-                        evContraSign === 'SUBTRACT'
-                          ? 'bg-rose-600 border-rose-500 text-white'
-                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                      }`}
+                      className={`py-2 rounded-xl text-xs font-semibold border ${evContraSign === 'SUBTRACT'
+                        ? 'bg-rose-600 border-rose-500 text-white'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
                     >
                       - Deduct Overstated Count
                     </button>
@@ -1240,6 +1488,59 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    Photographic Ground Evidence (Autopsy, Scale, Vaccine, or Dispatch)
+                  </span>
+                  {evPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => setEvPhoto(null)}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                    >
+                      Remove Photo
+                    </button>
+                  )}
+                </label>
+                {evPhoto ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-emerald-500/40 bg-slate-950 p-2.5 flex items-center gap-3">
+                    <img
+                      src={evPhoto}
+                      alt="Event evidence preview"
+                      className="w-16 h-16 rounded-xl object-cover shrink-0 border border-slate-700 shadow-sm"
+                    />
+                    <div className="text-xs text-slate-300 min-w-0">
+                      <p className="font-semibold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Evidence Photo Attached
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Will be permanently linked to this lifecycle block and added to the livestock gallery.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center p-3.5 rounded-2xl border border-dashed border-slate-700 hover:border-emerald-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all">
+                    <Camera className="w-5 h-5 text-emerald-400 mb-1" />
+                    <span className="text-xs text-slate-200 font-semibold">
+                      {isCompressingPhoto ? 'Optimizing evidence photo...' : 'Attach Proof Photo (Camera / File)'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      Mortality autopsy, scale readout, vaccine vial, or loading truck
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingPhoto}
+                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setEvPhoto)}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
               <div className="pt-2 flex items-center gap-2.5">
                 <button
                   type="button"
@@ -1257,6 +1558,221 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* GROUND EVIDENCE GALLERY MODAL */}
+      {galleryTarget && (
+        <div
+          className="modal-overlay-responsive"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gallery-modal-title"
+        >
+          <div className="modal-dialog-responsive max-w-2xl p-5 sm:p-6 bg-slate-900 border border-slate-800 text-white">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h2 id="gallery-modal-title" className="text-base font-bold flex items-center gap-2 text-white">
+                  <Camera className="w-5 h-5 text-amber-400" />
+                  Ground Evidence Gallery · {galleryTarget.entry.nameOrTag}
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {galleryTarget.entry.species} · {galleryTarget.entry.locationName} · {galleryTarget.currentLiveHeadcount} Live
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGalleryTarget(null)}
+                aria-label="Close gallery"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="modal-body-scroll mt-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {/* Quick Add Photo Dropzone */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-amber-400" />
+                    Upload Live Ground Photo
+                  </span>
+                  {newGalleryPhoto && (
+                    <button
+                      type="button"
+                      onClick={() => setNewGalleryPhoto(null)}
+                      className="text-[11px] text-rose-400 hover:text-rose-300 underline"
+                    >
+                      Clear Selection
+                    </button>
+                  )}
+                </div>
+
+                {newGalleryPhoto ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={newGalleryPhoto}
+                        alt="Preview"
+                        className="w-16 h-16 rounded-xl object-cover border border-amber-500/50"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Caption (e.g. Day 28 flock feathering, pen disinfection)..."
+                        value={newGalleryCaption}
+                        onChange={(e) => setNewGalleryCaption(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddNewGalleryPhoto}
+                      className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Commit Photo to Syndicate Gallery
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-900/50 hover:bg-slate-900 text-xs text-slate-300 font-medium cursor-pointer transition-all">
+                    <Camera className="w-4 h-4 text-amber-400" />
+                    <span>{isCompressingPhoto ? 'Compressing photo...' : 'Snap or Select Field Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingPhoto}
+                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setNewGalleryPhoto)}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* Photos Grid */}
+              {(() => {
+                const allPhotos: { url: string; title: string; timestamp: string; actor?: string; eventType?: string }[] = [];
+
+                if (galleryTarget.entry.imageUrl) {
+                  allPhotos.push({
+                    url: galleryTarget.entry.imageUrl,
+                    title: 'Arrival Stocking Photo',
+                    timestamp: galleryTarget.entry.createdAt,
+                    actor: galleryTarget.entry.createdByMemberName,
+                    eventType: 'INITIAL_STOCK',
+                  });
+                }
+
+                (galleryTarget.entry.gallery || []).forEach((url, i) => {
+                  if (url !== galleryTarget.entry.imageUrl) {
+                    allPhotos.push({
+                      url,
+                      title: `Ground Photo #${i + 1}`,
+                      timestamp: galleryTarget.entry.createdAt,
+                      actor: galleryTarget.entry.createdByMemberName,
+                    });
+                  }
+                });
+
+                galleryTarget.lifecycleEvents.forEach((ev) => {
+                  if (ev.photoUrl && !allPhotos.some((p) => p.url === ev.photoUrl)) {
+                    allPhotos.push({
+                      url: ev.photoUrl,
+                      title: ev.note,
+                      timestamp: ev.createdAt,
+                      actor: ev.loggedByName,
+                      eventType: ev.eventType,
+                    });
+                  }
+                });
+
+                if (allPhotos.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-slate-500 space-y-2">
+                      <ImageIcon className="w-10 h-10 mx-auto text-slate-600" />
+                      <p className="text-sm font-semibold text-slate-400">No Ground Photos Uploaded Yet</p>
+                      <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                        Snap or select photos from your device to provide visual verification for remote syndicate investors.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {allPhotos.map((photo, index) => (
+                      <div
+                        key={index}
+                        className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex flex-col"
+                      >
+                        <div
+                          onClick={() => setLightboxImage({ url: photo.url, caption: `${photo.title} (${new Date(photo.timestamp).toLocaleDateString()})` })}
+                          className="relative aspect-4/3 overflow-hidden cursor-pointer bg-slate-900"
+                        >
+                          <img
+                            src={photo.url}
+                            alt={photo.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute inset-0 bg-slate-950/20 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                            <Maximize2 className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
+                          </div>
+                          {photo.eventType && (
+                            <span className="absolute top-2 left-2 text-[9px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-900/80 text-amber-300 border border-slate-700 backdrop-blur-xs">
+                              {photo.eventType.replace(/_/g, ' ')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="p-2.5 text-xs space-y-0.5">
+                          <p className="font-semibold text-slate-200 line-clamp-1">{photo.title}</p>
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                            <span>{new Date(photo.timestamp).toLocaleDateString()}</span>
+                            {photo.actor && <span className="truncate max-w-[80px]">{photo.actor}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL-SCREEN LIGHTBOX MODAL */}
+      {lightboxImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightboxImage(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/70">
+              <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                <Camera className="w-4 h-4 text-amber-400" />
+                {lightboxImage.caption || 'Verified Ground Photo'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(null)}
+                aria-label="Close preview"
+                className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-2 sm:p-4 overflow-auto flex items-center justify-center bg-black/60">
+              <img
+                src={lightboxImage.url}
+                alt="High resolution ground photo"
+                className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-md"
+              />
+            </div>
           </div>
         </div>
       )}

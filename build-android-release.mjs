@@ -156,6 +156,20 @@ try {
       }
       console.log(`\x1b[32m✔ Website Sync: Auto-updated APP_CONFIG.apkSize to ${sizeMb} MB\x1b[0m`);
     }
+
+    // Sync version.json across public, dist, and public-website
+    const versionSrc = path.join(projectRoot, 'public', 'version.json');
+    if (fs.existsSync(versionSrc)) {
+      const distVersion = path.join(projectRoot, 'dist', 'version.json');
+      const websiteVersion = path.join(projectRoot, 'public-website', 'version.json');
+      const rootVersion = path.join(projectRoot, 'version.json');
+      if (fs.existsSync(path.join(projectRoot, 'dist'))) {
+        fs.copyFileSync(versionSrc, distVersion);
+      }
+      fs.copyFileSync(versionSrc, websiteVersion);
+      fs.copyFileSync(versionSrc, rootVersion);
+      console.log(`\x1b[32m✔ Version Config Sync: Synchronized version.json across dist & public-website\x1b[0m`);
+    }
   } catch (syncErr) {
     console.warn('  (Could not auto-update website size config, continuing...)', syncErr.message);
   }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
   Clock,
@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   MessageCircle,
+  RefreshCw,
 } from 'lucide-react';
 import type { SyndicateMember } from '../types/agro.ts';
 import { dataService } from '../services/dataService.ts';
@@ -52,6 +53,44 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
   const [pwdMessage, setPwdMessage] = useState('');
   const [pwdError, setPwdError] = useState('');
   const [pwdLoading, setPwdLoading] = useState(false);
+
+  // Real-time Cloud Approval Status Check State
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<{
+    type: 'APPROVED' | 'PENDING' | 'ERROR';
+    text: string;
+  } | null>(null);
+
+  const handleCheckApprovalStatus = async () => {
+    setIsCheckingStatus(true);
+    setStatusFeedback(null);
+    try {
+      const refreshed = await dataService.checkMemberApprovalStatus(member.id);
+      if (refreshed && refreshed.approvalStatus === 'APPROVED') {
+        setStatusFeedback({
+          type: 'APPROVED',
+          text: 'Account approved! Launching farm workspace...',
+        });
+      } else {
+        setStatusFeedback({
+          type: 'PENDING',
+          text: `Status checked just now (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}): Account still awaiting approval from Farm Admin.`,
+        });
+      }
+    } catch {
+      setStatusFeedback({
+        type: 'ERROR',
+        text: 'Unable to reach cloud servers. Please check your internet connection and try again.',
+      });
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    // Check approval status automatically on mount in case approval was granted
+    void handleCheckApprovalStatus();
+  }, []);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,8 +193,17 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
                   : 'Your account has been registered successfully. For farm privacy and record security, the farm administrator will review your account and assign your role shortly. This screen will automatically open once approved.'}
               </p>
 
-              {/* Direct Quick WhatsApp Notification to Admin */}
+              {/* Direct Quick WhatsApp Notification to Admin & Real-time Refresh */}
               <div className="pt-2 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCheckApprovalStatus}
+                  disabled={isCheckingStatus}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-xs transition-all cursor-pointer disabled:opacity-60 active:scale-[0.98]"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingStatus ? 'Checking Status...' : 'Check Approval Status'}</span>
+                </button>
                 <a
                   href={whatsappUrl}
                   target="_blank"
@@ -165,10 +213,25 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
                   <MessageCircle className="w-4 h-4" />
                   <span>Notify Admin on WhatsApp</span>
                 </a>
-                <span className="text-xs text-slate-500">
-                  Tap to quickly notify the manager to approve your account.
-                </span>
               </div>
+
+              {statusFeedback && (
+                <div
+                  className={`p-3 rounded-2xl text-xs font-medium border flex items-center gap-2 transition-all ${statusFeedback.type === 'APPROVED'
+                      ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                      : statusFeedback.type === 'ERROR'
+                        ? 'bg-rose-50 text-rose-900 border-rose-300'
+                        : 'bg-amber-50/80 text-amber-900 border-amber-200'
+                    }`}
+                >
+                  {statusFeedback.type === 'APPROVED' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                  <span>{statusFeedback.text}</span>
+                </div>
+              )}
             </div>
 
             {/* Account Identity Summary */}
@@ -405,8 +468,8 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
                 {pwdLoading
                   ? 'Linking Credential...'
                   : member.hasPasswordSetup
-                  ? 'Update Account Password'
-                  : 'Link Password to Google Account'}
+                    ? 'Update Account Password'
+                    : 'Link Password to Google Account'}
               </span>
             </button>
           </form>

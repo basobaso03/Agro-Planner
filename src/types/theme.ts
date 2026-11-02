@@ -1,4 +1,5 @@
 export type FontStyleId =
+  | 'android-native'
   | 'modern-geometric'
   | 'clean-tech'
   | 'editorial-serif'
@@ -10,13 +11,23 @@ export interface FontOption {
   name: string;
   cssClass: string;
   familyDisplay: string;
-  category: 'Geometric' | 'Clean Tech' | 'Editorial' | 'Monospace' | 'Humanist';
+  category: 'Android Studio / Flutter' | 'Geometric' | 'Clean Tech' | 'Editorial' | 'Monospace' | 'Humanist';
   description: string;
   previewText: string;
   sampleFigures: string;
 }
 
 export const FONT_OPTIONS: FontOption[] = [
+  {
+    id: 'android-native',
+    name: 'Android Studio / Flutter (Roboto)',
+    cssClass: 'font-style-android',
+    familyDisplay: 'Roboto',
+    category: 'Android Studio / Flutter',
+    description: 'The native Android and Flutter system typography. Engineered by Google for crisp mobile readability, balanced line heights, and clean numeric displays.',
+    previewText: 'Harare Master Syndicate · Mobile Field Station',
+    sampleFigures: '$2,585.00 · 296 Live Birds (Day 34)',
+  },
   {
     id: 'modern-geometric',
     name: 'Modern Geometric (Solora Default)',

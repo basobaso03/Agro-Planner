@@ -358,16 +358,18 @@ export async function authenticateOrEnrollBiometric(params: {
 }
 
 // ============================================================================
-// ANDROID NATIVE & PWA SYSTEM NOTIFICATIONS (CAPACITOR + SERVICE WORKER)
+// ANDROID NATIVE & PWA SYSTEM NOTIFICATIONS (CAPACITOR + PUSH + SERVICE WORKER)
 // ============================================================================
 
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 let channelsInitialized = false;
+let pushListenersInitialized = false;
 
 /**
- * Initializes Android notification channels with high priority, sound, and vibration
+ * Initializes Android notification channels with high priority, sound, and vibration,
+ * plus action types so tapping a notification opens Agro Planner.
  */
 export async function initializeNotificationChannels(): Promise<void> {
   if (channelsInitialized) return;
@@ -392,7 +394,7 @@ export async function initializeNotificationChannels(): Promise<void> {
       id: 'financial_ledger',
       name: 'Financial Ledger & Syndicate Vault',
       description: 'Capital pool contributions, sales revenues, and expense approvals',
-      importance: 4,
+      importance: 5,
       visibility: 1,
       vibration: true,
       lights: true,
@@ -403,9 +405,24 @@ export async function initializeNotificationChannels(): Promise<void> {
       id: 'milestones_general',
       name: 'General Milestones & Operations',
       description: 'Offspring births, batch registrations, member approvals, and feed logs',
-      importance: 3,
+      importance: 4,
       visibility: 1,
-      vibration: false,
+      vibration: true,
+    });
+
+    await LocalNotifications.registerActionTypes({
+      types: [
+        {
+          id: 'AGRO_OPEN_ACTION',
+          actions: [
+            {
+              id: 'open_drawer',
+              title: 'View Audit Ledger',
+              foreground: true,
+            },
+          ],
+        },
+      ],
     });
 
     channelsInitialized = true;
@@ -414,12 +431,118 @@ export async function initializeNotificationChannels(): Promise<void> {
   }
 }
 
+/**
+ * Initializes Firebase Cloud Messaging (FCM) PushNotifications and LocalNotification tap listeners
+ * so that the device receives background/closed-app push notifications and opens the notification
+ * drawer when tapped.
+ */
+export async function initPushNotifications(onNotificationTapped?: () => void): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    await initializeNotificationChannels();
+
+    // Ensure local notification permission is checked/requested on startup
+    const localCheck = await LocalNotifications.checkPermissions();
+    if (localCheck.display === 'prompt' || localCheck.display === 'prompt-with-rationale') {
+      const req = await LocalNotifications.requestPermissions();
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'agro_planner_native_notif_perm_v1',
+          req.display === 'granted' ? 'granted' : req.display === 'denied' ? 'denied' : 'default'
+        );
+      }
+    } else if (localCheck.display === 'granted' && typeof window !== 'undefined') {
+      window.localStorage.setItem('agro_planner_native_notif_perm_v1', 'granted');
+    }
+
+    if (!pushListenersInitialized) {
+      pushListenersInitialized = true;
+
+      await LocalNotifications.addListener('localNotificationActionPerformed', () => {
+        if (onNotificationTapped) {
+          onNotificationTapped();
+        }
+      });
+
+      await PushNotifications.addListener('registration', (token) => {
+        try {
+          window.localStorage.setItem('agro_planner_fcm_token_v1', token.value);
+        } catch {
+          // Ignore storage error
+        }
+      });
+
+      await PushNotifications.addListener('registrationError', (err) => {
+        console.warn('[PushNotifications] Registration error:', err.error);
+      });
+
+      await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        // When a push arrives while app is in foreground or waking up, mirror it to high-priority local notification
+        void dispatchSystemNotification({
+          title: notification.title || 'Agro Planner Alert',
+          body: notification.body || 'New syndicate ledger activity recorded.',
+          urgent: true,
+          severity: 'URGENT_GROUND',
+        });
+      });
+
+      await PushNotifications.addListener('pushNotificationActionPerformed', () => {
+        if (onNotificationTapped) {
+          onNotificationTapped();
+        }
+      });
+    }
+
+    // Request and register FCM PushNotifications safely
+    let permStatus = await PushNotifications.checkPermissions();
+    if (permStatus.receive === 'prompt' || permStatus.receive === 'prompt-with-rationale') {
+      permStatus = await PushNotifications.requestPermissions();
+    }
+
+    if (permStatus.receive === 'granted') {
+      await PushNotifications.register();
+    }
+  } catch (err) {
+    console.warn('[PushNotifications] Safe initialization fallback:', err);
+  }
+}
+
 export function getNotificationPermissionState(): NotificationPermission | 'unsupported' {
   if (typeof window === 'undefined') return 'unsupported';
+  if (Capacitor.isNativePlatform()) {
+    // On Android/iOS Capacitor, window.Notification is often undefined or 'default' even when
+    // native POST_NOTIFICATIONS is granted. Track native grant in localStorage + preference.
+    const storedNativePerm = window.localStorage.getItem('agro_planner_native_notif_perm_v1');
+    if (storedNativePerm === 'granted' || storedNativePerm === 'denied') {
+      return storedNativePerm;
+    }
+    return 'default';
+  }
   if ('Notification' in window) {
     return Notification.permission;
   }
   return 'granted';
+}
+
+export async function checkAsyncNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
+  if (typeof window === 'undefined') return 'unsupported';
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const status = await LocalNotifications.checkPermissions();
+      const mapped: NotificationPermission =
+        status.display === 'granted'
+          ? 'granted'
+          : status.display === 'denied'
+            ? 'denied'
+            : 'default';
+      window.localStorage.setItem('agro_planner_native_notif_perm_v1', mapped);
+      return mapped;
+    } catch {
+      return getNotificationPermissionState();
+    }
+  }
+  return getNotificationPermissionState();
 }
 
 export function areSystemNotificationsEnabled(): boolean {
@@ -433,46 +556,60 @@ export function setSystemNotificationsPreference(enabled: boolean): void {
 }
 
 /**
- * Requests notification permissions across Native Capacitor Android/iOS and Web/PWA
+ * Requests notification permissions across Native Capacitor Android/iOS and Web/PWA.
+ * Does NOT call PushNotifications.register() on native Android to prevent FCM native crash / white screen.
  */
 export async function requestSystemNotificationPermission(): Promise<NotificationPermission> {
-  let granted = false;
-
-  // 1. Native Capacitor Local & Push Notifications
+  // 1. Native Capacitor Local Notifications (Android / iOS)
   if (Capacitor.isNativePlatform()) {
     try {
       const localPerm = await LocalNotifications.requestPermissions();
       const isLocalGranted = localPerm.display === 'granted';
+      const mapped: NotificationPermission = isLocalGranted
+        ? 'granted'
+        : localPerm.display === 'denied'
+          ? 'denied'
+          : 'default';
 
-      // Also request push permissions for remote FCM
-      try {
-        const pushPerm = await PushNotifications.requestPermissions();
-        if (pushPerm.receive === 'granted') {
-          await PushNotifications.register();
-        }
-      } catch (pushErr) {
-        console.warn('Push registration note:', pushErr);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('agro_planner_native_notif_perm_v1', mapped);
       }
 
       if (isLocalGranted) {
         await initializeNotificationChannels();
+        try {
+          const pushPerm = await PushNotifications.checkPermissions();
+          if (pushPerm.receive === 'prompt' || pushPerm.receive === 'prompt-with-rationale') {
+            await PushNotifications.requestPermissions();
+          }
+          await PushNotifications.register();
+        } catch {
+          // Ignore push registration warning if FCM is offline
+        }
         setSystemNotificationsPreference(true);
         triggerHapticFeedback([40, 30, 40]);
         return 'granted';
       }
+      return mapped;
     } catch (err) {
       console.warn('Capacitor native permission error:', err);
+      return 'denied';
     }
   }
 
   // 2. Standard Web & Service Worker Notifications
   if (typeof window !== 'undefined' && 'Notification' in window) {
-    const result = await Notification.requestPermission();
-    if (result === 'granted') {
-      setSystemNotificationsPreference(true);
-      triggerHapticFeedback([40, 30, 40]);
+    try {
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        setSystemNotificationsPreference(true);
+        triggerHapticFeedback([40, 30, 40]);
+      }
+      return result;
+    } catch (err) {
+      console.warn('Web Notification permission error:', err);
+      return 'denied';
     }
-    return result;
   }
 
   return 'denied';
@@ -508,21 +645,27 @@ export async function dispatchSystemNotification(params: {
   if (Capacitor.isNativePlatform()) {
     try {
       await initializeNotificationChannels();
-      const notifId = params.sequenceNumber || Math.floor(Math.random() * 2147483647);
+      const rawId = Number(params.sequenceNumber) || Math.floor(Math.random() * 1000000) + 1;
+      const notifId = (Math.abs(Math.floor(rawId)) % 2147483646) + 1;
 
       await LocalNotifications.schedule({
         notifications: [
           {
             id: notifId,
-            title: params.title,
-            body: params.body,
+            title: String(params.title || 'Agro Planner Alert'),
+            body: String(params.body || ''),
+            largeBody: String(params.body || ''),
             channelId,
-            sound: params.urgent ? 'beep.wav' : undefined,
             summaryText: 'Agro Planner Alert',
+            actionTypeId: 'AGRO_OPEN_ACTION',
             autoCancel: true,
+            schedule: {
+              at: new Date(Date.now() + 150),
+              allowWhileIdle: true,
+            },
             extra: {
-              tag: params.tag,
-              severity: params.severity,
+              tag: params.tag || '',
+              severity: params.severity || 'INFO',
             },
           },
         ],
@@ -530,6 +673,7 @@ export async function dispatchSystemNotification(params: {
       return true;
     } catch (err) {
       console.warn('LocalNotifications dispatch warning:', err);
+      return false;
     }
   }
 
@@ -537,12 +681,15 @@ export async function dispatchSystemNotification(params: {
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
     try {
       if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration();
+        const reg = await Promise.race([
+          navigator.serviceWorker.getRegistration(),
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1200)),
+        ]);
         if (reg && typeof reg.showNotification === 'function') {
           await reg.showNotification(params.title, {
             body: params.body,
-            icon: '/icon.svg',
-            badge: '/icon.svg',
+            icon: 'icon.svg',
+            badge: 'icon.svg',
             tag: params.tag || `agro-alert-${Date.now()}`,
             requireInteraction: Boolean(params.urgent),
           });
@@ -550,12 +697,19 @@ export async function dispatchSystemNotification(params: {
         }
       }
 
-      new Notification(params.title, {
-        body: params.body,
-        icon: '/icon.svg',
-        tag: params.tag || `agro-alert-${Date.now()}`,
-      });
-      return true;
+      // Check constructor availability before instantiation (in Android WebView, new Notification() throws an Illegal Constructor error)
+      try {
+        if (typeof Notification === 'function') {
+          new Notification(params.title, {
+            body: params.body,
+            icon: 'icon.svg',
+            tag: params.tag || `agro-alert-${Date.now()}`,
+          });
+          return true;
+        }
+      } catch (e) {
+        console.warn('Notification constructor unsupported in this webview context:', e);
+      }
     } catch (err) {
       console.warn('Web notification fallback warning:', err);
     }

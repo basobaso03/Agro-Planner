@@ -43,14 +43,18 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim().length < 4) return;
-    onPostBroadcast({
-      locationId,
-      severity,
-      title: title.trim() || `Ground Report from ${activeMember.fullName}`,
-      message: message.trim(),
-    });
-    setTitle('');
-    setMessage('');
+    try {
+      onPostBroadcast({
+        locationId,
+        severity,
+        title: title.trim() || `Ground Report from ${activeMember.fullName}`,
+        message: message.trim(),
+      });
+      setTitle('');
+      setMessage('');
+    } catch (err) {
+      console.warn('Notification drawer broadcast error:', err);
+    }
   };
 
   return (
@@ -166,18 +170,17 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             </div>
           ) : (
             notifications.map((item) => {
-              const isUnread = !item.readByMemberIds.includes(activeMember.id);
+              const isUnread = !(item.readByMemberIds || []).includes(activeMember.id);
               const isUrgent = item.severity === 'URGENT_GROUND';
               const isContra = item.severity === 'WARNING_CONTRA';
 
               return (
                 <div
                   key={item.id}
-                  className={`rounded-2xl p-3.5 border transition-all ${
-                    isUnread
-                      ? 'bg-white border-amber-400 shadow-sm'
-                      : 'bg-white/80 border-[#E8DFCE] hover:border-[#D6CBBA]'
-                  }`}
+                  className={`rounded-2xl p-3.5 border transition-all ${isUnread
+                    ? 'bg-white border-amber-400 shadow-sm'
+                    : 'bg-white/80 border-[#E8DFCE] hover:border-[#D6CBBA]'
+                    }`}
                 >
                   <div className="flex items-center justify-between text-[11px] text-slate-500">
                     <span className="font-semibold text-slate-700">
@@ -211,9 +214,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                     </span>
                     {typeof item.deltaFinancial === 'number' && item.deltaFinancial !== 0 && (
                       <span
-                        className={`font-mono font-bold ${
-                          item.deltaFinancial > 0 ? 'text-emerald-700' : 'text-amber-700'
-                        }`}
+                        className={`font-mono font-bold ${item.deltaFinancial > 0 ? 'text-emerald-700' : 'text-amber-700'
+                          }`}
                       >
                         {item.deltaFinancial > 0 ? '+' : ''}${item.deltaFinancial.toFixed(2)}
                       </span>

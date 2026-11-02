@@ -16,6 +16,9 @@ import {
   Wheat,
   Scale,
   ShieldAlert,
+  Camera,
+  Upload,
+  Maximize2,
 } from 'lucide-react';
 import type {
   AuditNotificationEvent,
@@ -27,6 +30,7 @@ import type {
   SyndicateMember,
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
+import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
 
 import type { ActiveTab } from '../App.tsx';
 
@@ -45,6 +49,7 @@ interface HomeTabProps {
     severity: NotificationSeverity;
     title: string;
     message: string;
+    photoUrl?: string;
   }) => void;
   showNumbers?: boolean;
 }
@@ -69,35 +74,68 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     activeMember.assignedLocationId || locations[0]?.id || 'ALL'
   );
   const [bSeverity, setBSeverity] = useState<NotificationSeverity>('URGENT_GROUND');
+  const [bPhoto, setBPhoto] = useState<string | null>(null);
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [bPhotoError, setBPhotoError] = useState('');
+  const [lightboxPhoto, setLightboxPhoto] = useState<{ url: string; title: string } | null>(null);
 
   // Solora Interactive Frequency Scrubber State
   const [selectedTimeframe, setSelectedTimeframe] = useState<'1H' | '6H' | '1D' | '1W' | '1M' | 'ALL'>('1D');
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setBPhotoError(validation.error || 'Invalid image file');
+      return;
+    }
+    setIsCompressingPhoto(true);
+    try {
+      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.8 });
+      setBPhoto(compressed);
+      setBPhotoError('');
+    } catch (err: unknown) {
+      setBPhotoError(err instanceof Error ? err.message : 'Photo compression failed');
+    } finally {
+      setIsCompressingPhoto(false);
+    }
+  };
+
   const handleBroadcastSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (bMsg.trim().length < 4) return;
-    onPostBroadcast({
-      locationId: bLocId,
-      severity: bSeverity,
-      title: bTitle.trim() || `Field Status Update — ${activeMember.fullName}`,
-      message: bMsg.trim(),
-    });
-    setBTitle('');
-    setBMsg('');
-    setShowBroadcastModal(false);
+    try {
+      onPostBroadcast({
+        locationId: bLocId,
+        severity: bSeverity,
+        title: bTitle.trim() || `Field Status Update — ${activeMember.fullName}`,
+        message: bMsg.trim(),
+        photoUrl: bPhoto || undefined,
+      });
+      setBTitle('');
+      setBMsg('');
+      setBPhoto(null);
+      setBPhotoError('');
+      setShowBroadcastModal(false);
+    } catch (err) {
+      setBPhotoError(err instanceof Error ? err.message : 'Failed to post broadcast.');
+    }
   };
 
-  const isGroundOperator = activeMember.role === 'GROUND_OPERATOR';
-  const canViewPool = PERMISSIONS.canViewCapitalPoolTab(activeMember.role);
-  const totalLiveHeadcount = livestockStatuses.reduce((acc, s) => acc + s.currentLiveHeadcount, 0);
-  const totalFeedConsumedKg = livestockStatuses.reduce((acc, s) => acc + s.totalFeedConsumedKg, 0);
-  const avgSurvivalRate = livestockStatuses.length > 0
-    ? Math.round(livestockStatuses.reduce((acc, s) => acc + (100 - s.mortalityRatePercent), 0) / livestockStatuses.length)
+  const isGroundOperator = activeMember?.role === 'GROUND_OPERATOR';
+  const canViewPool = PERMISSIONS.canViewCapitalPoolTab(activeMember?.role);
+  const totalLiveHeadcount = (livestockStatuses || []).reduce((acc, s) => acc + (s.currentLiveHeadcount || 0), 0);
+  const totalFeedConsumedKg = (livestockStatuses || []).reduce((acc, s) => acc + (s.totalFeedConsumedKg || 0), 0);
+  const avgSurvivalRate = livestockStatuses && livestockStatuses.length > 0
+    ? Math.round(livestockStatuses.reduce((acc, s) => acc + (100 - (s.mortalityRatePercent || 0)), 0) / livestockStatuses.length)
     : 100;
 
   // Liquid percentage of capital pool (for executive/investor view)
-  const liquidPct = financials.totalSyndicatePool > 0
-    ? Math.max(0, Math.min(100, Math.round((financials.leftMoney / financials.totalSyndicatePool) * 100)))
+  const poolTotal = financials?.totalSyndicatePool || 0;
+  const leftCash = financials?.leftMoney || 0;
+  const liquidPct = poolTotal > 0
+    ? Math.max(0, Math.min(100, Math.round((leftCash / poolTotal) * 100)))
     : 0;
 
   return (
@@ -136,8 +174,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               {!showNumbers
                 ? '••••••••'
                 : isGroundOperator
-                ? `${totalLiveHeadcount.toLocaleString()} Animals`
-                : `$${financials.leftMoney.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  ? `${totalLiveHeadcount.toLocaleString()} Animals`
+                  : `$${(financials?.leftMoney ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </h1>
             <p className="text-xs text-slate-500 leading-relaxed max-w-xl">
               {isGroundOperator
@@ -191,7 +229,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <div className="text-[11px] font-mono text-amber-700 font-semibold truncate">
                 {isGroundOperator
                   ? `${totalFeedConsumedKg.toLocaleString()} kg Feed Logged`
-                  : `$${financials.totalFixedAssetsValue.toLocaleString()} Fixed Assets`}
+                  : `$${(financials?.totalFixedAssetsValue ?? 0).toLocaleString()} Fixed Assets`}
               </div>
             </div>
           </div>
@@ -243,7 +281,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <>
                 <Activity className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span className="truncate">
-                  Total NAV: <strong className="font-mono text-slate-900">{!showNumbers ? '••••••' : `$${financials.totalSyndicateNav.toLocaleString()}`}</strong>
+                  Total NAV: <strong className="font-mono text-slate-900">{!showNumbers ? '••••••' : `$${(financials?.totalSyndicateNav ?? 0).toLocaleString()}`}</strong>
                 </span>
               </>
             )}
@@ -297,7 +335,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   <span className="truncate">Total Pool Contributed</span>
                 </div>
                 <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-slate-900 truncate">
-                  {!showNumbers ? '••••••••' : `$${financials.totalSyndicatePool.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  {!showNumbers ? '••••••••' : `$${(financials?.totalSyndicatePool ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                 </div>
               </div>
               <span className="text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 whitespace-nowrap shrink-0">
@@ -313,11 +351,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   <span className="truncate">Approved Farm Expenses</span>
                 </div>
                 <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-slate-900 truncate">
-                  {!showNumbers ? '••••••••' : `-$${financials.approvedExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  {!showNumbers ? '••••••••' : `-$${(financials?.approvedExpenses ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                 </div>
               </div>
               <span className="text-[11px] sm:text-xs font-bold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 whitespace-nowrap shrink-0">
-                {financials.totalSyndicatePool > 0 ? ((financials.approvedExpenses / financials.totalSyndicatePool) * 100).toFixed(1) : 0}% Deployed
+                {poolTotal > 0 ? (((financials?.approvedExpenses ?? 0) / poolTotal) * 100).toFixed(1) : 0}% Deployed
               </span>
             </div>
           </>
@@ -343,11 +381,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 key={tf}
                 type="button"
                 onClick={() => setSelectedTimeframe(tf)}
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
-                  selectedTimeframe === tf
-                    ? 'tab-brand-active'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${selectedTimeframe === tf
+                  ? 'tab-brand-active'
+                  : 'text-slate-500 hover:text-slate-900'
+                  }`}
               >
                 {tf}
               </button>
@@ -371,13 +408,12 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             {Array.from({ length: 33 }).map((_, i) => (
               <div
                 key={i}
-                className={`w-[1px] transition-all ${
-                  i === 16
-                    ? 'h-4 bg-amber-500 shadow-xs'
-                    : i % 4 === 0
+                className={`w-[1px] transition-all ${i === 16
+                  ? 'h-4 bg-amber-500 shadow-xs'
+                  : i % 4 === 0
                     ? 'h-3 bg-slate-300'
                     : 'h-1.5 bg-slate-200'
-                }`}
+                  }`}
               />
             ))}
           </div>
@@ -408,6 +444,24 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <>
                 <h2 className="text-sm font-bold text-slate-900 mt-1 break-words">{latestBroadcast.title}</h2>
                 <p className="text-xs text-slate-600 leading-relaxed break-words">{latestBroadcast.message}</p>
+                {latestBroadcast.photoUrl && (
+                  <div className="pt-2">
+                    <div
+                      onClick={() => setLightboxPhoto({ url: latestBroadcast.photoUrl!, title: latestBroadcast.title })}
+                      className="relative inline-block rounded-2xl overflow-hidden border border-[#E0D7C6] bg-slate-50 cursor-pointer group/photo shadow-xs"
+                    >
+                      <img
+                        src={latestBroadcast.photoUrl}
+                        alt={latestBroadcast.title}
+                        className="max-h-48 w-auto object-cover group-hover/photo:scale-105 transition-transform"
+                      />
+                      <div className="absolute inset-0 bg-black/25 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1.5">
+                        <Maximize2 className="w-4 h-4" />
+                        <span>Enlarge Field Photo</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-xs text-slate-500">No ground updates posted for this site yet.</p>
@@ -462,93 +516,91 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </button>
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          {livestockStatuses.map((status) => {
-            const isUrgent = status.countdownUrgency === 'READY_FOR_SALE';
-            const isWarn = status.countdownUrgency === 'PREPARE_MARKET';
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            {livestockStatuses.map((status) => {
+              const isUrgent = status.countdownUrgency === 'READY_FOR_SALE';
+              const isWarn = status.countdownUrgency === 'PREPARE_MARKET';
 
-            return (
-              <div
-                key={status.entry.id}
-                className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3.5"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 min-w-0">
-                    <span className="font-semibold text-slate-600 truncate min-w-0">
-                      {status.entry.species} · {status.entry.locationName}
-                    </span>
-                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap inline-flex items-center">
-                      {status.entry.trackingMode === 'INDIVIDUAL_TAG' ? 'Ear-Tag' : 'Batch'}
-                    </span>
-                  </div>
+              return (
+                <div
+                  key={status.entry.id}
+                  className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3.5"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 min-w-0">
+                      <span className="font-semibold text-slate-600 break-words min-w-0">
+                        {status.entry.species} · {status.entry.locationName}
+                      </span>
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap inline-flex items-center">
+                        {status.entry.trackingMode === 'INDIVIDUAL_TAG' ? 'Ear-Tag' : 'Batch'}
+                      </span>
+                    </div>
 
-                  <div className="mt-1.5 flex items-baseline justify-between gap-2 min-w-0">
-                    <h3 className="text-base font-bold text-slate-900 truncate min-w-0">
-                      {status.entry.nameOrTag}
-                    </h3>
-                    <span className="text-sm font-extrabold font-mono tabular-nums text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0 whitespace-nowrap">
-                      {status.currentLiveHeadcount} Live
-                    </span>
-                  </div>
+                    <div className="mt-1.5 flex items-baseline justify-between gap-2 min-w-0">
+                      <h3 className="text-base font-bold text-slate-900 break-words whitespace-normal min-w-0">
+                        {status.entry.nameOrTag}
+                      </h3>
+                      <span className="text-sm font-extrabold font-mono tabular-nums text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0 whitespace-nowrap">
+                        {status.currentLiveHeadcount} Live
+                      </span>
+                    </div>
 
-                  {/* Age & Target Metadata */}
-                  <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 gap-2 min-w-0">
-                    <span className="truncate min-w-0">
-                      Current Age: <strong className="font-mono text-slate-900">{status.formattedCurrentAge}</strong>
-                    </span>
-                    <span className="font-mono text-slate-500 shrink-0 whitespace-nowrap">
-                      Target: {status.entry.targetDurationValue} {status.entry.targetDurationUnit.toLowerCase()}
-                    </span>
-                  </div>
+                    {/* Age & Target Metadata */}
+                    <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 gap-2 min-w-0">
+                      <span className="break-words min-w-0">
+                        Current Age: <strong className="font-mono text-slate-900">{status.formattedCurrentAge}</strong>
+                      </span>
+                      <span className="font-mono text-slate-500 shrink-0 whitespace-nowrap">
+                        Target: {status.entry.targetDurationValue} {status.entry.targetDurationUnit.toLowerCase()}
+                      </span>
+                    </div>
 
-                  {/* Progress Bar */}
-                  <div className="mt-2.5 w-full h-2 rounded-full bg-[#EFE9DF] overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        isUrgent
+                    {/* Progress Bar */}
+                    <div className="mt-2.5 w-full h-2 rounded-full bg-[#EFE9DF] overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${isUrgent
                           ? 'bg-rose-500'
                           : isWarn
-                          ? 'bg-amber-500'
-                          : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${status.progressPercentage}%` }}
-                    />
+                            ? 'bg-amber-500'
+                            : 'bg-emerald-500'
+                          }`}
+                        style={{ width: `${status.progressPercentage}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {/* Countdown Footer */}
-                <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between gap-2 min-w-0">
-                  <span
-                    className={`text-xs font-bold font-mono flex items-center gap-1.5 truncate min-w-0 ${
-                      isUrgent
+                  {/* Countdown Footer */}
+                  <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between gap-2 min-w-0">
+                    <span
+                      className={`text-xs font-bold font-mono flex items-center gap-1.5 break-words min-w-0 ${isUrgent
                         ? 'text-rose-600'
                         : isWarn
-                        ? 'text-amber-700'
-                        : 'text-emerald-700'
-                    }`}
-                  >
-                    {isUrgent ? (
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    ) : isWarn ? (
-                      <Clock className="w-3.5 h-3.5 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                    )}
-                    <span className="truncate">{status.countdownBadgeText}</span>
-                  </span>
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
+                        }`}
+                    >
+                      {isUrgent ? (
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      ) : isWarn ? (
+                        <Clock className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span className="break-words">{status.countdownBadgeText}</span>
+                    </span>
 
-                  <button
-                    type="button"
-                    onClick={() => onNavigateTab('LIVESTOCK')}
-                    className="text-xs font-semibold text-slate-600 hover:text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer min-h-[36px] flex items-center"
-                  >
-                    Log Event
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateTab('LIVESTOCK')}
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer min-h-[36px] flex items-center"
+                    >
+                      Log Event
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -573,61 +625,61 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </div>
           </div>
         ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {siteComparisons.map((site) => (
-            <div
-              key={site.location.id}
-              className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between gap-2 min-w-0">
-                  <h3 className="text-sm font-bold text-slate-900 truncate min-w-0">{site.location.name}</h3>
-                  <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  {site.location.primaryOperatorName} · {site.location.region}
-                </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {siteComparisons.map((site) => (
+              <div
+                key={site.location.id}
+                className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 break-words min-w-0">{site.location.name}</h3>
+                    <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 break-words">
+                    {site.location.primaryOperatorName} · {site.location.region}
+                  </p>
 
-                <div className="mt-3 grid grid-cols-2 gap-2.5 pt-3 border-t border-[#F0EBE1] text-xs">
-                  <div>
-                    <p className="text-[11px] text-slate-500">Active Animals</p>
-                    <p className="font-mono font-bold text-slate-900 mt-0.5 truncate">
-                      {site.activeAnimalHeadcount} hd ({site.activeBatchCount} grp)
-                    </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 pt-3 border-t border-[#F0EBE1] text-xs">
+                    <div>
+                      <p className="text-[11px] text-slate-500">Active Animals</p>
+                      <p className="font-mono font-bold text-slate-900 mt-0.5 break-words">
+                        {site.activeAnimalHeadcount} hd ({site.activeBatchCount} grp)
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Site Expenses</p>
+                      <p className="font-mono font-bold text-amber-800 mt-0.5 break-words">
+                        ${(site.siteApprovedExpenses ?? 0).toFixed(0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Fixed Assets</p>
+                      <p className="font-mono font-bold text-emerald-700 mt-0.5 break-words">
+                        ${(site.siteFixedAssetValue ?? 0).toFixed(0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-slate-500">Mortality</p>
+                      <p className="font-mono font-bold text-slate-800 mt-0.5 break-words">
+                        {(site.siteMortalityRatePercent ?? 0).toFixed(1)}%
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Site Expenses</p>
-                    <p className="font-mono font-bold text-amber-800 mt-0.5 truncate">
-                      ${site.siteApprovedExpenses.toFixed(0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Fixed Assets</p>
-                    <p className="font-mono font-bold text-emerald-700 mt-0.5 truncate">
-                      ${site.siteFixedAssetValue.toFixed(0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-500">Mortality</p>
-                    <p className="font-mono font-bold text-slate-800 mt-0.5 truncate">
-                      {site.siteMortalityRatePercent.toFixed(1)}%
-                    </p>
-                  </div>
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-[#F0EBE1]">
+                  <button
+                    type="button"
+                    onClick={() => onSelectLocation(site.location.id)}
+                    className="w-full py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-xs font-semibold text-slate-800 transition-colors text-center cursor-pointer min-h-[38px] flex items-center justify-center"
+                  >
+                    Filter View to This Site
+                  </button>
                 </div>
               </div>
-
-              <div className="mt-3 pt-3 border-t border-[#F0EBE1]">
-                <button
-                  type="button"
-                  onClick={() => onSelectLocation(site.location.id)}
-                  className="w-full py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-xs font-semibold text-slate-800 transition-colors text-center cursor-pointer min-h-[38px] flex items-center justify-center"
-                >
-                  Filter View to This Site
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -682,10 +734,9 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     onChange={(e) => setBSeverity(e.target.value as NotificationSeverity)}
                     className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="INFO_ROUTINE">Routine Status Update</option>
-                    <option value="WARN_WEIGHT_CHECK">Weigh-in / Growth Advisory</option>
-                    <option value="URGENT_GROUND">Urgent Ground Notice</option>
-                    <option value="CRITICAL_VET">Critical Vet Alert</option>
+                    <option value="URGENT_GROUND">Urgent Ground Notice / Emergency</option>
+                    <option value="MILESTONE">Milestone / Weigh-in Advisory</option>
+                    <option value="INFO">Routine Field Status Update</option>
                   </select>
                 </div>
               </div>
@@ -717,6 +768,50 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 />
               </div>
 
+              {/* Photo Attachment Dropzone */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Ground Photo Evidence (Optional)
+                </label>
+                {bPhoto ? (
+                  <div className="relative rounded-2xl overflow-hidden border border-[#E0D7C6] bg-[#FAF8F5] p-2 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={bPhoto}
+                        alt="Broadcast preview"
+                        className="w-12 h-12 object-cover rounded-xl border border-[#E0D7C6]"
+                      />
+                      <div className="text-xs">
+                        <p className="font-bold text-emerald-800">Field photo attached</p>
+                        <p className="text-slate-500 text-[11px]">Compressed for broadcast</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBPhoto(null)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 text-xs font-medium cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 p-3 border border-dashed border-[#CFC5B2] hover:border-amber-500 rounded-xl bg-[#FAF8F5] cursor-pointer transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      disabled={isCompressingPhoto}
+                      className="hidden"
+                    />
+                    <Upload className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs text-slate-700 font-semibold">
+                      {isCompressingPhoto ? 'Compressing photo...' : 'Attach Field Photo Evidence'}
+                    </span>
+                  </label>
+                )}
+                {bPhotoError && <p className="text-xs text-rose-600 mt-1">{bPhotoError}</p>}
+              </div>
+
               <div className="pt-2 flex items-center gap-2.5">
                 <button
                   type="button"
@@ -733,6 +828,38 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Photo Lightbox Modal */}
+      {lightboxPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-white border border-[#E8DFCE] rounded-3xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-3.5 border-b border-[#F0EBE1] bg-[#FAF8F5]">
+              <h4 className="text-sm font-bold text-slate-900 truncate">{lightboxPhoto.title}</h4>
+              <button
+                type="button"
+                onClick={() => setLightboxPhoto(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 flex items-center justify-center bg-black/5">
+              <img
+                src={lightboxPhoto.url}
+                alt={lightboxPhoto.title}
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-2xl shadow-md"
+              />
+            </div>
           </div>
         </div>
       )}

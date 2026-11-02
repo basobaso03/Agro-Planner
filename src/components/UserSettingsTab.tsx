@@ -34,6 +34,7 @@ import {
 } from './DeveloperBrandInfo.tsx';
 import {
   areSystemNotificationsEnabled,
+  checkAsyncNotificationPermission,
   dispatchSystemNotification,
   enrollDeviceBiometric,
   getEnrolledBiometricRecord,
@@ -58,6 +59,7 @@ interface UserSettingsTabProps {
   backgroundIntensity: 'subtle' | 'standard' | 'expressive';
   onSelectBackgroundIntensity: (intensity: 'subtle' | 'standard' | 'expressive') => void;
   onPreviewSplash?: () => void;
+  onCheckUpdates?: () => void;
   onSignOut: () => void;
   targetSection?: string | null;
 }
@@ -71,6 +73,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   backgroundIntensity,
   onSelectBackgroundIntensity,
   onPreviewSplash,
+  onCheckUpdates,
   onSignOut,
   targetSection = null,
 }) => {
@@ -184,7 +187,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   };
 
   useEffect(() => {
-    isBiometricHardwareSupported().then(setBiometricSupported).catch(() => {});
+    isBiometricHardwareSupported().then(setBiometricSupported).catch(() => { });
+    checkAsyncNotificationPermission().then(setNotifPerm).catch(() => { });
   }, []);
 
   // Zero-trust live alerts and warnings
@@ -437,11 +441,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
         <form
           id="settings-profile"
           onSubmit={handleSaveProfile}
-          className={`lg:col-span-7 bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs transition-all duration-500 ${
-            highlightedSection === 'settings-profile'
+          className={`lg:col-span-7 bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs transition-all duration-500 ${highlightedSection === 'settings-profile'
               ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
               : 'border-[#E8DFCE]'
-          }`}
+            }`}
         >
           <div className="pb-3 border-b border-[#F0EBE1] flex items-center justify-between">
             <div>
@@ -545,11 +548,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
         <form
           id="settings-password"
           onSubmit={handlePasswordSubmit}
-          className={`lg:col-span-5 bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs flex flex-col justify-between transition-all duration-500 ${
-            highlightedSection === 'settings-password'
+          className={`lg:col-span-5 bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs flex flex-col justify-between transition-all duration-500 ${highlightedSection === 'settings-password'
               ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
               : 'border-[#E8DFCE]'
-          }`}
+            }`}
         >
           <div className="space-y-4">
             <div className="pb-3 border-b border-[#F0EBE1]">
@@ -584,9 +586,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <div className="flex items-center justify-between pt-2 border-t border-[#E8DFCE]">
                 <span className="font-semibold text-slate-700">Email &amp; Password Login</span>
                 <span
-                  className={`font-mono font-bold ${
-                    isPasswordLinked ? 'text-emerald-700' : 'text-amber-700'
-                  }`}
+                  className={`font-mono font-bold ${isPasswordLinked ? 'text-emerald-700' : 'text-amber-700'
+                    }`}
                 >
                   {isPasswordLinked ? 'Configured & Active' : 'Not Configured Yet'}
                 </span>
@@ -662,8 +663,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               {pwdLoading
                 ? 'Saving Password...'
                 : isPasswordLinked
-                ? 'Update Account Password'
-                : 'Set Password & Link to Account'}
+                  ? 'Update Account Password'
+                  : 'Set Password & Link to Account'}
             </span>
           </button>
         </form>
@@ -672,11 +673,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
       {/* Section 2.5: Biometric Security & Mobile Notifications */}
       <section
         id="settings-biometrics"
-        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs transition-all duration-500 ${
-          highlightedSection === 'settings-biometrics'
+        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs transition-all duration-500 ${highlightedSection === 'settings-biometrics'
             ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
             : 'border-[#E8DFCE]'
-        }`}
+          }`}
       >
         <div className="pb-3 border-b border-[#F0EBE1] flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -727,11 +727,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectPrivacyPref('auto')}
-                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  privacyPref === 'auto'
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${privacyPref === 'auto'
                     ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500'
                     : 'bg-white border-[#E0D7C6] hover:border-slate-300'
-                }`}
+                  }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
@@ -762,11 +761,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectPrivacyPref('biometric')}
-                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  privacyPref === 'biometric'
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${privacyPref === 'biometric'
                     ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500'
                     : 'bg-white border-[#E0D7C6] hover:border-slate-300'
-                }`}
+                  }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
@@ -775,9 +773,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                       <span>Fingerprint / Face</span>
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        biometricSupported ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
-                      }`}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${biometricSupported ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                        }`}
                     >
                       {biometricSupported ? 'Supported' : 'Not Detected'}
                     </span>
@@ -802,11 +799,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectPrivacyPref('password')}
-                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                  privacyPref === 'password'
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${privacyPref === 'password'
                     ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-500'
                     : 'bg-white border-[#E0D7C6] hover:border-slate-300'
-                }`}
+                  }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
@@ -815,9 +811,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                       <span>Password</span>
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        isPasswordLinked ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${isPasswordLinked ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}
                     >
                       {isPasswordLinked ? 'Configured' : 'Needs Setup'}
                     </span>
@@ -851,9 +846,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <div>
                     <span className="text-xs font-bold text-slate-900 block">Fingerprint &amp; Face Unlock</span>
                     <span
-                      className={`text-[11px] font-mono font-bold ${
-                        enrolledBio ? 'text-emerald-700' : 'text-slate-500'
-                      }`}
+                      className={`text-[11px] font-mono font-bold ${enrolledBio ? 'text-emerald-700' : 'text-slate-500'
+                        }`}
                     >
                       {enrolledBio ? 'Enabled' : 'Disabled'}
                     </span>
@@ -866,15 +860,13 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   role="switch"
                   aria-checked={Boolean(enrolledBio)}
                   onClick={handleToggleBiometrics}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    enrolledBio ? 'bg-amber-500' : 'bg-slate-300'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${enrolledBio ? 'bg-amber-500' : 'bg-slate-300'
+                    }`}
                   title={enrolledBio ? 'Disable Fingerprint Unlock' : 'Enable Fingerprint Unlock'}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                      enrolledBio ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${enrolledBio ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -921,9 +913,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <div>
                     <span className="text-xs font-bold text-slate-900 block">Status Bar Notifications</span>
                     <span
-                      className={`text-[11px] font-mono font-bold ${
-                        notifPerm === 'granted' && notifEnabled ? 'text-emerald-700' : 'text-slate-500'
-                      }`}
+                      className={`text-[11px] font-mono font-bold ${notifPerm === 'granted' && notifEnabled ? 'text-emerald-700' : 'text-slate-500'
+                        }`}
                     >
                       {notifPerm === 'granted' && notifEnabled ? 'Enabled' : 'Disabled'}
                     </span>
@@ -936,15 +927,13 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   role="switch"
                   aria-checked={notifPerm === 'granted' && notifEnabled}
                   onClick={handleToggleNotifications}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    notifPerm === 'granted' && notifEnabled ? 'bg-amber-500' : 'bg-slate-300'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${notifPerm === 'granted' && notifEnabled ? 'bg-amber-500' : 'bg-slate-300'
+                    }`}
                   title={notifPerm === 'granted' && notifEnabled ? 'Disable Notifications' : 'Enable Notifications'}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                      notifPerm === 'granted' && notifEnabled ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${notifPerm === 'granted' && notifEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -980,11 +969,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
       {/* Section 3: Security & Access Permissions */}
       <section
         id="settings-permissions"
-        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs transition-all duration-500 ${
-          highlightedSection === 'settings-permissions'
+        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs transition-all duration-500 ${highlightedSection === 'settings-permissions'
             ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
             : 'border-[#E8DFCE]'
-        }`}
+          }`}
       >
         <div className="pb-3 border-b border-[#F0EBE1] flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -1096,11 +1084,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
       {/* Section 4: Workspace Appearance, Typography & Brand Studio */}
       <section
         id="settings-appearance"
-        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs transition-all duration-500 ${
-          highlightedSection === 'settings-appearance'
+        className={`bg-white border rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs transition-all duration-500 ${highlightedSection === 'settings-appearance'
             ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
             : 'border-[#E8DFCE]'
-        }`}
+          }`}
       >
         <div className="pb-3 border-b border-[#F0EBE1] flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1127,11 +1114,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   key={lvl}
                   type="button"
                   onClick={() => onSelectBackgroundIntensity(lvl)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold capitalize transition-all cursor-pointer ${
-                    backgroundIntensity === lvl
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold capitalize transition-all cursor-pointer ${backgroundIntensity === lvl
                       ? 'tab-brand-active'
                       : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                    }`}
                 >
                   {lvl}
                 </button>
@@ -1149,11 +1135,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 key={font.id}
                 type="button"
                 onClick={() => onSelectFont(font.id)}
-                className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                  isSelected
+                className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer ${isSelected
                     ? 'bg-amber-50/70 border-amber-500'
                     : 'bg-[#FAF8F5] border-[#E8DFCE] hover:bg-white'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-between gap-1">
                   <span className={`text-xs font-bold text-slate-900 truncate ${font.cssClass}`}>
@@ -1173,11 +1158,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
       {/* Section 5: About App & BASOBASO SOFTWARES Attribution Card */}
       <section
         id="settings-about"
-        className={`bg-white border-2 rounded-3xl p-5 sm:p-6 shadow-md space-y-4 transition-all duration-500 ${
-          highlightedSection === 'settings-about'
+        className={`bg-white border-2 rounded-3xl p-5 sm:p-6 shadow-md space-y-4 transition-all duration-500 ${highlightedSection === 'settings-about'
             ? 'border-amber-500 ring-4 ring-amber-400/40 shadow-xl'
             : 'border-amber-400/70'
-        }`}
+          }`}
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#F0EBE1]">
           <div className="space-y-1">
@@ -1187,8 +1171,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 {DEVELOPER_INFO.company}
               </span>
               <span className="text-slate-300" aria-hidden="true">·</span>
-              <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-mono font-bold text-amber-900">
-                Initial App Version {DEVELOPER_INFO.version}
+              <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 border border-emerald-300 text-xs font-mono font-bold text-emerald-900">
+                Active Version {DEVELOPER_INFO.version}
               </span>
               {highlightedSection === 'settings-about' && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold animate-pulse">
@@ -1217,6 +1201,17 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
             >
               <span>Public Website ↗</span>
             </a>
+            {onCheckUpdates && (
+              <button
+                type="button"
+                onClick={onCheckUpdates}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                title="Fetch latest version.json from GitHub"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Check Updates</span>
+              </button>
+            )}
             {onPreviewSplash && (
               <button
                 type="button"

@@ -9,15 +9,29 @@ service cloud.firestore {
     function isPrimaryFounderAdmin() {
       return isAuthenticated()
              && request.auth.token.email != null
-             && request.auth.token.email.lower() == 'baseramarlvin@gmail.com';
+             && (request.auth.token.email.lower() == 'baseramarlvin@gmail.com'
+                 || request.auth.token.email.lower() == 'admin.farms@agroplanner.com');
+    }
+
+    function getMemberData() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    }
+
+    function isApprovedMember() {
+      return isAuthenticated()
+             && (isPrimaryFounderAdmin()
+                 || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                     && getMemberData().approvalStatus == 'APPROVED'
+                     && getMemberData().active == true));
     }
 
     function isAdmin() {
       return isPrimaryFounderAdmin()
-             || (isAuthenticated()
-                 && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                 && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'SYNDICATE_ADMIN'
-                 && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.active == true);
+             || (isApprovedMember() && (getMemberData().role == 'SYNDICATE_ADMIN' || getMemberData().role == 'FOUNDER_SUPERADMIN'));
+    }
+
+    function isTreasurer() {
+      return isApprovedMember() && (getMemberData().role == 'SYNDICATE_TREASURER' || getMemberData().role == 'TREASURER' || isAdmin());
     }
 
     function isValidId(id) {
@@ -40,27 +54,45 @@ service cloud.firestore {
     }
 
     match /locations/{locationId} {
-      allow read: if true;
-      allow write: if isValidId(locationId);
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidId(locationId);
     }
 
     match /members/{memberId} {
-      allow read: if true;
-      allow write: if isValidId(memberId);
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && isValidId(memberId)
+                    && (isAdmin()
+                        || (request.auth.uid == memberId
+                            && (!('role' in request.resource.data) || request.resource.data.role in ['REMOTE_INVESTOR', 'GROUND_OPERATOR', 'TREASURER', 'SYNDICATE_TREASURER', 'SYNDICATE_ADMIN'])
+                            && (!('approvalStatus' in request.resource.data) || request.resource.data.approvalStatus in ['PENDING_APPROVAL', 'APPROVED'])));
+      allow update: if isAuthenticated()
+                    && isValidId(memberId)
+                    && (isAdmin()
+                        || (request.auth.uid == memberId
+                            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])
+                                || resource.data.approvalStatus == 'PENDING_APPROVAL'))
+                        || (request.auth.token.email != null
+                            && resource.data.email != null
+                            && request.auth.token.email.lower() == resource.data.email.lower()
+                            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])));
+      allow delete: if isPrimaryFounderAdmin();
     }
 
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS
     match /capital_contributions/{entryId} {
-      allow read: if true;
-      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
+      // Ground operators restricted from viewing or modifying master capital pool
+      allow read: if isApprovedMember() && (!exists(/databases/$(database)/documents/members/$(request.auth.uid)) || getMemberData().role != 'GROUND_OPERATOR' || isPrimaryFounderAdmin());
+      allow create: if isTreasurer() && isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /expense_ledger/{entryId} {
-      allow read: if true;
-      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
-      allow update: if isValidId(entryId)
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember() && isValidId(entryId) && hasMandatoryAuditFields();
+      allow update: if isTreasurer()
+                    && isValidId(entryId)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['approvalStatus', 'approvedByMemberIds'])
                     && request.resource.data.approvalStatus in ['APPROVED', 'PENDING_MULTISIG', 'REJECTED_BY_CONTRA']
                     && request.resource.data.approvedByMemberIds is list
@@ -69,38 +101,42 @@ service cloud.firestore {
     }
 
     match /fixed_assets_ledger/{entryId} {
-      allow read: if true;
-      allow create: if isValidId(entryId) && hasMandatoryAuditFields();
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember() && isValidId(entryId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /livestock_entries/{livestockId} {
-      allow read: if true;
-      allow create: if isValidId(livestockId)
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember()
+                    && isValidId(livestockId)
                     && request.resource.data.nameOrTag is string
                     && request.resource.data.nameOrTag.size() <= 140;
-      allow update: if false;
+      allow update: if isApprovedMember()
+                    && isValidId(livestockId)
+                    && (isAdmin() || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gallery', 'imageUrl']));
       allow delete: if isAdmin();
     }
 
     match /livestock_lifecycle_events/{eventId} {
-      allow read: if true;
-      allow create: if isValidId(eventId) && hasMandatoryAuditFields();
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember() && isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /feed_ledger/{eventId} {
-      allow read: if true;
-      allow create: if isValidId(eventId) && hasMandatoryAuditFields();
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember() && isValidId(eventId) && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     match /audit_notifications/{auditId} {
-      allow read: if true;
-      allow create: if isValidId(auditId)
+      allow read: if isApprovedMember();
+      allow create: if isApprovedMember()
+                    && isValidId(auditId)
                     && request.resource.data.keys().hasAll(['previousHash', 'currentHash', 'timestamp', 'message'])
                     && request.resource.data.previousHash is string
                     && request.resource.data.previousHash.size() <= 128
@@ -108,7 +144,8 @@ service cloud.firestore {
                     && request.resource.data.currentHash.size() <= 128
                     && request.resource.data.message is string
                     && request.resource.data.message.size() <= 800;
-      allow update: if isValidId(auditId)
+      allow update: if isApprovedMember()
+                    && isValidId(auditId)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByMemberIds'])
                     && request.resource.data.readByMemberIds is list
                     && request.resource.data.readByMemberIds.size() <= 100;

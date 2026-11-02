@@ -96,7 +96,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
       !q ||
       m.fullName.toLowerCase().includes(q) ||
       (m.email || '').toLowerCase().includes(q) ||
-      m.phoneOrEmail.toLowerCase().includes(q) ||
+      (m.phoneOrEmail || '').toLowerCase().includes(q) ||
       (m.jobTitle || '').toLowerCase().includes(q);
 
     if (!matchesSearch) return false;
@@ -516,7 +516,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
             <tbody className="divide-y divide-[#F0EBE1] text-xs">
               {filteredMembers.map((mem) => {
                 const isFounder =
-                  (mem.email || mem.phoneOrEmail).toLowerCase() === PRIMARY_ADMIN_EMAIL;
+                  (mem.email || mem.phoneOrEmail || '').toLowerCase() === PRIMARY_ADMIN_EMAIL;
                 const currentStatus: MemberApprovalStatus =
                   mem.approvalStatus || (mem.active ? 'APPROVED' : 'PENDING_APPROVAL');
                 const providers = mem.authProviders || ['google.com'];
@@ -544,11 +544,11 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                         <KeyRound className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>
                           {providers.includes('google.com') &&
-                          (providers.includes('password') || mem.hasPasswordSetup)
+                            (providers.includes('password') || mem.hasPasswordSetup)
                             ? 'Google + Password'
                             : providers.includes('password') || mem.hasPasswordSetup
-                            ? 'Email & Password'
-                            : 'Google OAuth'}
+                              ? 'Email & Password'
+                              : 'Google OAuth'}
                         </span>
                       </div>
                     </td>
@@ -835,40 +835,40 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
 
             <div className="modal-body-scroll mt-4 space-y-3">
 
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Choose whether to purge only residual demo seed records or perform a full production reset (clearing all farm sites, expenses, livestock, and capital entries while keeping your verified Admin account).
-            </p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Choose whether to purge only residual demo seed records or perform a full production reset (clearing all farm sites, expenses, livestock, and capital entries while keeping your verified Admin account).
+              </p>
 
-            <div className="space-y-2.5 pt-2">
-              <button
-                type="button"
-                disabled={wipeLoading}
-                onClick={() => handleConfirmWipe('DEMO_ONLY')}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-xs font-bold text-slate-800 cursor-pointer"
-              >
-                Purge Legacy Seed Records Only
-              </button>
+              <div className="space-y-2.5 pt-2">
+                <button
+                  type="button"
+                  disabled={wipeLoading}
+                  onClick={() => handleConfirmWipe('DEMO_ONLY')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-xs font-bold text-slate-800 cursor-pointer"
+                >
+                  Purge Legacy Seed Records Only
+                </button>
 
-              <button
-                type="button"
-                disabled={wipeLoading}
-                onClick={() => handleConfirmWipe('FULL_RESET')}
-                className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer"
-              >
-                {wipeLoading ? 'Purging Ledger...' : 'Full Reset: Start Fresh Production Ledger'}
-              </button>
+                <button
+                  type="button"
+                  disabled={wipeLoading}
+                  onClick={() => handleConfirmWipe('FULL_RESET')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer"
+                >
+                  {wipeLoading ? 'Purging Ledger...' : 'Full Reset: Start Fresh Production Ledger'}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setShowWipeModal(false)}
-                className="w-full py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800"
-              >
-                Cancel
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setShowWipeModal(false)}
+                  className="w-full py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* Modal 3: Confirm Permanent Member Deletion */}
