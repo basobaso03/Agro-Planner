@@ -6,3 +6,4 @@
   "title": "Agro Planner Update (v1.0.2)",
   "releaseNotes": "- Background & Closed-App Notifications: Reliable native push & offline catch-up notifications with high-priority Android channels.\n- Remote Version Control & Force Update Gate: Automatic startup version verification and release notes display.\n- Real-Time Cloud Ledger Sync: Instant cross-device synchronization for syndicate members, livestock, and audit alerts.\n- Version Transparency: Active app version and live update checker integrated in Settings."
 }
+
