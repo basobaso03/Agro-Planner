@@ -1,3 +1,5 @@
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+
 export interface AppVersionConfig {
   latestVersion: string;
   minSupportedVersion: string;
@@ -10,7 +12,7 @@ export interface AppVersionConfig {
 export const CURRENT_APP_VERSION = '1.0.2';
 
 /**
- * Primary and fallback remote endpoints for version.json on the GitHub repository / GitHub Pages.
+ * Remote endpoints for version.json on the GitHub repository / GitHub Pages.
  * Checked on every application startup and foreground resume with cache-busting timestamps.
  */
 export const VERSION_CHECK_URL = 'https://basobaso03.github.io/Agro-Planner/version.json';
@@ -67,29 +69,48 @@ async function fetchRemoteVersionConfig(): Promise<AppVersionConfig | null> {
 
   for (const endpoint of VERSION_CHECK_ENDPOINTS) {
     try {
-      const response = await fetch(`${endpoint}?t=${timestamp}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
+      const url = `${endpoint}?t=${timestamp}`;
+
+      let data: any = null;
+
+      // 1. On Native Capacitor Android/iOS, use CapacitorHttp to bypass all webview CORS & proxy caching
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const capRes = await CapacitorHttp.get({
+            url,
+            connectTimeout: 6000,
+            readTimeout: 6000,
+          });
+          if (capRes.status >= 200 && capRes.status < 300 && capRes.data) {
+            data = typeof capRes.data === 'string' ? JSON.parse(capRes.data) : capRes.data;
+          }
+        } catch (capErr) {
+          console.warn('[AppUpdate] Native CapacitorHttp fetch fallback:', capErr);
         }
-      });
+      }
 
-      if (!response.ok) continue;
+      // 2. Standard Web & fallback fetch (simple GET with NO custom headers to avoid CORS preflight 405 error)
+      if (!data) {
+        const response = await fetch(url, {
+          cache: 'no-store',
+        });
 
-      const data = await response.json();
+        if (!response.ok) continue;
+        data = await response.json();
+      }
+
       if (data && typeof data.latestVersion === 'string' && typeof data.minSupportedVersion === 'string') {
         return {
-          latestVersion: data.latestVersion,
-          minSupportedVersion: data.minSupportedVersion,
+          latestVersion: String(data.latestVersion).trim(),
+          minSupportedVersion: String(data.minSupportedVersion).trim(),
           forceUpdate: Boolean(data.forceUpdate),
           downloadUrl: data.downloadUrl || 'https://basobaso03.github.io/Agro-Planner/#download',
           title: data.title || `Agro Planner Update (v${data.latestVersion})`,
           releaseNotes: data.releaseNotes || ''
         };
       }
-    } catch {
-      // Try next endpoint in fallback chain
+    } catch (err) {
+      console.warn(`[AppUpdate] Endpoint ${endpoint} unreachable:`, err);
     }
   }
 
