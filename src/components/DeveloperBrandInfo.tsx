@@ -7,7 +7,7 @@ export const DEVELOPER_INFO = {
   whatsappIntl: '263788123047',
   linkedInName: 'Marlvin Basera',
   linkedInUrl: 'https://www.linkedin.com/in/marlvin-basera-359939286',
-  version: 'v1.0.2',
+  version: 'v1.0.3',
 };
 
 /**

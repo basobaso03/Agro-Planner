@@ -26,28 +26,25 @@ export const ForceUpdateModal: React.FC<ForceUpdateModalProps> = ({
   return (
     <div className="fixed inset-0 z-[10000] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in select-none">
       <div
-        className={`w-full max-w-md bg-slate-900 border rounded-3xl p-6 shadow-2xl relative overflow-hidden ${
-          isForced
+        className={`w-full max-w-md bg-slate-900 border rounded-3xl p-6 shadow-2xl relative overflow-hidden ${isForced
             ? 'border-amber-700/50 shadow-amber-950/30'
             : 'border-emerald-500/30 shadow-emerald-500/10'
-        }`}
+          }`}
       >
         {/* Deep dark glow background effect */}
         <div
-          className={`absolute -top-24 -right-24 w-48 h-48 rounded-full blur-3xl pointer-events-none ${
-            isForced ? 'bg-amber-900/30' : 'bg-emerald-500/20'
-          }`}
+          className={`absolute -top-24 -right-24 w-48 h-48 rounded-full blur-3xl pointer-events-none ${isForced ? 'bg-amber-900/30' : 'bg-emerald-500/20'
+            }`}
         />
 
         {/* Header */}
         <div className="flex items-start justify-between mb-4 relative z-10">
           <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                isForced
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isForced
                   ? 'bg-amber-950/90 text-amber-400 border border-amber-800/70 shadow-inner'
                   : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-              }`}
+                }`}
             >
               {isForced ? <ShieldAlert className="w-6 h-6 text-amber-400" /> : <Sparkles className="w-6 h-6 text-emerald-400" />}
             </div>

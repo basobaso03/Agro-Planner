@@ -1,8 +1,8 @@
 {
-  "latestVersion": "1.0.2",
-  "minSupportedVersion": "1.0.2",
+  "latestVersion": "1.0.3",
+  "minSupportedVersion": "1.0.3",
   "forceUpdate": true,
   "downloadUrl": "https://basobaso03.github.io/Agro-Planner/#download",
-  "title": "Agro Planner Update (v1.0.2)",
-  "releaseNotes": "- Background & Closed-App Notifications: Reliable native push & offline catch-up notifications with high-priority Android channels.\n- Remote Version Control & Force Update Gate: Automatic startup version verification and release notes display.\n- Real-Time Cloud Ledger Sync: Instant cross-device synchronization for syndicate members, livestock, and audit alerts.\n- Version Transparency: Active app version and live update checker integrated in Settings."
+  "title": "Agro Planner Update (v1.0.3)",
+  "releaseNotes": "- Minimum Supported Release v1.0.3: Official release baseline.\n- Background & Closed-App Notifications: Reliable native push & offline catch-up notifications with high-priority Android channels.\n- Remote Version Control & Force Update Gate: Automatic startup version verification and release notes display.\n- Real-Time Cloud Ledger Sync: Instant cross-device synchronization for syndicate members, livestock, and audit alerts.\n- Clean Slate Production: All test registries, sample entries, and trial data completely reset to zero."
 }
