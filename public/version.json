@@ -1,8 +1,8 @@
 {
-  "latestVersion": "1.0.3",
+  "latestVersion": "1.0.4",
   "minSupportedVersion": "1.0.3",
-  "forceUpdate": true,
+  "forceUpdate": false,
   "downloadUrl": "https://basobaso03.github.io/Agro-Planner/#download",
-  "title": "Agro Planner Update (v1.0.3)",
-  "releaseNotes": "- Minimum Supported Release v1.0.3: Official release baseline.\n- Background & Closed-App Notifications: Reliable native push & offline catch-up notifications with high-priority Android channels.\n- Remote Version Control & Force Update Gate: Automatic startup version verification and release notes display.\n- Real-Time Cloud Ledger Sync: Instant cross-device synchronization for syndicate members, livestock, and audit alerts.\n- Clean Slate Production: All test registries, sample entries, and trial data completely reset to zero."
+  "title": "Agro Planner Update (v1.0.4)",
+  "releaseNotes": "- Practical Commercial Broiler Lifecycle: 12-stage management schedule from Day 1 to Day 42 (Starter Crumbles, 3-day feed transitions, Grower, Finisher, and Harvest).\n- Checkpoint Reminders & Organisation Broadcast: Deterministic 07:00 AM reminder dispatches with animal telemetry and live status alerts sent to all members.\n- Move-in Date Tracking: Exact arrival date entry for existing and new livestock with real-time countdown to target sale.\n- IBD Protocol Update: Updated nomenclature across all vaccine protocols and seed records."
 }

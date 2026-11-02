@@ -66,7 +66,7 @@ import {
   sha256Hex,
   GENESIS_SHORT,
 } from '../utils/cryptoHash.ts';
-import { computeTargetSaleDate } from '../utils/calculations.ts';
+import { computeTargetSaleDate, computeLivestockStatus } from '../utils/calculations.ts';
 import {
   areSystemNotificationsEnabled,
   dispatchSystemNotification,
@@ -2626,6 +2626,7 @@ class AgroDataService {
     };
 
     const initEventId = `EV-LSTK-${Date.now().toString(36).toUpperCase()}`;
+    const entryTimestamp = params.entryDate || now;
     const initialLifecycleEvent: LivestockLifecycleEvent = {
       id: initEventId,
       livestockId: newEntry.id,
@@ -2636,11 +2637,11 @@ class AgroDataService {
       note: `Initial registration of ${params.initialHeadcount}x ${newEntry.species} (${newEntry.nameOrTag}). ${params.notes.trim()}`,
       loggedByName: params.actor.fullName,
       photoUrl: params.imageUrl || galleryPhotos[0],
-      createdAt: now,
+      createdAt: entryTimestamp,
       auditHash: computeLedgerRecordHash(
         'LIVESTOCK_EVENT',
         initEventId,
-        now,
+        entryTimestamp,
         params.initialHeadcount,
         params.notes.trim()
       ),
@@ -2902,6 +2903,66 @@ class AgroDataService {
     void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', newEvent.id, newEvent);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newEvent;
+  }
+
+  public dispatchLivestockMilestoneBroadcast(params: {
+    livestockId: string;
+    dayTarget: number;
+    milestoneTitle: string;
+    customNote?: string;
+    actor: SyndicateMember;
+  }): AuditNotificationEvent {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error('Livestock batch or animal not found.');
+
+    const status = computeLivestockStatus(
+      entry,
+      this.state.livestockEvents,
+      this.state.feedLedger
+    );
+
+    const proto = status.protocols.find((p) => p.dayTarget === params.dayTarget);
+    const now = new Date().toISOString();
+    const cleanTitle = (params.milestoneTitle || proto?.title || `Day ${params.dayTarget} Checkpoint`).trim();
+
+    const weightComparison = status.latestWeightAvgKg != null
+      ? `Recorded Weight: ${status.latestWeightAvgKg} kg${proto?.targetWeightKg ? ` (Benchmark: ${proto.targetWeightKg} kg)` : ''}`
+      : proto?.targetWeightKg ? `Target S-Curve Weight: ${proto.targetWeightKg} kg` : '';
+
+    const feedInfo = proto?.feedPhase ? `Feed Phase: ${proto.feedPhase}` : '';
+    const headcountInfo = `Live Headcount: ${status.currentLiveHeadcount} head (${status.mortalityRatePercent}% mortality)`;
+    const progressInfo = `Age: Day ${status.currentTotalAgeDays} on site (${status.daysLeftUntilSale} days left to market)`;
+    const notePart = params.customNote?.trim() ? `Field Observation: ${params.customNote.trim()}` : (proto?.description ? `Protocol: ${proto.description}` : '');
+
+    const message = [
+      `Milestone checkpoint reached for ${entry.nameOrTag} (${entry.species}) at ${entry.locationName}.`,
+      progressInfo,
+      headcountInfo,
+      weightComparison,
+      feedInfo,
+      notePart,
+    ].filter(Boolean).join(' · ');
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'GROUND_BROADCAST',
+      severity: 'MILESTONE',
+      title: `Milestone: Day ${params.dayTarget} ${cleanTitle.replace(/^Day \d+:\s*/i, '')} — ${entry.nameOrTag}`,
+      message,
+      referenceEntityId: entry.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return audit;
   }
 
   public logFixedAssetEvent(params: {

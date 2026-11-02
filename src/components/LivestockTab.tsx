@@ -18,6 +18,10 @@ import {
   Image as ImageIcon,
   Upload,
   Maximize2,
+  Bell,
+  Radio,
+  Send,
+  Calendar,
 } from 'lucide-react';
 import { LivestockGrowthCharts } from './LivestockGrowthCharts.tsx';
 import type {
@@ -83,6 +87,12 @@ interface LivestockTabProps {
     photoUrl?: string;
   }) => void;
   onAddLivestockPhoto?: (livestockId: string, photoUrl: string, caption?: string) => void;
+  onBroadcastMilestone?: (data: {
+    livestockId: string;
+    dayTarget: number;
+    milestoneTitle: string;
+    customNote?: string;
+  }) => void;
   showNumbers?: boolean;
 }
 
@@ -95,6 +105,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   onRegisterLivestock,
   onLogLifecycleEvent,
   onAddLivestockPhoto,
+  onBroadcastMilestone,
   showNumbers = true,
 }) => {
   const [speciesFilter, setSpeciesFilter] = useState('All');
@@ -113,6 +124,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [regNameOrTag, setRegNameOrTag] = useState('');
   const [regMode, setRegMode] = useState<TrackingMode>('BATCH');
   const [regHeadcount, setRegHeadcount] = useState('100');
+  const [regMoveInDate, setRegMoveInDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [regInitialAgeVal, setRegInitialAgeVal] = useState('1');
   const [regInitialAgeUnit, setRegInitialAgeUnit] = useState<DurationUnit>('DAYS');
   const [regTargetDurVal, setRegTargetDurVal] = useState('42');
@@ -122,6 +134,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [regAutoExpense, setRegAutoExpense] = useState(true);
   const [regNotes, setRegNotes] = useState('');
   const [regError, setRegError] = useState('');
+  const [broadcastSuccessId, setBroadcastSuccessId] = useState<string | null>(null);
 
   // Ground Photo & Gallery State
   const [regImage, setRegImage] = useState<string | null>(null);
@@ -339,9 +352,9 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
         species: finalSpecies,
         nameOrTag: regNameOrTag.trim(),
         trackingMode: regMode,
-        entryDate: new Date().toISOString(),
-        initialAgeValue: Math.max(0, parseFloat(regInitialAgeVal) || 0),
-        initialAgeUnit: regInitialAgeUnit,
+        entryDate: regMoveInDate ? new Date(`${regMoveInDate}T07:00:00`).toISOString() : new Date().toISOString(),
+        initialAgeValue: 0,
+        initialAgeUnit: 'DAYS',
         targetDurationValue: Math.max(1, parseFloat(regTargetDurVal) || 1),
         targetDurationUnit: regTargetDurUnit,
         initialHeadcount: regMode === 'INDIVIDUAL_TAG' ? 1 : hc,
@@ -355,6 +368,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
       setRegNameOrTag('');
       setCustomSpeciesName('');
       setRegNotes('');
+      setRegMoveInDate(new Date().toISOString().split('T')[0]);
       setRegImage(null);
       setRegError('');
       setShowRegisterModal(false);
@@ -495,6 +509,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
           livestockStatuses={livestockStatuses}
           selectedLocationId={selectedLocationId}
           onOpenWeightCheckModal={(status) => handleOpenActionModal(status, 'WEIGHT_CHECK')}
+          onBroadcastMilestone={onBroadcastMilestone}
           showNumbers={showNumbers}
         />
       )}
@@ -813,34 +828,102 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       Standard {status.entry.species} Biosecurity, Vaccine & Feed Schedule
                     </p>
                     <div className="divide-y divide-slate-800/70">
-                      {status.protocols.map((proto) => (
-                        <div
-                          key={proto.id}
-                          className="py-2 flex items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2
-                              className={`w-4 h-4 shrink-0 ${proto.completed ? 'text-emerald-400' : 'text-slate-600'
-                                }`}
-                            />
-                            <div>
-                              <span
-                                className={
-                                  proto.completed ? 'text-slate-200 font-medium' : 'text-slate-400'
-                                }
-                              >
-                                {proto.title}
-                              </span>
-                              {proto.completedNote && (
-                                <p className="text-[11px] text-slate-500">{proto.completedNote}</p>
+                      {status.protocols.map((proto) => {
+                        const isBroadcastActive = broadcastSuccessId === `${status.entry.id}-${proto.dayTarget}`;
+                        return (
+                          <div
+                            key={proto.id}
+                            className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <CheckCircle2
+                                className={`w-4 h-4 shrink-0 mt-0.5 ${proto.completed ? 'text-emerald-400' : 'text-slate-600'
+                                  }`}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={
+                                      proto.completed ? 'text-slate-200 font-medium' : 'text-slate-400'
+                                    }
+                                  >
+                                    {proto.title}
+                                  </span>
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-300">
+                                    {proto.category.replace('_', ' ')}
+                                  </span>
+                                  {proto.targetWeightKg && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800/50">
+                                      Target: {proto.targetWeightKg} kg
+                                    </span>
+                                  )}
+                                </div>
+                                {proto.feedPhase && (
+                                  <p className="text-[11px] text-amber-400/90 font-medium mt-0.5">
+                                    Feed Phase: {proto.feedPhase}
+                                  </p>
+                                )}
+                                {proto.description && (
+                                  <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
+                                    {proto.description}
+                                  </p>
+                                )}
+                                {proto.completedNote && (
+                                  <p className="text-[11px] text-emerald-400/80 font-mono mt-0.5">
+                                    ✓ {proto.completedNote}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              <div className="text-right">
+                                <span className="block font-mono text-[11px] text-slate-300">
+                                  {proto.scheduledDate ? `${proto.scheduledDate} · ${proto.dispatchTime || '07:00 AM'}` : `Day ${proto.dayTarget}`}
+                                </span>
+                                <span
+                                  className={`inline-block text-[10px] font-mono px-1.5 py-0.2 rounded ${proto.completed
+                                      ? 'bg-emerald-500/20 text-emerald-400'
+                                      : proto.reminderStatus === 'DUE_TODAY'
+                                        ? 'bg-amber-500/20 text-amber-300 animate-pulse'
+                                        : proto.reminderStatus === 'OVERDUE'
+                                          ? 'bg-rose-500/20 text-rose-300'
+                                          : 'bg-slate-800 text-slate-400'
+                                    }`}
+                                >
+                                  {proto.completed ? 'Done' : proto.reminderStatus === 'DUE_TODAY' ? 'Due Today' : `Due Day ${proto.dayTarget}`}
+                                </span>
+                              </div>
+
+                              {onBroadcastMilestone && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onBroadcastMilestone({
+                                      livestockId: status.entry.id,
+                                      dayTarget: proto.dayTarget,
+                                      milestoneTitle: proto.title,
+                                      customNote: proto.description,
+                                    });
+                                    setBroadcastSuccessId(`${status.entry.id}-${proto.dayTarget}`);
+                                    setTimeout(() => setBroadcastSuccessId(null), 4000);
+                                  }}
+                                  title="Dispatch milestone reminder & status update to all organisation members"
+                                  className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 text-[11px] font-medium ${isBroadcastActive
+                                      ? 'bg-emerald-600 border-emerald-500 text-white'
+                                      : 'bg-slate-900 border-slate-700 hover:border-amber-500 text-slate-300 hover:text-white'
+                                    }`}
+                                >
+                                  <Radio className="w-3.5 h-3.5 text-amber-400" />
+                                  <span className="hidden sm:inline">
+                                    {isBroadcastActive ? 'Broadcasted' : 'Broadcast'}
+                                  </span>
+                                </button>
                               )}
                             </div>
                           </div>
-                          <span className="font-mono text-[11px] text-slate-400 shrink-0">
-                            {proto.completed ? 'Done' : `Due Day ${proto.dayTarget}`}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -962,8 +1045,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                           type="button"
                           onClick={() => handleSpeciesChange(p.id)}
                           className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold shrink-0 flex items-center gap-1 transition-all cursor-pointer border ${isSelected
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 ring-1 ring-emerald-500 shadow-xs'
-                              : 'bg-slate-900/90 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 ring-1 ring-emerald-500 shadow-xs'
+                            : 'bg-slate-900/90 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600'
                             }`}
                         >
                           <span>{p.emoji}</span>
@@ -1075,38 +1158,28 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 />
               </div>
 
-              {/* Initial Age & Target Duration Compound Inputs (Clean mobile layout) */}
+              {/* Move-in Date & Target Duration Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label htmlFor="reg-init-age" className="block text-xs font-medium text-slate-300 mb-1">
-                    Initial Age at Entry
+                  <label htmlFor="reg-movein-date" className="block text-xs font-medium text-slate-300 mb-1">
+                    Move-in / Arrival Date *
                   </label>
-                  <div className="flex items-center rounded-xl overflow-hidden border border-slate-700 bg-slate-950 focus-within:ring-2 focus-within:ring-amber-500/70 focus-within:border-transparent transition-all">
-                    <input
-                      id="reg-init-age"
-                      type="number"
-                      min="0"
-                      value={regInitialAgeVal}
-                      onChange={(e) => setRegInitialAgeVal(e.target.value)}
-                      className="w-24 px-3 py-2.5 bg-transparent text-sm font-mono text-white border-r border-slate-800 focus:outline-none"
-                    />
-                    <select
-                      aria-label="Initial Age Unit"
-                      value={regInitialAgeUnit}
-                      onChange={(e) => setRegInitialAgeUnit(e.target.value as DurationUnit)}
-                      className="flex-1 px-3 py-2.5 bg-slate-900 hover:bg-slate-850 text-xs font-semibold text-slate-200 border-none focus:outline-none cursor-pointer"
-                    >
-                      <option value="DAYS">Days</option>
-                      <option value="WEEKS">Weeks</option>
-                      <option value="MONTHS">Months</option>
-                      <option value="YEARS">Years</option>
-                    </select>
-                  </div>
+                  <input
+                    id="reg-movein-date"
+                    type="date"
+                    required
+                    value={regMoveInDate}
+                    onChange={(e) => setRegMoveInDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70 cursor-pointer"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Date animals arrived (pick today or past date for existing stock).
+                  </p>
                 </div>
 
                 <div>
                   <label htmlFor="reg-target-dur" className="block text-xs font-medium text-slate-300 mb-1">
-                    Target Sale Duration *
+                    Target Sale Duration (Days/Years) *
                   </label>
                   <div className="flex items-center rounded-xl overflow-hidden border border-slate-700 bg-slate-950 focus-within:ring-2 focus-within:ring-amber-500/70 focus-within:border-transparent transition-all">
                     <input
@@ -1129,8 +1202,64 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       <option value="YEARS">Years</option>
                     </select>
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Total growth duration until market sale readiness.
+                  </p>
                 </div>
               </div>
+
+              {/* Dynamic Live Counting Preview: Move-In to Today Age & Strict Days Left */}
+              {(() => {
+                const moveInMs = new Date(regMoveInDate).getTime();
+                const nowMs = new Date().setHours(0, 0, 0, 0);
+                const daysElapsed = Math.max(0, Math.floor((nowMs - moveInMs) / (1000 * 60 * 60 * 24)));
+                const durVal = Math.max(1, parseFloat(regTargetDurVal) || 1);
+                const targetDays =
+                  regTargetDurUnit === 'DAYS'
+                    ? durVal
+                    : regTargetDurUnit === 'WEEKS'
+                      ? durVal * 7
+                      : regTargetDurUnit === 'MONTHS'
+                        ? Math.round(durVal * 30.4375)
+                        : Math.round(durVal * 365.25);
+                const daysLeft = Math.max(0, targetDays - daysElapsed);
+                const targetDate = new Date(moveInMs + targetDays * 86400000);
+                const targetDateStr = targetDate.toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                });
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2">
+                    <div className="flex items-center justify-between text-amber-300 font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        Accurate Animal Age & Target Countdown
+                      </span>
+                      <span className="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                        {daysLeft === 0 ? 'Target Reached (Ready)' : `${daysLeft} Days Left to Sale`}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-1 text-[11px] font-mono border-t border-amber-500/20">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">Age Today</span>
+                        <strong className="text-white">
+                          {daysElapsed === 0 ? 'Day 0 (Arrival)' : `Day ${daysElapsed} on farm`}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">Target Cycle</span>
+                        <strong className="text-white">{targetDays} Days</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase">Market Ready Date</span>
+                        <strong className="text-white">{targetDateStr}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>

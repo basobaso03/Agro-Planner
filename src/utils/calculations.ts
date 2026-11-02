@@ -88,57 +88,183 @@ export function generateVaccinationProtocols(
   );
   const lowerSpecies = entry.species.toLowerCase();
 
-  let templates: { dayTarget: number; title: string; category: ProtocolMilestone['category'] }[] = [];
+  let templates: {
+    dayTarget: number;
+    title: string;
+    category: ProtocolMilestone['category'];
+    targetWeightKg?: number;
+    feedPhase?: string;
+    description?: string;
+  }[] = [];
 
   if (lowerSpecies.includes('broiler') || lowerSpecies.includes('chicken') || lowerSpecies.includes('layer') || lowerSpecies.includes('poultry')) {
     templates = [
-      { dayTarget: 1, title: 'Day 1: Stress Pack + Brooder Temp Check (33°C)', category: 'BIOSECURITY' },
-      { dayTarget: 7, title: 'Day 7: Newcastle Disease (Hitchner B1) Eye-Drop', category: 'VACCINE' },
-      { dayTarget: 14, title: 'Day 14: Gumboro (IBD Intermediate) Drinking Water', category: 'VACCINE' },
-      { dayTarget: 15, title: 'Day 15: Switch Starter Crumbles to Grower Mash', category: 'FEED_TRANSITION' },
-      { dayTarget: 21, title: 'Day 21: Newcastle (LaSota) + Gumboro Booster', category: 'VACCINE' },
-      { dayTarget: 28, title: 'Day 28: Switch Grower to Finisher Mash + Sample Weigh-In', category: 'FEED_TRANSITION' },
-      { dayTarget: 35, title: 'Day 35: Pre-Market Weight Check & Buyer Booking', category: 'WEIGHT_CHECK' },
+      {
+        dayTarget: 1,
+        title: 'Day 1: Placement, Brooder Setup (32-33°C) & Stress Pack',
+        category: 'BIOSECURITY',
+        targetWeightKg: 0.042,
+        feedPhase: 'Broiler Starter Crumbles (22-24% CP)',
+        description: 'Brooder preheated to 32-33°C. Administer Stress Pack (glucose + electrolytes + multivitamins) in clean water. Broiler Starter Crumbles on paper trays. Crop fill audit at 24h (target >95%).',
+      },
+      {
+        dayTarget: 4,
+        title: 'Day 4: Starter Period: Brooder Temp Stepping & Crop Audit',
+        category: 'FEED_TRANSITION',
+        targetWeightKg: 0.095,
+        feedPhase: 'Broiler Starter Crumbles (22-24% CP)',
+        description: 'Brooder temperature step-down (-0.5°C/day towards 28°C). Maintain 23h light / 1h dark. Verify active feeding & clean fresh water supply.',
+      },
+      {
+        dayTarget: 7,
+        title: 'Day 7: Week 1 Weight Check & Newcastle (B1) Vaccine',
+        category: 'VACCINE',
+        targetWeightKg: 0.185,
+        feedPhase: 'Broiler Starter Crumbles (22-24% CP)',
+        description: 'Newcastle Disease (Hitchner B1 / Clone 30) eye-drop or drinking water. Conduct 10% sample weigh-in (target: 180-200g, minimum 4.5x hatch weight).',
+      },
+      {
+        dayTarget: 11,
+        title: 'Day 11: Feed Transition: 3-Day Starter to Grower Blend',
+        category: 'FEED_TRANSITION',
+        targetWeightKg: 0.350,
+        feedPhase: '50% Starter / 50% Grower Blend',
+        description: 'Initiate 3-day gradual feed switch to protect gut microflora: Day 11 (75/25), Day 12 (50/50), Day 13 (25/75). Blend Starter Crumbles with Grower Pellets/Mash.',
+      },
+      {
+        dayTarget: 14,
+        title: 'Day 14: Week 2 Weight Check & IBD Intermediate Vaccine',
+        category: 'VACCINE',
+        targetWeightKg: 0.480,
+        feedPhase: '100% Broiler Grower Pellets (20% CP)',
+        description: 'IBD Intermediate vaccine in clean chlorine-free water with skim milk stabilizer. Sample weigh-in (target: 450-500g). Phase down artificial brooder heating to ambient 24-26°C; expand pen floor space.',
+      },
+      {
+        dayTarget: 18,
+        title: 'Day 18: Grower Phase: Ventilation, Litter Audit & FCR Check',
+        category: 'FEED_TRANSITION',
+        targetWeightKg: 0.720,
+        feedPhase: 'Broiler Grower Pellets (20% CP)',
+        description: 'Turn litter to prevent caking and ammonia buildup. Inspect drinker line pressure and daily feed intake against standard FCR curves.',
+      },
+      {
+        dayTarget: 21,
+        title: 'Day 21: Week 3 Weight Check & Newcastle + IBD Booster',
+        category: 'VACCINE',
+        targetWeightKg: 0.980,
+        feedPhase: 'Broiler Grower Pellets (20% CP)',
+        description: 'Newcastle Disease (LaSota) + IBD Booster vaccine in drinking water. Sample weigh-in (target: 950-1050g). Inspect flock uniformity, footpad health, and feathering.',
+      },
+      {
+        dayTarget: 25,
+        title: 'Day 25: Feed Transition: 3-Day Grower to Finisher Blend',
+        category: 'FEED_TRANSITION',
+        targetWeightKg: 1.350,
+        feedPhase: '50% Grower / 50% Finisher Blend',
+        description: 'Begin 3-day gradual transition to Finisher: Day 25 (75/25), Day 26 (50/50), Day 27 (25/75). Maintains uniform intestinal flora and appetite.',
+      },
+      {
+        dayTarget: 28,
+        title: 'Day 28: Week 4 Weight Check & 100% Finisher Transition',
+        category: 'FEED_TRANSITION',
+        targetWeightKg: 1.620,
+        feedPhase: '100% Broiler Finisher (18-19% CP)',
+        description: 'Full transition to high-energy Broiler Finisher feed (3,200 kcal/kg) for rapid breast muscle accretion. Sample weigh-in (target: 1.55-1.70 kg).',
+      },
+      {
+        dayTarget: 32,
+        title: 'Day 32: Biosecurity & Medication Withdrawal Audit',
+        category: 'BIOSECURITY',
+        targetWeightKg: 1.950,
+        feedPhase: 'Unmedicated Broiler Finisher',
+        description: 'Mandatory veterinary withdrawal of any anti-coccidials or medicated feeds. Switch to 100% plain water and clean finisher feed to guarantee zero residues in meat.',
+      },
+      {
+        dayTarget: 35,
+        title: 'Day 35: Week 5 Pre-Market Weight Audit & Buyer Booking',
+        category: 'WEIGHT_CHECK',
+        targetWeightKg: 2.200,
+        feedPhase: 'Unmedicated Broiler Finisher',
+        description: 'Comprehensive flock weigh-in (target: 2.1-2.3 kg, CV < 10%). Finalize buyer pickup dates, processing slots, and crate staging logistics.',
+      },
+      {
+        dayTarget: 38,
+        title: 'Day 38: Final Harvest, Feed Withdrawal & Dispatch Readiness',
+        category: 'WEIGHT_CHECK',
+        targetWeightKg: 2.450,
+        feedPhase: 'Pre-Slaughter Feed Withdrawal (Water Only)',
+        description: '8-10 hour pre-slaughter feed withdrawal protocol (fresh water stays available). Cool-night or early dawn catching, crating, weighing, and market dispatch.',
+      },
     ];
   } else if (lowerSpecies.includes('goat') || lowerSpecies.includes('sheep')) {
     templates = [
-      { dayTarget: 14, title: 'Quarantine & Footbath Dip Inspection', category: 'BIOSECURITY' },
-      { dayTarget: 30, title: 'Pulpy Kidney (Enterotoxaemia) & Tetanus Vaccine', category: 'VACCINE' },
-      { dayTarget: 90, title: 'Quarterly Broad-Spectrum Deworming (Albendazole/Ivermectin)', category: 'VACCINE' },
-      { dayTarget: 150, title: 'Mid-Cycle Body Condition & Weight Check', category: 'WEIGHT_CHECK' },
-      { dayTarget: 210, title: 'Pre-Market Finishing Supplement Transition', category: 'FEED_TRANSITION' },
+      { dayTarget: 14, title: 'Quarantine & Footbath Dip Inspection', category: 'BIOSECURITY', targetWeightKg: 26, feedPhase: 'Quarantine Hay & Mineral Supplement', description: 'Inspect isolation pen, hoof bath dip, and internal parasite check.' },
+      { dayTarget: 30, title: 'Pulpy Kidney (Enterotoxaemia) & Tetanus Vaccine', category: 'VACCINE', targetWeightKg: 29, feedPhase: 'Grower Pasture + Protein Lick', description: 'Clostridial vaccine injection with sterile needles.' },
+      { dayTarget: 90, title: 'Quarterly Broad-Spectrum Deworming (Albendazole/Ivermectin)', category: 'VACCINE', targetWeightKg: 35, feedPhase: 'High-Energy Finishing Supplement', description: 'Oral drenching calibrated to body weight.' },
+      { dayTarget: 150, title: 'Mid-Cycle Body Condition & Weight Check', category: 'WEIGHT_CHECK', targetWeightKg: 40, feedPhase: 'Finishing Ration', description: 'Body condition score audit (target 3.5/5).' },
+      { dayTarget: 210, title: 'Pre-Market Finishing Supplement Transition', category: 'FEED_TRANSITION', targetWeightKg: 45, feedPhase: 'Pre-Market Finishing Blend', description: 'Transition to final finishing feed and buyer booking.' },
     ];
   } else if (lowerSpecies.includes('zebra') || lowerSpecies.includes('wildlife') || lowerSpecies.includes('game') || lowerSpecies.includes('ostrich') || lowerSpecies.includes('antelope')) {
     templates = [
-      { dayTarget: 7, title: 'Day 7: Arrival Quarantine & Pasture Acclimatization Inspection', category: 'BIOSECURITY' },
-      { dayTarget: 30, title: 'Day 30: Multivalent Clostridial / Anthrax Vaccine & Tick Dip Check', category: 'VACCINE' },
-      { dayTarget: 90, title: 'Day 90: Seasonal Deworming & Mineral Lick Block Placement', category: 'FEED_TRANSITION' },
-      { dayTarget: 180, title: 'Day 180: Bi-Annual Herd Condition Assessment & Microchip/Tag Audit', category: 'WEIGHT_CHECK' },
-      { dayTarget: 360, title: 'Day 360: Annual Wildlife Census & Veterinary Health Clearance', category: 'BIOSECURITY' },
+      { dayTarget: 7, title: 'Day 7: Arrival Quarantine & Pasture Acclimatization Inspection', category: 'BIOSECURITY', feedPhase: 'Quarantine Boma Rations', description: 'Acclimatization, fence inspection and parasite screening.' },
+      { dayTarget: 30, title: 'Day 30: Multivalent Clostridial / Anthrax Vaccine & Tick Dip Check', category: 'VACCINE', feedPhase: 'Rangeland Grazing + Salt Blocks', description: 'Multivalent clostridial immunization and plunge dip inspection.' },
+      { dayTarget: 90, title: 'Day 90: Seasonal Deworming & Mineral Lick Block Placement', category: 'FEED_TRANSITION', feedPhase: 'Seasonal Mineral Blocks', description: 'Seasonal dewormer delivery and mineral supplement placement.' },
+      { dayTarget: 180, title: 'Day 180: Bi-Annual Herd Condition Assessment & Microchip/Tag Audit', category: 'WEIGHT_CHECK', feedPhase: 'Standard Natural Rangeland', description: 'Aerial or vehicle herd count and condition scoring.' },
+      { dayTarget: 360, title: 'Day 360: Annual Wildlife Census & Veterinary Health Clearance', category: 'BIOSECURITY', feedPhase: 'Dry Season Supplementation', description: 'Veterinary health cert clearance and herd sustainability audit.' },
     ];
   } else if (lowerSpecies.includes('pig') || lowerSpecies.includes('swine')) {
     templates = [
-      { dayTarget: 3, title: 'Day 3: Iron Dextran Injection & Needle Teeth Check', category: 'BIOSECURITY' },
-      { dayTarget: 21, title: 'Day 21: Mycoplasma & Circovirus (PCV2) Vaccination', category: 'VACCINE' },
-      { dayTarget: 28, title: 'Day 28: Weaning & Creep Feed Transition to Weaner Pellets', category: 'FEED_TRANSITION' },
-      { dayTarget: 75, title: 'Day 75: Grower Mash Transition & Internal Parasite Control', category: 'FEED_TRANSITION' },
-      { dayTarget: 150, title: 'Day 150: Finisher Weight Check & Market Booking', category: 'WEIGHT_CHECK' },
+      { dayTarget: 3, title: 'Day 3: Iron Dextran Injection & Needle Teeth Check', category: 'BIOSECURITY', targetWeightKg: 1.8, feedPhase: 'Sow Milk + Creep Feed', description: 'Administer iron dextran 200mg and inspect creep box temperature.' },
+      { dayTarget: 21, title: 'Day 21: Mycoplasma & Circovirus (PCV2) Vaccination', category: 'VACCINE', targetWeightKg: 6.5, feedPhase: 'Creep Feed Pellets', description: 'PCV2 immunization and initial weaning prep.' },
+      { dayTarget: 28, title: 'Day 28: Weaning & Creep Feed Transition to Weaner Pellets', category: 'FEED_TRANSITION', targetWeightKg: 8.5, feedPhase: 'Weaner Pellets', description: 'Wean piglets and transition feed over 4 days.' },
+      { dayTarget: 75, title: 'Day 75: Grower Mash Transition & Internal Parasite Control', category: 'FEED_TRANSITION', targetWeightKg: 35, feedPhase: 'Pig Grower Mash', description: 'Transition to grower mash and broad-spectrum deworming.' },
+      { dayTarget: 150, title: 'Day 150: Finisher Weight Check & Market Booking', category: 'WEIGHT_CHECK', targetWeightKg: 90, feedPhase: 'Finisher Meal', description: 'Weight audit (target 85-95kg) and abattoir booking.' },
     ];
   } else {
     templates = [
-      { dayTarget: 7, title: 'Arrival Quarantine & Ear-Tag Verification', category: 'BIOSECURITY' },
-      { dayTarget: 30, title: 'Anthrax / Blackleg / Multivalent Vaccination', category: 'VACCINE' },
-      { dayTarget: 90, title: 'Tick Dipping & Internal Parasite Drenching', category: 'VACCINE' },
-      { dayTarget: 180, title: 'Bi-Annual Weight & Growth Curve Assessment', category: 'WEIGHT_CHECK' },
+      { dayTarget: 7, title: 'Arrival Quarantine & Ear-Tag Verification', category: 'BIOSECURITY', description: 'Quarantine and physical inspection.' },
+      { dayTarget: 30, title: 'Anthrax / Blackleg / Multivalent Vaccination', category: 'VACCINE', description: 'Routine clostridial multivalent immunization.' },
+      { dayTarget: 90, title: 'Tick Dipping & Internal Parasite Drenching', category: 'VACCINE', description: 'Plunge dipping or pour-on acaricide.' },
+      { dayTarget: 180, title: 'Bi-Annual Weight & Growth Curve Assessment', category: 'WEIGHT_CHECK', description: 'Scale weigh-in and body condition score.' },
     ];
   }
 
+  const entryMs = new Date(entry.entryDate).getTime();
+
   return templates.map((tpl, idx) => {
-    const matchingEvent = vaxEvents.find((ev) =>
-      ev.note.toLowerCase().includes(tpl.title.split(':')[1]?.trim().split(' ')[0]?.toLowerCase() || '__none__')
-    );
+    const matchingEvent = vaxEvents.find((ev) => {
+      const noteLower = ev.note.toLowerCase();
+      // Match explicit day number (e.g. "day 14" or "day 7")
+      if (noteLower.includes(`day ${tpl.dayTarget}`)) return true;
+      // Match key disease / protocol terms
+      if ((tpl.title.toLowerCase().includes('ibd') || tpl.title.toLowerCase().includes('gumboro')) && (noteLower.includes('ibd') || noteLower.includes('gumboro'))) return true;
+      if (tpl.title.toLowerCase().includes('newcastle') && noteLower.includes('newcastle')) return true;
+      if (tpl.title.toLowerCase().includes('starter') && noteLower.includes('starter')) return true;
+      if (tpl.title.toLowerCase().includes('grower') && noteLower.includes('grower')) return true;
+      if (tpl.title.toLowerCase().includes('finisher') && noteLower.includes('finisher')) return true;
+      // Match first primary keyword from title
+      const titleKey = tpl.title.split(':')[1]?.trim().split(' ')[0]?.toLowerCase();
+      return titleKey && titleKey.length > 2 && noteLower.includes(titleKey);
+    });
+
     const autoDoneByAge = currentTotalAgeDays > tpl.dayTarget + 3;
     const completed = Boolean(matchingEvent) || autoDoneByAge;
+
+    const targetDateMs = entryMs + tpl.dayTarget * MS_PER_DAY;
+    const targetDateObj = new Date(targetDateMs);
+    const scheduledDate = targetDateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const dispatchTime = '07:00 AM';
+    const dispatchIso = new Date(new Date(targetDateMs).setHours(7, 0, 0, 0)).toISOString();
+
+    let reminderStatus: ProtocolMilestone['reminderStatus'] = 'SCHEDULED';
+    if (completed) {
+      reminderStatus = 'COMPLETED';
+    } else if (currentTotalAgeDays === tpl.dayTarget) {
+      reminderStatus = 'DUE_TODAY';
+    } else if (currentTotalAgeDays > tpl.dayTarget) {
+      reminderStatus = 'OVERDUE';
+    }
+
     return {
       id: `${entry.id}-proto-${idx + 1}`,
       dayTarget: tpl.dayTarget,
@@ -147,6 +273,13 @@ export function generateVaccinationProtocols(
       completed,
       completedNote: matchingEvent?.note || (autoDoneByAge ? 'Completed on schedule per site log' : undefined),
       completedAt: matchingEvent?.createdAt,
+      scheduledDate,
+      dispatchTime,
+      dispatchIso,
+      targetWeightKg: tpl.targetWeightKg,
+      feedPhase: tpl.feedPhase,
+      description: tpl.description,
+      reminderStatus,
     };
   });
 }
@@ -564,11 +697,11 @@ export function computeFeedInventories(
     const avgDailyBurnBags =
       consumptionEvents.length > 0
         ? Number(
-            (
-              consumptionEvents.reduce((acc, e) => acc + Math.abs(e.bagsDelta), 0) /
-              Math.max(1, consumptionEvents.length)
-            ).toFixed(2)
-          )
+          (
+            consumptionEvents.reduce((acc, e) => acc + Math.abs(e.bagsDelta), 0) /
+            Math.max(1, consumptionEvents.length)
+          ).toFixed(2)
+        )
         : 0.5;
 
     const daysRemaining =

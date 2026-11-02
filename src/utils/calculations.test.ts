@@ -168,4 +168,106 @@ test('Livestock Growth Trajectory & Herd Biomass calculates milestones and proje
   assert.equal(biomass.length, statuses.length);
   const totalBiomassKg = biomass.reduce((sum, b) => sum + b.totalBiomassKg, 0);
   assert.ok(totalBiomassKg > 500);
+
+  // Checkpoint & Broiler Lifecycle Verification
+  assert.equal(broiler12.protocols.length, 12, 'Broiler protocols should contain all 12 practical lifecycle stages');
+  for (const proto of broiler12.protocols) {
+    assert.ok(proto.scheduledDate, `Protocol ${proto.title} must have scheduledDate`);
+    assert.equal(proto.dispatchTime, '07:00 AM', `Protocol ${proto.title} must have 07:00 AM dispatch time`);
+    assert.ok(proto.dispatchIso, `Protocol ${proto.title} must have dispatchIso`);
+    assert.ok(!proto.title.toLowerCase().includes('gumboro'), `Protocol title "${proto.title}" must not contain "Gumboro"`);
+    assert.ok(!proto.description?.toLowerCase().includes('gumboro'), `Protocol description must not contain "Gumboro"`);
+  }
+
+  // Check specific phases exist
+  const day1 = broiler12.protocols.find((p) => p.dayTarget === 1)!;
+  const day4 = broiler12.protocols.find((p) => p.dayTarget === 4)!;
+  const day11 = broiler12.protocols.find((p) => p.dayTarget === 11)!;
+  const day14 = broiler12.protocols.find((p) => p.dayTarget === 14)!;
+  const day25 = broiler12.protocols.find((p) => p.dayTarget === 25)!;
+  const day28 = broiler12.protocols.find((p) => p.dayTarget === 28)!;
+  const day32 = broiler12.protocols.find((p) => p.dayTarget === 32)!;
+  const day38 = broiler12.protocols.find((p) => p.dayTarget === 38)!;
+
+  assert.ok(day1 && day1.feedPhase?.includes('Starter Crumbles'));
+  assert.ok(day4 && day4.title.includes('Starter Period'));
+  assert.ok(day11 && day11.title.includes('Starter to Grower'));
+  assert.ok(day14 && day14.title.includes('IBD Intermediate') && !day14.title.includes('Gumboro'));
+  assert.ok(day25 && day25.title.includes('Grower to Finisher'));
+  assert.ok(day28 && day28.title.includes('100% Finisher'));
+  assert.ok(day32 && day32.title.includes('Medication Withdrawal'));
+  assert.ok(day38 && day38.title.includes('Harvest'));
+
+  // Verify odd-day checkpoints are not clipped from projection points
+  const projDays = new Set(proj.points.map((pt) => pt.day));
+  assert.ok(projDays.has(1), 'Day 1 checkpoint point must be in projection');
+  assert.ok(projDays.has(7), 'Day 7 checkpoint point must be in projection');
+  assert.ok(projDays.has(11), 'Day 11 checkpoint point must be in projection');
+  assert.ok(projDays.has(21), 'Day 21 checkpoint point must be in projection');
+  assert.ok(projDays.has(35), 'Day 35 checkpoint point must be in projection');
+});
+
+test('Move-in Date & strict days left accurately calculates animal age and countdown for existing stock', () => {
+  // Scenario: A farmer bought 100 chicks 10 days ago (Move-in date: 2026-10-07T07:00:00Z)
+  // Target cycle: 35 days
+  // Calculation date: 2026-10-17T07:00:00Z (exactly 10 days later)
+  const existingFlock: any = {
+    id: 'LSTK-TEST-FLOCK',
+    locationId: 'loc-1',
+    locationName: 'Test Farm',
+    species: 'Broilers',
+    nameOrTag: 'Existing Flock #1',
+    trackingMode: 'BATCH',
+    entryDate: '2026-10-07T07:00:00Z',
+    initialAgeValue: 0,
+    initialAgeUnit: 'DAYS',
+    targetDurationValue: 35,
+    targetDurationUnit: 'DAYS',
+    targetSaleDate: '2026-11-11T07:00:00Z',
+    initialHeadcount: 100,
+    purchaseCostTotal: 95,
+    notes: 'Existing stock brought 10 days ago',
+    createdByMemberName: 'Farmer Joe',
+    createdAt: '2026-10-07T07:00:00Z',
+  };
+
+  const status = computeLivestockStatus(existingFlock, [], [], '2026-10-17T07:00:00Z');
+  assert.equal(status.daysOnFarm, 10, 'Must strictly calculate 10 days on farm from move-in date');
+  assert.equal(status.currentTotalAgeDays, 10, 'Total animal age must be 10 days');
+  assert.equal(status.daysLeftUntilSale, 25, 'Must strictly calculate 25 days remaining (35 - 10)');
+  assert.equal(status.progressPercentage, 29, 'Progress should be 29% (10/35)');
+
+  // Verify Day 14 milestone reminder status is SCHEDULED (since age is 10)
+  const day14Proto = status.protocols.find((p) => p.dayTarget === 14)!;
+  assert.equal(day14Proto.reminderStatus, 'SCHEDULED');
+  assert.equal(day14Proto.completed, false);
+
+  // Verify Day 7 milestone status: since no log was recorded and day 7 is in the past, it is OVERDUE
+  const day7Proto = status.protocols.find((p) => p.dayTarget === 7)!;
+  assert.equal(day7Proto.completed, false);
+  assert.equal(day7Proto.reminderStatus, 'OVERDUE');
+
+  // Verify that when a vaccine event IS logged for Day 7, it is COMPLETED
+  const loggedStatus = computeLivestockStatus(
+    existingFlock,
+    [
+      {
+        id: 'EV-1',
+        livestockId: existingFlock.id,
+        livestockName: existingFlock.nameOrTag,
+        locationId: existingFlock.locationId,
+        eventType: 'VACCINATION_HEALTH',
+        headcountDelta: 0,
+        note: 'Day 7 Newcastle B1 administered in drinking water',
+        loggedByName: 'Farmer Joe',
+        createdAt: '2026-10-14T07:00:00Z',
+        auditHash: 'hash-1',
+      },
+    ],
+    [],
+    '2026-10-17T07:00:00Z'
+  );
+  const loggedDay7 = loggedStatus.protocols.find((p) => p.dayTarget === 7)!;
+  assert.equal(loggedDay7.completed, true);
+  assert.equal(loggedDay7.reminderStatus, 'COMPLETED');
 });

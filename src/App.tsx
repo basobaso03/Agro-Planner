@@ -723,6 +723,12 @@ export default function App() {
                   actor: activeMember,
                 })
               }
+              onBroadcastMilestone={(data) =>
+                dataService.dispatchLivestockMilestoneBroadcast({
+                  ...data,
+                  actor: activeMember,
+                })
+              }
               showNumbers={showNumbers}
             />
           )}

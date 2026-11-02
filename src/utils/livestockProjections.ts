@@ -15,6 +15,10 @@ export interface GrowthChartDataPoint {
   milestoneType?: 'VACCINE' | 'FEED' | 'WEIGHT' | 'MARKET' | 'HEALTH';
   eventNote?: string;
   isToday?: boolean;
+  scheduledTime?: string;
+  feedPhase?: string;
+  protocolDetails?: string;
+  reminderStatus?: 'SCHEDULED' | 'DUE_TODAY' | 'OVERDUE' | 'COMPLETED';
 }
 
 export interface HerdBiomassPoint {
@@ -90,9 +94,9 @@ export function generateGrowthProjectionData(status: LivestockComputedStatus): {
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   // Collect protocols with dayTarget
-  const protocolMap = new Map<number, string>();
+  const protocolMap = new Map<number, (typeof status.protocols)[0]>();
   for (const p of status.protocols) {
-    protocolMap.set(p.dayTarget, p.title);
+    protocolMap.set(p.dayTarget, p);
   }
 
   // Initial recorded weight
@@ -104,10 +108,20 @@ export function generateGrowthProjectionData(status: LivestockComputedStatus): {
 
   const points: GrowthChartDataPoint[] = [];
 
-  // Generate timeline markers from Day 0 up to targetDurationDays + padding
+  // Generate timeline markers ensuring all protocol milestones, arrival, today and target readiness are included
   const maxDay = Math.max(totalTargetDays + (isPoultry ? 4 : 14), daysOnFarm + 4);
+  const daySet = new Set<number>([0, daysOnFarm, totalTargetDays]);
 
+  for (const p of status.protocols) {
+    if (p.dayTarget <= maxDay) daySet.add(p.dayTarget);
+  }
   for (let d = 0; d <= maxDay; d += stepDays) {
+    daySet.add(d);
+  }
+
+  const sortedDays = Array.from(daySet).sort((a, b) => a - b);
+
+  for (const d of sortedDays) {
     const pointDate = new Date(entryTime + d * 86400000);
     const dateStr = pointDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -124,13 +138,20 @@ export function generateGrowthProjectionData(status: LivestockComputedStatus): {
     // Check if there is an actual event logged on or near this day
     let actualWeight: number | null = null;
     let eventNote: string | undefined = undefined;
-    let milestone = protocolMap.get(d);
-    let milestoneType: GrowthChartDataPoint['milestoneType'] = milestone ? 'VACCINE' : undefined;
+    const proto = protocolMap.get(d);
+    let milestone = proto ? proto.title : undefined;
+    let milestoneType: GrowthChartDataPoint['milestoneType'] = undefined;
+    if (proto) {
+      if (proto.category === 'VACCINE') milestoneType = 'VACCINE';
+      else if (proto.category === 'FEED_TRANSITION') milestoneType = 'FEED';
+      else if (proto.category === 'WEIGHT_CHECK') milestoneType = 'WEIGHT';
+      else if (proto.category === 'BIOSECURITY') milestoneType = 'HEALTH';
+    }
 
-    // Check historical events matching near this day (+/- stepDays/2)
+    // Check historical events matching near this day (+/- 1 day or stepDays/2)
     const matchingEvent = weightEvents.find((e) => {
       const evDays = Math.round((new Date(e.createdAt).getTime() - entryTime) / 86400000);
-      return Math.abs(evDays - d) < (stepDays / 2 + 0.5);
+      return Math.abs(evDays - d) <= (stepDays > 2 ? stepDays / 2 + 0.5 : 1);
     });
 
     if (matchingEvent && matchingEvent.weightAvgKg) {
@@ -150,7 +171,7 @@ export function generateGrowthProjectionData(status: LivestockComputedStatus): {
       milestoneType = 'MARKET';
     }
 
-    const isToday = Math.abs(d - daysOnFarm) < stepDays / 2;
+    const isToday = Math.abs(d - daysOnFarm) < 1;
 
     points.push({
       day: d,
@@ -162,8 +183,12 @@ export function generateGrowthProjectionData(status: LivestockComputedStatus): {
       targetBandUpper: upperBand,
       milestone,
       milestoneType,
-      eventNote,
+      eventNote: eventNote || proto?.completedNote,
       isToday,
+      scheduledTime: proto?.dispatchTime || '07:00 AM',
+      feedPhase: proto?.feedPhase,
+      protocolDetails: proto?.description,
+      reminderStatus: proto?.reminderStatus,
     });
   }
 

@@ -282,6 +282,14 @@ export interface ProtocolMilestone {
   completed: boolean;
   completedNote?: string;
   completedAt?: string;
+  // Lifecycle checkpoint reminder, dispatch & telemetry metadata:
+  scheduledDate?: string;
+  dispatchTime?: string;
+  dispatchIso?: string;
+  targetWeightKg?: number;
+  feedPhase?: string;
+  description?: string;
+  reminderStatus?: 'SCHEDULED' | 'DUE_TODAY' | 'OVERDUE' | 'COMPLETED';
 }
 
 export interface LivestockComputedStatus {
