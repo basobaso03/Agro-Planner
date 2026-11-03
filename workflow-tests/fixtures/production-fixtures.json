@@ -1,0 +1,330 @@
+{
+  "metadata": {
+    "version": "2.0.0",
+    "environment": "production-simulation",
+    "updatedAt": "2026-11-03T10:40:00Z"
+  },
+  "organizations": [
+    {
+      "id": "org-agro-prod-01",
+      "name": "Green Valley Agro-Ventures",
+      "type": "AGRO_FARMING",
+      "adminMemberId": "mem-admin-agro-01",
+      "adminEmail": "admin.farms@agroplanner.com",
+      "currentInviteCode": "SEED-9421",
+      "inviteCodeCreatedAt": "2026-11-03T08:00:00.000Z",
+      "inviteCodeExpiresAt": "2026-11-04T08:00:00.000Z",
+      "defaultTargetContributionUsd": 2000,
+      "contributionPaceDefault": "MONTHLY",
+      "currency": "USD",
+      "currencySymbol": "$",
+      "description": "Multi-site commercial broiler and Boer goat production enterprise.",
+      "features": {
+        "livestockModule": true,
+        "farmSitesModule": true,
+        "feedInventoryModule": true,
+        "multiSigApprovals": true,
+        "publicAuditVerifier": true
+      }
+    },
+    {
+      "id": "org-venture-prod-02",
+      "name": "Apex Commercial Fleet Syndicate",
+      "type": "GENERAL_VENTURE",
+      "adminMemberId": "mem-admin-venture-01",
+      "adminEmail": "admin.sarah@omnivendors.com",
+      "currentInviteCode": "APX-8419",
+      "inviteCodeCreatedAt": "2026-11-03T08:00:00.000Z",
+      "inviteCodeExpiresAt": "2026-11-04T08:00:00.000Z",
+      "defaultTargetContributionUsd": 3000,
+      "contributionPaceDefault": "MONTHLY",
+      "currency": "USD",
+      "currencySymbol": "$",
+      "description": "Shared capital pool for commercial cargo transit and logistics fleet.",
+      "features": {
+        "livestockModule": false,
+        "farmSitesModule": false,
+        "feedInventoryModule": false,
+        "multiSigApprovals": true,
+        "publicAuditVerifier": true
+      }
+    }
+  ],
+  "agroFarming": {
+    "locations": [
+      {
+        "id": "loc-norton-a",
+        "orgId": "org-agro-prod-01",
+        "name": "Norton Broiler Hub (Site A)",
+        "region": "Mashonaland West, Zimbabwe",
+        "gpsCoordinates": "-17.8833, 30.7000",
+        "primaryOperatorName": "Tendai M.",
+        "createdAt": "2026-05-01T08:00:00.000Z",
+        "createdBy": "mem-admin-agro-01"
+      },
+      {
+        "id": "loc-gweru-b",
+        "orgId": "org-agro-prod-01",
+        "name": "Gweru Livestock Ranch (Site B)",
+        "region": "Midlands Province, Zimbabwe",
+        "gpsCoordinates": "-19.4500, 29.8167",
+        "primaryOperatorName": "Kudzi Mutasa",
+        "createdAt": "2026-05-15T08:00:00.000Z",
+        "createdBy": "mem-admin-agro-01"
+      },
+      {
+        "id": "loc-macheke-c",
+        "orgId": "org-agro-prod-01",
+        "name": "Macheke Free-Range Farm (Site C)",
+        "region": "Mashonaland East, Zimbabwe",
+        "gpsCoordinates": "-18.1390, 31.8490",
+        "primaryOperatorName": "Chipo Tendai",
+        "createdAt": "2026-06-01T08:00:00.000Z",
+        "createdBy": "mem-admin-agro-01"
+      }
+    ],
+    "recipes": [
+      {
+        "id": "recipe-cobb500-42day",
+        "orgId": "org-agro-prod-01",
+        "name": "Commercial 42-Day Broiler Standard",
+        "species": "Broilers",
+        "recommendedDurationDays": 42,
+        "targetSaleWeightKg": 2.3,
+        "isCustomOrgRecipe": true,
+        "createdAt": "2026-05-01T08:00:00.000Z",
+        "notes": "Optimal feed conversion and vaccination schedule for hot/temperate climate.",
+        "checkpoints": [
+          {
+            "dayTarget": 1,
+            "title": "Marek's Vaccine & Electrolyte Welcome",
+            "category": "VACCINE",
+            "targetWeightKg": 0.045,
+            "feedPhase": "Broiler Starter Crumbles",
+            "instructions": "Administer Newcastle/IB spray or eye drop, provide warm 32C brooding."
+          },
+          {
+            "dayTarget": 7,
+            "title": "IBD-1 Intermediate Vaccine & 7-Day Weight Check",
+            "category": "VACCINE",
+            "targetWeightKg": 0.185,
+            "feedPhase": "Broiler Starter Crumbles",
+            "instructions": "Administer intermediate strain via clean unchlorinated drinking water with skim milk stabilizer."
+          },
+          {
+            "dayTarget": 14,
+            "title": "Starter to Grower Transition & Newcastle Lasota",
+            "category": "FEED_TRANSITION",
+            "targetWeightKg": 0.48,
+            "feedPhase": "Broiler Grower Pellets",
+            "instructions": "Blend 50/50 starter and grower feed for 48 hours; administer Newcastle Lasota booster."
+          },
+          {
+            "dayTarget": 21,
+            "title": "IBD-2 Booster & Mid-Cycle Weigh-in",
+            "category": "VACCINE",
+            "targetWeightKg": 0.96,
+            "feedPhase": "Broiler Grower Pellets",
+            "instructions": "Check litter moisture; target >950g body weight."
+          },
+          {
+            "dayTarget": 28,
+            "title": "Grower to Finisher Transition",
+            "category": "FEED_TRANSITION",
+            "targetWeightKg": 1.55,
+            "feedPhase": "Broiler Finisher Pellets",
+            "instructions": "Transition to finisher; check ventilation and drinker height."
+          },
+          {
+            "dayTarget": 35,
+            "title": "Finisher Medication Withdrawal Check",
+            "category": "MEDICATION",
+            "targetWeightKg": 2.15,
+            "feedPhase": "Post-Finisher Feed (Unmedicated)",
+            "instructions": "Strict withdrawal of any coccidiostats or antimicrobials prior to slaughter."
+          },
+          {
+            "dayTarget": 42,
+            "title": "Final Market Harvest & Depopulation",
+            "category": "WEIGHT_CHECK",
+            "targetWeightKg": 2.6,
+            "feedPhase": "Market Dispatch",
+            "instructions": "Withhold feed 8-10 hours prior to catching to prevent carcass contamination."
+          }
+        ]
+      }
+    ],
+    "livestock": [
+      {
+        "id": "LSTK-BROILER-2026-A",
+        "orgId": "org-agro-prod-01",
+        "locationId": "loc-norton-a",
+        "locationName": "Norton Broiler Hub (Site A)",
+        "species": "Broilers",
+        "nameOrTag": "Cobb 500 Broilers Batch #42",
+        "trackingMode": "BATCH",
+        "entryDate": "2026-10-01T08:00:00.000Z",
+        "initialAgeValue": 1,
+        "initialAgeUnit": "DAYS",
+        "targetDurationValue": 42,
+        "targetDurationUnit": "DAYS",
+        "targetSaleDate": "2026-11-12T08:00:00.000Z",
+        "initialHeadcount": 1000,
+        "purchaseCostTotal": 650,
+        "targetSaleWeightKg": 2.3,
+        "notes": "Chicks received from certified hatchery. Strict bio-security maintained.",
+        "createdByMemberName": "Dr. Marlvin Basera",
+        "imageUrl": "workflow-tests/fixtures/images/broiler-batch-cobb500.jpg",
+        "createdAt": "2026-10-01T08:00:00.000Z",
+        "recipeTemplateId": "recipe-cobb500-42day"
+      },
+      {
+        "id": "LSTK-GOAT-HERD-B",
+        "orgId": "org-agro-prod-01",
+        "locationId": "loc-gweru-b",
+        "locationName": "Gweru Livestock Ranch (Site B)",
+        "species": "Boer Goats",
+        "nameOrTag": "Boer Breeding Herd #B-12",
+        "trackingMode": "INDIVIDUAL_TAG",
+        "entryDate": "2026-07-01T08:00:00.000Z",
+        "initialAgeValue": 3,
+        "initialAgeUnit": "MONTHS",
+        "targetDurationValue": 8,
+        "targetDurationUnit": "MONTHS",
+        "targetSaleDate": "2027-03-01T08:00:00.000Z",
+        "initialHeadcount": 35,
+        "purchaseCostTotal": 2450,
+        "targetSaleWeightKg": 45,
+        "notes": "Select breeding doe kids and registered stud buck.",
+        "createdByMemberName": "Dr. Marlvin Basera",
+        "imageUrl": "workflow-tests/fixtures/images/boer-goat-herd.jpg",
+        "createdAt": "2026-07-01T08:00:00.000Z"
+      }
+    ],
+    "feedLedger": [
+      {
+        "id": "FD-EV-PROD-001",
+        "orgId": "org-agro-prod-01",
+        "locationId": "loc-norton-a",
+        "feedType": "Broiler Starter Crumbles (50kg)",
+        "direction": "STOCK_IN",
+        "bagsDelta": 20,
+        "kgPerBag": 50,
+        "linkedLivestockId": "LSTK-BROILER-2026-A",
+        "note": "Delivered 20 bags starter crumbles from National Foods Harare.",
+        "loggedByName": "Kudzi Mutasa",
+        "createdAt": "2026-10-01T09:00:00.000Z",
+        "auditHash": "e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2"
+      },
+      {
+        "id": "FD-EV-PROD-002",
+        "orgId": "org-agro-prod-01",
+        "locationId": "loc-norton-a",
+        "feedType": "Broiler Starter Crumbles (50kg)",
+        "direction": "DAILY_CONSUMPTION",
+        "bagsDelta": -2.5,
+        "kgPerBag": 50,
+        "linkedLivestockId": "LSTK-BROILER-2026-A",
+        "note": "Daily feed consumption for 1,000 birds at Day 7.",
+        "loggedByName": "Kudzi Mutasa",
+        "createdAt": "2026-10-07T17:00:00.000Z",
+        "auditHash": "f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3"
+      }
+    ]
+  },
+  "generalVenture": {
+    "capitalContributions": [
+      {
+        "id": "TX-CAP-VNT-001",
+        "orgId": "org-venture-prod-02",
+        "memberId": "mem-admin-venture-01",
+        "memberName": "Sarah Nyathi",
+        "direction": "INITIAL",
+        "amount": 3000,
+        "note": "Initial founder capital commitment deposit.",
+        "createdAt": "2026-10-01T10:00:00.000Z",
+        "createdByMemberId": "mem-treasurer-venture-02",
+        "auditHash": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+      },
+      {
+        "id": "TX-CAP-VNT-002",
+        "orgId": "org-venture-prod-02",
+        "memberId": "mem-treasurer-venture-02",
+        "memberName": "Brian Sibanda",
+        "direction": "INITIAL",
+        "amount": 3000,
+        "note": "Partner seed capital deposit via bank wire transfer.",
+        "createdAt": "2026-10-02T10:00:00.000Z",
+        "createdByMemberId": "mem-treasurer-venture-02",
+        "auditHash": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3"
+      },
+      {
+        "id": "TX-CAP-VNT-003",
+        "orgId": "org-venture-prod-02",
+        "memberId": "mem-member-venture-03",
+        "memberName": "Linda Moyo",
+        "direction": "INITIAL",
+        "amount": 2000,
+        "note": "First tranche contribution towards $3,000 equity goal.",
+        "createdAt": "2026-10-05T10:00:00.000Z",
+        "createdByMemberId": "mem-treasurer-venture-02",
+        "auditHash": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4"
+      }
+    ],
+    "fixedAssets": [
+      {
+        "id": "AST-VNT-001",
+        "orgId": "org-venture-prod-02",
+        "assetGroupId": "grp-isuzu-truck-01",
+        "assetName": "2022 Isuzu NPR 4-Ton Commercial Cargo Truck",
+        "category": "TOOLS_MACHINERY",
+        "locationId": "loc-hq-fleet",
+        "direction": "INITIAL",
+        "quantityDelta": 1,
+        "valueDelta": 18500,
+        "condition": "EXCELLENT",
+        "note": "Acquired clean commercial delivery truck with reinforced drop-side cargo bed.",
+        "loggedByName": "Sarah Nyathi",
+        "photoUrl": "workflow-tests/fixtures/images/isuzu-npr-truck.jpg",
+        "createdAt": "2026-10-10T11:00:00.000Z",
+        "auditHash": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
+      }
+    ],
+    "expenses": [
+      {
+        "id": "TX-EXP-VNT-001",
+        "orgId": "org-venture-prod-02",
+        "locationId": "loc-hq-fleet",
+        "locationName": "Fleet Depot",
+        "category": "TRANSPORT_LOGISTICS",
+        "direction": "DEDUCTION",
+        "amount": 1250,
+        "note": "Annual comprehensive commercial vehicle insurance & road operating license.",
+        "loggedByMemberId": "mem-member-venture-03",
+        "loggedByName": "Linda Moyo",
+        "approvalStatus": "APPROVED",
+        "approvedByMemberIds": [
+          "mem-treasurer-venture-02"
+        ],
+        "createdAt": "2026-10-12T14:00:00.000Z",
+        "auditHash": "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6"
+      },
+      {
+        "id": "TX-EXP-VNT-002",
+        "orgId": "org-venture-prod-02",
+        "locationId": "loc-hq-fleet",
+        "locationName": "Fleet Depot",
+        "category": "MAINTENANCE",
+        "direction": "DEDUCTION",
+        "amount": 640,
+        "note": "Scheduled 20,000km diesel service, oil filter and brake pad replacement.",
+        "loggedByMemberId": "mem-member-venture-03",
+        "loggedByName": "Linda Moyo",
+        "approvalStatus": "PENDING_MULTISIG",
+        "approvedByMemberIds": [],
+        "createdAt": "2026-10-25T16:00:00.000Z",
+        "auditHash": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7"
+      }
+    ]
+  }
+}

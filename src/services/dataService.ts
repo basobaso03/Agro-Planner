@@ -44,6 +44,7 @@ import type {
   AuditEventType,
   AuditNotificationEvent,
   CapitalContributionEvent,
+  CheckpointCategory,
   DurationUnit,
   ExpenseCategory,
   ExpenseLedgerEvent,
@@ -56,9 +57,21 @@ import type {
   MemberApprovalStatus,
   NotificationSeverity,
   Role,
-  SyndicateMember,
+  OrgMember,
   TrackingMode,
+  AnimalCheckpoint,
+  FarmRecipeTemplate,
+  DebtLiabilityEvent,
+  DebtCategory,
+  DebtRepaymentLog,
+  LoanGivenEvent,
+  LoanCategory,
+  LoanRecoveryLog,
+  CreditSaleEvent,
+  CreditSalePaymentLog,
+  CreditSaleDateExtensionLog,
 } from '../types/agro.ts';
+import type { Organization, OrganizationType } from '../types/organization.ts';
 import { createEmptyProductionSnapshot, LEGACY_SEED_IDS } from '../data/seedData.ts';
 import {
   computeAuditEventHash,
@@ -66,12 +79,13 @@ import {
   sha256Hex,
   GENESIS_SHORT,
 } from '../utils/cryptoHash.ts';
-import { computeTargetSaleDate, computeLivestockStatus } from '../utils/calculations.ts';
+import { computeTargetSaleDate, computeLivestockStatus, generateVaccinationProtocols, computeFinancialSummary } from '../utils/calculations.ts';
 import {
   areSystemNotificationsEnabled,
   dispatchSystemNotification,
   verifyDeviceBiometric,
 } from '../utils/mobileHardware.ts';
+import { PERMISSIONS } from '../utils/permissions.ts';
 
 export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
 
@@ -134,13 +148,13 @@ let firebaseApp: FirebaseApp | null = null;
 let firestoreDb: Firestore | null = null;
 let firebaseAuth: Auth | null = null;
 
-interface StoredCredentialRecord {
+export interface StoredCredentialRecord {
   verifierHash: string;
   hasPasswordSetup: boolean;
   updatedAt: string;
 }
 
-function getStoredLocalCredentials(): Record<string, StoredCredentialRecord> {
+export function getStoredLocalCredentials(): Record<string, StoredCredentialRecord> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = window.localStorage.getItem(LOCAL_CREDENTIALS_STORAGE_KEY);
@@ -148,6 +162,19 @@ function getStoredLocalCredentials(): Record<string, StoredCredentialRecord> {
   } catch {
     return {};
   }
+}
+
+export function hasPasswordConfigured(member?: OrgMember | null): boolean {
+  if (!member) return false;
+  const email = (member.email || member.phoneOrEmail || '').trim().toLowerCase();
+  const creds = getStoredLocalCredentials();
+  return Boolean(
+    member.hasPasswordSetup ||
+    member.passwordVerifierHash ||
+    (email && creds[email]?.hasPasswordSetup) ||
+    (email && creds[email]?.verifierHash) ||
+    (member.authProviders && member.authProviders.includes('password'))
+  );
 }
 
 function saveStoredLocalCredential(email: string, verifierHash: string) {
@@ -178,6 +205,9 @@ function isLegacySeedId(collectionKey: keyof typeof LEGACY_SEED_IDS, id: string)
 
 function sanitizeSnapshotOfLegacySeed(snapshot: AgroStateSnapshot): AgroStateSnapshot {
   return {
+    organizations: snapshot.organizations || [],
+    activeOrgId: snapshot.activeOrgId,
+    customRecipes: snapshot.customRecipes || [],
     locations: (snapshot.locations || []).filter((x) => !isLegacySeedId('locations', x.id)),
     members: (snapshot.members || []).filter((x) => !isLegacySeedId('members', x.id)),
     capitalContributions: (snapshot.capitalContributions || []).filter(
@@ -195,6 +225,9 @@ function sanitizeSnapshotOfLegacySeed(snapshot: AgroStateSnapshot): AgroStateSna
     auditNotifications: (snapshot.auditNotifications || []).filter(
       (x) => !isLegacySeedId('auditNotifications', x.id)
     ),
+    debtLiabilities: snapshot.debtLiabilities || [],
+    loansGiven: snapshot.loansGiven || [],
+    creditSales: snapshot.creditSales || [],
   };
 }
 
@@ -541,7 +574,7 @@ class AgroDataService {
     this.notifyListeners();
   }
 
-  private pickBestMemberRecord(candidates: SyndicateMember[]): SyndicateMember | undefined {
+  private pickBestMemberRecord(candidates: OrgMember[]): OrgMember | undefined {
     if (candidates.length === 0) return undefined;
     if (candidates.length === 1) return candidates[0];
 
@@ -572,9 +605,9 @@ class AgroDataService {
     const assignedLoc = winner.assignedLocationId || candidates.find((c) => Boolean(c.assignedLocationId))?.assignedLocationId;
     const phone = winner.phone || candidates.find((c) => Boolean(c.phone))?.phone;
     const jobTitle =
-      winner.jobTitle && winner.jobTitle !== 'Syndicate Member'
+      winner.jobTitle && winner.jobTitle !== 'Organization Member' && winner.jobTitle !== 'Syndicate Member'
         ? winner.jobTitle
-        : candidates.find((c) => c.jobTitle && c.jobTitle !== 'Syndicate Member')?.jobTitle || winner.jobTitle;
+        : candidates.find((c) => c.jobTitle && c.jobTitle !== 'Organization Member' && c.jobTitle !== 'Syndicate Member')?.jobTitle || winner.jobTitle;
 
     return {
       ...winner,
@@ -587,7 +620,7 @@ class AgroDataService {
     };
   }
 
-  public findMemberByUidOrEmail(uid?: string, email?: string): SyndicateMember | undefined {
+  public findMemberByUidOrEmail(uid?: string, email?: string): OrgMember | undefined {
     const normEmail = (email || '').trim().toLowerCase();
     const matches = this.state.members.filter(
       (m) =>
@@ -607,12 +640,12 @@ class AgroDataService {
   public async fetchAuthoritativeCloudMember(
     uid?: string,
     email?: string
-  ): Promise<SyndicateMember | undefined> {
+  ): Promise<OrgMember | undefined> {
     if (!firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
     const normEmail = (email || '').trim().toLowerCase();
-    const foundDocs: SyndicateMember[] = [];
+    const foundDocs: OrgMember[] = [];
 
     if (firestoreDb) {
       // 1. Check direct UID doc
@@ -622,7 +655,7 @@ class AgroDataService {
             getDoc(doc(firestoreDb!, 'members', uid))
           );
           if (snap.exists()) {
-            foundDocs.push(snap.data() as SyndicateMember);
+            foundDocs.push(snap.data() as OrgMember);
           }
         } catch {
           // Ignore lookup error
@@ -638,7 +671,7 @@ class AgroDataService {
               getDoc(doc(firestoreDb!, 'members', detId))
             );
             if (detSnap.exists()) {
-              foundDocs.push(detSnap.data() as SyndicateMember);
+              foundDocs.push(detSnap.data() as OrgMember);
             }
           } catch {
             // Ignore lookup error
@@ -649,7 +682,7 @@ class AgroDataService {
         try {
           const qEmail = query(collection(firestoreDb, 'members'), where('email', '==', normEmail));
           const qsEmail = await getDocsFromServer(qEmail).catch(() => getDocs(qEmail));
-          qsEmail.docs.forEach((d) => foundDocs.push(d.data() as SyndicateMember));
+          qsEmail.docs.forEach((d) => foundDocs.push(d.data() as OrgMember));
         } catch {
           // Ignore query error
         }
@@ -657,7 +690,7 @@ class AgroDataService {
         try {
           const qContact = query(collection(firestoreDb, 'members'), where('phoneOrEmail', '==', normEmail));
           const qsContact = await getDocsFromServer(qContact).catch(() => getDocs(qContact));
-          qsContact.docs.forEach((d) => foundDocs.push(d.data() as SyndicateMember));
+          qsContact.docs.forEach((d) => foundDocs.push(d.data() as OrgMember));
         } catch {
           // Ignore query error
         }
@@ -694,7 +727,7 @@ class AgroDataService {
     jobTitle?: string;
     providers: string[];
     passwordVerifierHash?: string;
-  }): SyndicateMember {
+  }): OrgMember {
     const now = new Date().toISOString();
     const normEmail = params.email.trim().toLowerCase();
     const isPrimaryAdmin = normEmail === PRIMARY_ADMIN_EMAIL;
@@ -723,14 +756,14 @@ class AgroDataService {
           ...(hasPassword ? ['password'] : []),
         ])
       );
-      const updatedMember: SyndicateMember = {
+      const updatedMember: OrgMember = {
         ...existing,
         uid: params.uid || existing.uid || existing.id,
         email: normEmail || existing.email,
         fullName: existing.fullName || params.fullName.trim().slice(0, 120),
         phone: params.phone || existing.phone,
         jobTitle: params.jobTitle || existing.jobTitle,
-        role: isPrimaryAdmin ? 'SYNDICATE_ADMIN' : existing.role,
+        role: isPrimaryAdmin ? 'ORG_ADMIN' : existing.role,
         approvalStatus: isPrimaryAdmin
           ? 'APPROVED'
           : existing.approvalStatus || (existing.active ? 'APPROVED' : 'PENDING_APPROVAL'),
@@ -768,20 +801,20 @@ class AgroDataService {
 
     // Create brand new member profile
     const memberId = params.uid || `mem-${Date.now().toString(36)}`;
-    const initialRole: Role = isPrimaryAdmin ? 'SYNDICATE_ADMIN' : 'REMOTE_INVESTOR';
+    const initialRole: Role = isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER';
     const initialApproval: MemberApprovalStatus = isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
     const hasPwd = Boolean(
       params.passwordVerifierHash || params.providers.includes('password')
     );
 
-    const newMember: SyndicateMember = {
+    const newMember: OrgMember = {
       id: memberId,
       uid: params.uid,
       email: normEmail,
-      fullName: (params.fullName || normEmail.split('@')[0] || 'Syndicate User').trim().slice(0, 120),
+      fullName: (params.fullName || normEmail.split('@')[0] || 'Organization User').trim().slice(0, 120),
       phoneOrEmail: (params.phone?.trim() || normEmail).slice(0, 160),
       phone: params.phone?.trim().slice(0, 60),
-      jobTitle: params.jobTitle?.trim().slice(0, 120) || (isPrimaryAdmin ? 'Managing Syndicate Founder' : 'Syndicate Member'),
+      jobTitle: params.jobTitle?.trim().slice(0, 120) || (isPrimaryAdmin ? 'Managing Organization Founder' : 'Member'),
       preferredContact: 'EMAIL',
       role: initialRole,
       approvalStatus: initialApproval,
@@ -797,7 +830,7 @@ class AgroDataService {
     const audit = this.createChainedAuditEvent({
       actor: newMember,
       locationId: 'ALL',
-      locationName: 'All Locations (Master Syndicate)',
+      locationName: 'All Locations (Master Organization)',
       eventType: 'MEMBER_ADDED',
       severity: isPrimaryAdmin ? 'MILESTONE' : 'URGENT_GROUND',
       title: isPrimaryAdmin
@@ -826,7 +859,7 @@ class AgroDataService {
   // REAL AUTHENTICATION FLOWS (GOOGLE OAUTH + EMAIL/PASSWORD + ACCOUNT LINKING)
   // ============================================================================
 
-  public async signInWithGoogleCloud(): Promise<SyndicateMember> {
+  public async signInWithGoogleCloud(): Promise<OrgMember> {
     let uid = '';
     let email = '';
     let displayName = '';
@@ -911,7 +944,7 @@ class AgroDataService {
     phone: string;
     jobTitle?: string;
     password: string;
-  }): Promise<SyndicateMember> {
+  }): Promise<OrgMember> {
     const cleanEmail = params.email.trim().toLowerCase();
     const cleanName = params.fullName.trim();
     if (!cleanEmail.includes('@') || cleanEmail.length < 5) {
@@ -995,7 +1028,7 @@ class AgroDataService {
   public async signInWithEmailAccount(params: {
     email: string;
     password: string;
-  }): Promise<SyndicateMember> {
+  }): Promise<OrgMember> {
     const cleanEmail = params.email.trim().toLowerCase();
     if (!cleanEmail || !params.password) {
       throw new Error('Please enter both your email address and password.');
@@ -1093,7 +1126,7 @@ class AgroDataService {
   /**
    * Unlocks the user's session using the device's hardware biometric sensor (Android Fingerprint / Face Unlock)
    */
-  public async signInWithBiometrics(): Promise<SyndicateMember> {
+  public async signInWithBiometrics(): Promise<OrgMember> {
     const enrolled = await verifyDeviceBiometric();
     const existing = await this.fetchAuthoritativeCloudMember(enrolled.memberId, enrolled.email);
     const providers = Array.from(
@@ -1123,9 +1156,9 @@ class AgroDataService {
    * so they can sign in with either Google OAuth or Email + Password.
    */
   public async setupOrUpdatePasswordForCurrentUser(params: {
-    member: SyndicateMember;
+    member: OrgMember;
     newPassword: string;
-  }): Promise<SyndicateMember> {
+  }): Promise<OrgMember> {
     if (params.newPassword.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
@@ -1164,7 +1197,7 @@ class AgroDataService {
       new Set([...(params.member.authProviders || ['google.com']), 'password'])
     );
 
-    const updatedMember: SyndicateMember = {
+    const updatedMember: OrgMember = {
       ...params.member,
       email,
       authProviders: mergedProviders,
@@ -1176,7 +1209,7 @@ class AgroDataService {
     const audit = this.createChainedAuditEvent({
       actor: updatedMember,
       locationId: 'ALL',
-      locationName: 'All Locations (Master Syndicate)',
+      locationName: 'All Locations (Master Organization)',
       eventType: 'SECURITY_CREDENTIAL_LINKED',
       severity: 'INFO',
       title: `Password Credential Configured: ${updatedMember.fullName}`,
@@ -1225,7 +1258,7 @@ class AgroDataService {
   /**
    * Verifies member password to authorize unmasking sensitive numbers
    */
-  public verifyMemberPassword(member: SyndicateMember, plainPassword: string): boolean {
+  public verifyMemberPassword(member: OrgMember, plainPassword: string): boolean {
     const email = (member.email || member.phoneOrEmail || this.activeSession?.email || '').trim().toLowerCase();
     const verifierHash = computePasswordVerifier(email, plainPassword);
     const creds = getStoredLocalCredentials();
@@ -1243,7 +1276,7 @@ class AgroDataService {
     jobTitle: string;
     bio: string;
     preferredContact: 'EMAIL' | 'WHATSAPP' | 'SMS';
-  }): SyndicateMember {
+  }): OrgMember {
     const existing = this.state.members.find((m) => m.id === params.memberId);
     if (!existing) throw new Error('Member profile not found.');
     if (params.fullName.trim().length < 2) {
@@ -1256,7 +1289,7 @@ class AgroDataService {
     const cleanTitle = params.jobTitle.trim().slice(0, 120);
     const cleanBio = params.bio.trim().slice(0, 400);
 
-    const updatedMember: SyndicateMember = {
+    const updatedMember: OrgMember = {
       ...existing,
       fullName: cleanName,
       phone: cleanPhone,
@@ -1276,7 +1309,7 @@ class AgroDataService {
       locationId: updatedMember.assignedLocationId || 'ALL',
       locationName:
         this.state.locations.find((l) => l.id === updatedMember.assignedLocationId)?.name ||
-        'All Locations (Master Syndicate)',
+        'All Locations (Master Organization)',
       eventType: 'MEMBER_PROFILE_UPDATED',
       severity: 'INFO',
       title: `Profile Details Updated: ${updatedMember.fullName}`,
@@ -1315,26 +1348,33 @@ class AgroDataService {
     approvalStatus: MemberApprovalStatus;
     assignedLocationId?: string;
     note?: string;
-    actor: SyndicateMember;
-  }): Promise<SyndicateMember> {
+    actor: OrgMember;
+  }): Promise<OrgMember> {
     const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
-    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
-      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can modify member roles, clearances, or suspensions.');
+    const isPrivilegedAdmin = actorEmail === PRIMARY_ADMIN_EMAIL || PERMISSIONS.canManageMemberCRUD(params.actor);
+    if (!isPrivilegedAdmin) {
+      throw new Error('Access Denied: Only Organization Admins can modify member roles, clearances, or suspensions.');
     }
     const target = this.state.members.find((m) => m.id === params.targetMemberId);
     if (!target) throw new Error('Target member record not found.');
 
+    // Multi-tenant boundary check: Admin of Org A cannot modify members of Org B
+    if (params.actor.orgId && target.orgId && params.actor.orgId !== target.orgId) {
+      throw new Error('Access Denied: You cannot modify members belonging to another organization.');
+    }
+
     // Protect primary bootstrapped admin from accidental self-lockout
     if (
       (target.email || target.phoneOrEmail || '').toLowerCase() === PRIMARY_ADMIN_EMAIL &&
-      (params.role !== 'SYNDICATE_ADMIN' || params.approvalStatus !== 'APPROVED')
+      target.id === params.actor.id &&
+      (params.role !== 'ORG_ADMIN' || params.approvalStatus !== 'APPROVED')
     ) {
-      throw new Error('The primary Founder Syndicate Admin account cannot be demoted or suspended.');
+      throw new Error('The primary Founder Admin account cannot be demoted or suspended.');
     }
 
     const now = new Date().toISOString();
     const isNowActive = params.approvalStatus === 'APPROVED';
-    const updatedMember: SyndicateMember = {
+    const updatedMember: OrgMember = {
       ...target,
       role: params.role,
       approvalStatus: params.approvalStatus,
@@ -1354,7 +1394,7 @@ class AgroDataService {
     const assignedSiteName =
       params.assignedLocationId && params.assignedLocationId !== 'ALL'
         ? this.state.locations.find((l) => l.id === params.assignedLocationId)?.name || 'Assigned Site'
-        : 'All Locations (Master Syndicate)';
+        : 'All Locations (Master Organization)';
 
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
@@ -1381,57 +1421,57 @@ class AgroDataService {
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
-    // 1. ONLINE ONLY: Write directly to Cloud Firestore first
+    // 1. Write directly to Cloud Firestore if initialized and online
     if (!firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
-    if (!firestoreDb) {
-      throw new Error('Cloud Firestore is not initialized. An active internet connection is required to approve or update members.');
-    }
-    const cleanData = JSON.parse(JSON.stringify(updatedMember));
-    await setDoc(doc(firestoreDb, 'members', updatedMember.id), cleanData);
-    if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
-      await setDoc(doc(firestoreDb, 'members', updatedMember.uid), {
-        ...cleanData,
-        id: updatedMember.uid,
-        uid: updatedMember.uid,
-      });
-    }
-    const targetEmail = (updatedMember.email || updatedMember.phoneOrEmail || '').trim().toLowerCase();
-    if (targetEmail && targetEmail.includes('@')) {
+    if (firestoreDb) {
       try {
-        const q = query(collection(firestoreDb, 'members'), where('email', '==', targetEmail));
-        const qs = await getDocs(q);
-        for (const d of qs.docs) {
-          if (d.id !== updatedMember.id && d.id !== updatedMember.uid) {
-            await setDoc(doc(firestoreDb, 'members', d.id), {
-              ...cleanData,
-              id: d.id,
-            });
+        const cleanData = JSON.parse(JSON.stringify(updatedMember));
+        await setDoc(doc(firestoreDb, 'members', updatedMember.id), cleanData);
+        if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
+          await setDoc(doc(firestoreDb, 'members', updatedMember.uid), {
+            ...cleanData,
+            id: updatedMember.uid,
+            uid: updatedMember.uid,
+          });
+        }
+        const targetEmail = (updatedMember.email || updatedMember.phoneOrEmail || '').trim().toLowerCase();
+        if (targetEmail && targetEmail.includes('@')) {
+          const q = query(collection(firestoreDb, 'members'), where('email', '==', targetEmail));
+          const qs = await getDocs(q);
+          for (const d of qs.docs) {
+            if (d.id !== updatedMember.id && d.id !== updatedMember.uid) {
+              await setDoc(doc(firestoreDb, 'members', d.id), {
+                ...cleanData,
+                id: d.id,
+              });
+            }
           }
         }
-      } catch {
-        // Ignore secondary doc sync warning
+      } catch (cloudErr) {
+        console.warn(`Cloud member update notice (${updatedMember.id}):`, cloudErr);
       }
     }
 
-    // 2. Only after Cloud confirms the write, update local state
+    // 2. Update local state and chained audit ledger
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return updatedMember;
   }
 
   /**
-   * Primary Founder Governance: Permanently delete a syndicate member (including other admins)
+   * Primary Founder Governance: Permanently delete an organization member (including other admins)
    */
   public async deleteMember(params: {
     targetMemberId: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
     reason?: string;
   }): Promise<void> {
     const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
-    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
-      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can delete syndicate members.');
+    const isPrivilegedAdmin = actorEmail === PRIMARY_ADMIN_EMAIL || PERMISSIONS.canManageMemberCRUD(params.actor);
+    if (!isPrivilegedAdmin) {
+      throw new Error('Access Denied: Only Organization Admins can delete members.');
     }
 
     const target = this.state.members.find(
@@ -1441,17 +1481,26 @@ class AgroDataService {
 
     const targetEmail = (target.email || target.phoneOrEmail || '').trim().toLowerCase();
     if (targetEmail === PRIMARY_ADMIN_EMAIL) {
-      throw new Error('Zero-Trust Protection: The primary Founder Syndicate Admin account cannot be deleted.');
+      throw new Error('Zero-Trust Protection: The primary Founder Admin account cannot be deleted.');
     }
 
-    // 1. Delete from Cloud Firestore FIRST
+    // Multi-tenant boundary check: Admin of Org A cannot delete members of Org B
+    if (params.actor.orgId && target.orgId && params.actor.orgId !== target.orgId) {
+      throw new Error('Access Denied: You cannot delete members belonging to another organization.');
+    }
+
+    // 1. Delete from Cloud Firestore if active
     if (!firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
     if (firestoreDb) {
-      await deleteDoc(doc(firestoreDb, 'members', target.id));
-      if (target.uid && target.uid !== target.id) {
-        await deleteDoc(doc(firestoreDb, 'members', target.uid));
+      try {
+        await deleteDoc(doc(firestoreDb, 'members', target.id));
+        if (target.uid && target.uid !== target.id) {
+          await deleteDoc(doc(firestoreDb, 'members', target.uid));
+        }
+      } catch (cloudErr) {
+        console.warn(`Cloud member delete notice (${target.id}):`, cloudErr);
       }
     }
 
@@ -1467,11 +1516,11 @@ class AgroDataService {
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
       locationId: target.assignedLocationId || 'ALL',
-      locationName: 'All Locations (Master Syndicate)',
+      locationName: 'All Locations (Master Organization)',
       eventType: 'MEMBER_DELETED',
       severity: 'WARNING_CONTRA',
       title: `Member Permanently Deleted: ${target.fullName}`,
-      message: `${target.fullName} (${target.phoneOrEmail}, role: ${target.role}) was permanently deleted from the syndicate by Primary Admin. Reason: ${reason}.`,
+      message: `${target.fullName} (${target.phoneOrEmail}, role: ${target.role}) was permanently deleted from the organization by Primary Admin. Reason: ${reason}.`,
       referenceEntityId: target.id,
       timestamp: now,
     });
@@ -1490,11 +1539,11 @@ class AgroDataService {
    * Admin Utility: Wipe any legacy demo data or perform a clean production ledger reset
    */
   public async wipeAllDemoAndLedgerData(
-    actor: SyndicateMember,
+    actor: OrgMember,
     mode: 'DEMO_ONLY' | 'FULL_RESET' = 'FULL_RESET'
   ): Promise<void> {
-    if (actor.role !== 'SYNDICATE_ADMIN') {
-      throw new Error('Only a Syndicate Admin can execute a ledger purge.');
+    if (actor.role !== 'ORG_ADMIN' && actor.role !== 'SYNDICATE_ADMIN') {
+      throw new Error('Only an Organization Admin can execute a ledger purge.');
     }
 
     const now = new Date().toISOString();
@@ -1566,7 +1615,7 @@ class AgroDataService {
       actorName: actor.fullName,
       actorRole: actor.role,
       locationId: 'ALL',
-      locationName: 'All Locations (Master Syndicate)',
+      locationName: 'All Locations (Master Organization)',
       eventType: 'SYSTEM_LEDGER_RESET',
       severity: 'MILESTONE',
       title: 'Clean Production Ledger Initialized',
@@ -1663,12 +1712,12 @@ class AgroDataService {
     }
   }
 
-  private mergeAndDeduplicateCloudMembers(rawDocs: unknown[]): SyndicateMember[] {
-    const cloudMembers = (rawDocs as SyndicateMember[]).filter(
+  private mergeAndDeduplicateCloudMembers(rawDocs: unknown[]): OrgMember[] {
+    const cloudMembers = (rawDocs as OrgMember[]).filter(
       (x) => x && x.id && !isLegacySeedId('members', x.id)
     );
     const creds = getStoredLocalCredentials();
-    const existingLocalMap = new Map<string, SyndicateMember>();
+    const existingLocalMap = new Map<string, OrgMember>();
     this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
 
     const enriched = cloudMembers.map((cloudM) => {
@@ -1713,7 +1762,7 @@ class AgroDataService {
 
       const resolvedRole: Role =
         email === PRIMARY_ADMIN_EMAIL
-          ? 'SYNDICATE_ADMIN'
+          ? 'ORG_ADMIN'
           : cloudM.role && cloudM.role !== 'REMOTE_INVESTOR'
             ? cloudM.role
             : localM?.role && localM.role !== 'REMOTE_INVESTOR'
@@ -1735,7 +1784,7 @@ class AgroDataService {
     });
 
     // Deduplicate by email / uid so a stale PENDING_APPROVAL doc never shadows an APPROVED doc for the same user
-    const groupsByIdentity = new Map<string, SyndicateMember[]>();
+    const groupsByIdentity = new Map<string, OrgMember[]>();
     for (const mem of enriched) {
       const normEmail = (mem.email || (mem.phoneOrEmail?.includes('@') ? mem.phoneOrEmail : '') || '')
         .trim()
@@ -1746,7 +1795,7 @@ class AgroDataService {
       groupsByIdentity.set(key, list);
     }
 
-    const deduplicated: SyndicateMember[] = [];
+    const deduplicated: OrgMember[] = [];
     for (const group of groupsByIdentity.values()) {
       const best = this.pickBestMemberRecord(group);
       if (best) {
@@ -2077,7 +2126,7 @@ class AgroDataService {
           try {
             const snap = await getDoc(doc(firestoreDb, 'members', docId));
             if (snap.exists()) {
-              const cloud = snap.data() as SyndicateMember;
+              const cloud = snap.data() as OrgMember;
               if (cloud && cloud.approvalStatus === 'APPROVED') {
                 console.log(`[Cloud] Preserved existing APPROVED status for member ${docId} from cloud.`);
                 return;
@@ -2088,7 +2137,7 @@ class AgroDataService {
               const q = query(collection(firestoreDb, 'members'), where('email', '==', targetEmail));
               const qs = await getDocs(q);
               const approvedMatch = qs.docs
-                .map((d) => d.data() as SyndicateMember)
+                .map((d) => d.data() as OrgMember)
                 .find((m) => m.approvalStatus === 'APPROVED' || m.active);
               if (approvedMatch) {
                 console.log(`[Cloud] Preserved existing APPROVED status for email ${targetEmail} from cloud.`);
@@ -2117,7 +2166,7 @@ class AgroDataService {
    * Directly queries Cloud Firestore to check if the member's account has been approved by the admin.
    * If approved in the cloud, updates local state and wakes up reactive listeners immediately.
    */
-  public async checkMemberApprovalStatus(memberId: string): Promise<SyndicateMember | null> {
+  public async checkMemberApprovalStatus(memberId: string): Promise<OrgMember | null> {
     const targetEmail =
       this.activeSession?.email ||
       this.state.members.find((m) => m.id === memberId || m.uid === memberId)?.email;
@@ -2140,7 +2189,7 @@ class AgroDataService {
    * Appends a new SHA-256 cryptographically hash-chained AuditNotificationEvent
    */
   private createChainedAuditEvent(params: {
-    actor: SyndicateMember;
+    actor: OrgMember;
     locationId: string;
     locationName: string;
     eventType: AuditEventType;
@@ -2237,12 +2286,13 @@ class AgroDataService {
     region: string;
     gpsCoordinates: string;
     primaryOperatorName: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): FarmLocation {
     const now = new Date().toISOString();
     const id = `loc-${Date.now().toString(36)}`;
     const newLoc: FarmLocation = {
       id,
+      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
       name: params.name.trim().slice(0, 120),
       region: params.region.trim().slice(0, 120),
       gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) || '-17.8292, 31.0522',
@@ -2274,6 +2324,101 @@ class AgroDataService {
     return newLoc;
   }
 
+  public updateLocation(params: {
+    locationId: string;
+    name: string;
+    region: string;
+    gpsCoordinates: string;
+    primaryOperatorName: string;
+    actor: OrgMember;
+  }): FarmLocation {
+    const targetLoc = this.state.locations.find((l) => l.id === params.locationId);
+    if (!targetLoc) {
+      throw new Error(`Farm site not found with ID: ${params.locationId}`);
+    }
+    if (!PERMISSIONS.canEditLocation(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can modify farm sites.');
+    }
+
+    const now = new Date().toISOString();
+    const updatedLoc: FarmLocation = {
+      ...targetLoc,
+      name: params.name.trim().slice(0, 120),
+      region: params.region.trim().slice(0, 120),
+      gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) || targetLoc.gpsCoordinates,
+      primaryOperatorName: params.primaryOperatorName.trim().slice(0, 120),
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: updatedLoc.id,
+      locationName: updatedLoc.name,
+      eventType: 'SITE_UPDATED',
+      severity: 'INFO',
+      title: `Site Details Updated: ${updatedLoc.name}`,
+      message: `Updated site details (${updatedLoc.region}), operator ${updatedLoc.primaryOperatorName}. GPS: ${updatedLoc.gpsCoordinates}.`,
+      referenceEntityId: updatedLoc.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      locations: this.state.locations.map((l) => (l.id === updatedLoc.id ? updatedLoc : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('locations', updatedLoc.id, updatedLoc);
+    return updatedLoc;
+  }
+
+  public deleteLocation(params: {
+    locationId: string;
+    actor: OrgMember;
+  }): { success: boolean; message: string } {
+    const targetLoc = this.state.locations.find((l) => l.id === params.locationId);
+    if (!targetLoc) {
+      throw new Error(`Farm site not found with ID: ${params.locationId}`);
+    }
+    if (!PERMISSIONS.canDeleteLocation(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can delete farm sites.');
+    }
+
+    // Safety check: Cannot delete location if active livestock exist here
+    const activeAnimals = this.state.livestockEntries.filter((l) => l.locationId === params.locationId);
+    if (activeAnimals.length > 0) {
+      throw new Error(`Cannot delete site: There are ${activeAnimals.length} active animal batch(es) registered at this location. Please reassign or harvest them first.`);
+    }
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'All Locations',
+      eventType: 'SITE_REMOVED',
+      severity: 'WARNING_CONTRA',
+      title: `Site Removed: ${targetLoc.name}`,
+      message: `Site ${targetLoc.name} (${targetLoc.region}) was decommissioned by ${params.actor.fullName}.`,
+      referenceEntityId: targetLoc.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      locations: this.state.locations.filter((l) => l.id !== params.locationId),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    if (firestoreDb) {
+      deleteDoc(doc(firestoreDb, 'locations', targetLoc.id)).catch((err) =>
+        console.warn('Cloud deleteLocation warning:', err)
+      );
+    }
+    return { success: true, message: `Site ${targetLoc.name} removed successfully.` };
+  }
+
   public addMember(params: {
     fullName: string;
     phoneOrEmail: string;
@@ -2281,11 +2426,10 @@ class AgroDataService {
     assignedLocationId?: string;
     initialContributionUsd?: number;
     contributionNote?: string;
-    actor: SyndicateMember;
-  }): SyndicateMember {
-    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
-    if (actorEmail !== PRIMARY_ADMIN_EMAIL) {
-      throw new Error('Zero-Trust Violation: Only the Primary Founder Admin (baseramarlvin@gmail.com) can pre-authorize or create syndicate members.');
+    actor: OrgMember;
+  }): OrgMember {
+    if (!PERMISSIONS.canManageMembers(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can create or authorize members.');
     }
 
     const now = new Date().toISOString();
@@ -2293,8 +2437,9 @@ class AgroDataService {
     const contact = params.phoneOrEmail.trim().slice(0, 160);
     const isEmail = contact.includes('@');
 
-    const newMember: SyndicateMember = {
+    const newMember: OrgMember = {
       id,
+      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
       email: isEmail ? contact.toLowerCase() : undefined,
       fullName: params.fullName.trim().slice(0, 120),
       phoneOrEmail: contact,
@@ -2315,11 +2460,11 @@ class AgroDataService {
       locationId: params.assignedLocationId || 'ALL',
       locationName:
         this.state.locations.find((l) => l.id === params.assignedLocationId)?.name ||
-        'All Locations (Master Syndicate)',
+        'All Locations (Master Organization)',
       eventType: 'MEMBER_ADDED',
       severity: 'INFO',
-      title: `Pre-Authorized Member Added: ${newMember.fullName}`,
-      message: `${newMember.fullName} added to the syndicate as ${newMember.role.replace('_', ' ')} (Approved). Contact: ${newMember.phoneOrEmail}.`,
+      title: `Member Added: ${newMember.fullName}`,
+      message: `${newMember.fullName} added to the organization as ${newMember.role.replace('_', ' ')} (Approved). Contact: ${newMember.phoneOrEmail}.`,
       referenceEntityId: newMember.id,
       timestamp: now,
     });
@@ -2330,7 +2475,7 @@ class AgroDataService {
       const capId = `TX-CAP-${Date.now().toString(36).toUpperCase()}`;
       const note =
         params.contributionNote?.trim() ||
-        `Initial capital contribution by ${newMember.fullName} upon joining syndicate`;
+        `Initial capital contribution by ${newMember.fullName} upon joining organization`;
       const capEvent: CapitalContributionEvent = {
         id: capId,
         memberId: newMember.id,
@@ -2348,11 +2493,11 @@ class AgroDataService {
       const capAudit = this.createChainedAuditEvent({
         actor: params.actor,
         locationId: 'ALL',
-        locationName: 'All Locations (Master Syndicate)',
+        locationName: 'All Locations (Master Organization)',
         eventType: 'CAPITAL_CONTRIBUTION',
         severity: 'FINANCIAL',
         title: `Capital Contributed: +$${capEvent.amount.toFixed(2)} (${newMember.fullName})`,
-        message: `${capEvent.id}: ${note}. Added +$${capEvent.amount.toFixed(2)} to Syndicate Pool & Left Money.`,
+        message: `${capEvent.id}: ${note}. Added +$${capEvent.amount.toFixed(2)} to Organization Pool & Left Money.`,
         deltaFinancial: capEvent.amount,
         referenceEntityId: capEvent.id,
       });
@@ -2377,8 +2522,11 @@ class AgroDataService {
     amount: number;
     referenceTransactionId?: string;
     note: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): CapitalContributionEvent {
+    if (!PERMISSIONS.canLogCapitalDeposit(params.actor.role)) {
+      throw new Error('Access Denied: Only Treasurers and Organization Admins can record capital contributions.');
+    }
     const member = this.state.members.find((m) => m.id === params.memberId);
     if (!member) throw new Error('Selected member not found.');
     if (params.note.trim().length < 4) {
@@ -2392,6 +2540,7 @@ class AgroDataService {
 
     const newEvent: CapitalContributionEvent = {
       id,
+      orgId: member.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master',
       memberId: member.id,
       memberName: member.fullName,
       direction: params.direction,
@@ -2414,7 +2563,7 @@ class AgroDataService {
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
       locationId: 'ALL',
-      locationName: 'All Locations (Master Syndicate)',
+      locationName: 'All Locations (Master Organization)',
       eventType: isContra ? 'CAPITAL_CONTRA' : 'CAPITAL_CONTRIBUTION',
       severity: isContra ? 'WARNING_CONTRA' : 'FINANCIAL',
       title: isContra
@@ -2422,7 +2571,7 @@ class AgroDataService {
         : `Capital Contribution: +$${cleanAmount.toFixed(2)} by ${member.fullName}`,
       message: isContra
         ? `${id} referencing ${params.referenceTransactionId}: ${cleanNote}. Equity pool adjusted by ${cleanAmount >= 0 ? '+' : ''}$${cleanAmount.toFixed(2)}.`
-        : `${id}: ${cleanNote}. Added +$${cleanAmount.toFixed(2)} to Syndicate Pool & Left Money.`,
+        : `${id}: ${cleanNote}. Added +$${cleanAmount.toFixed(2)} to Organization Pool & Left Money.`,
       deltaFinancial: cleanAmount,
       referenceEntityId: id,
       timestamp: now,
@@ -2450,7 +2599,7 @@ class AgroDataService {
     note: string;
     gpsStamp?: string;
     receiptPhotoDataUrl?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): ExpenseLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Farm location is required.');
@@ -2469,6 +2618,7 @@ class AgroDataService {
 
     const newExpense: ExpenseLedgerEvent = {
       id,
+      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
       locationId: loc.id,
       locationName: loc.name,
       batchOrAnimalId: params.batchOrAnimalId || undefined,
@@ -2527,7 +2677,10 @@ class AgroDataService {
     return newExpense;
   }
 
-  public approveMultiSigExpense(expenseId: string, actor: SyndicateMember): void {
+  public approveMultiSigExpense(expenseId: string, actor: OrgMember): void {
+    if (!PERMISSIONS.canApproveMultiSig(actor.role)) {
+      throw new Error('Access Denied: Only Treasurers and Organization Admins can approve multi-sig expenses.');
+    }
     const target = this.state.expenses.find((e) => e.id === expenseId);
     if (!target) throw new Error('Expense transaction not found.');
     if (target.approvalStatus === 'APPROVED') return;
@@ -2567,24 +2720,80 @@ class AgroDataService {
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
   }
 
+  public getCurrentOrgLeftMoney(orgId?: string): number {
+    const targetOrgId = orgId || this.state.activeOrgId || 'org-master';
+    const orgContributions = (this.state.capitalContributions || []).filter(
+      (c) => !c.orgId || c.orgId === targetOrgId
+    );
+    const orgExpenses = (this.state.expenses || []).filter(
+      (e) => !e.orgId || e.orgId === targetOrgId
+    );
+    const orgFixedAssets = (this.state.fixedAssets || []).filter(
+      (a) => !a.orgId || a.orgId === targetOrgId
+    );
+    const orgLivestockEntries = (this.state.livestockEntries || []).filter(
+      (l) => !l.orgId || l.orgId === targetOrgId
+    );
+    const orgLivestockEvents = (this.state.livestockEvents || []).filter(
+      (e) => !e.orgId || e.orgId === targetOrgId
+    );
+    const orgFeedEvents = (this.state.feedLedger || []).filter(
+      (f) => !f.orgId || f.orgId === targetOrgId
+    );
+    const orgDebts = (this.state.debtLiabilities || []).filter(
+      (d) => !d.orgId || d.orgId === targetOrgId
+    );
+    const orgLoans = (this.state.loansGiven || []).filter(
+      (l) => !l.orgId || l.orgId === targetOrgId
+    );
+    const orgCreditSales = (this.state.creditSales || []).filter(
+      (cs) => !cs.orgId || cs.orgId === targetOrgId
+    );
+
+    const livestockStatuses = orgLivestockEntries.map((entry) =>
+      computeLivestockStatus(entry, orgLivestockEvents, orgFeedEvents)
+    );
+
+    const summary = computeFinancialSummary({
+      capitalContributions: orgContributions,
+      expenses: orgExpenses,
+      fixedAssets: orgFixedAssets,
+      livestockStatuses,
+      livestockEvents: orgLivestockEvents,
+      debtLiabilities: orgDebts,
+      loansGiven: orgLoans,
+      creditSales: orgCreditSales,
+    });
+
+    return summary.leftMoney;
+  }
+
   public registerLivestock(params: {
     locationId: string;
     species: string;
     nameOrTag: string;
-    trackingMode: TrackingMode;
-    entryDate: string;
-    initialAgeValue: number;
-    initialAgeUnit: DurationUnit;
+    trackingMode?: TrackingMode;
+    entryDate?: string;
+    initialAgeValue?: number;
+    initialAgeUnit?: DurationUnit;
     targetDurationValue: number;
     targetDurationUnit: DurationUnit;
     initialHeadcount: number;
     purchaseCostTotal: number;
     targetSaleWeightKg?: number;
     notes: string;
-    autoDeductPurchaseFromLeftMoney: boolean;
+    autoDeductPurchaseFromLeftMoney?: boolean;
     imageUrl?: string;
     gallery?: string[];
-    actor: SyndicateMember;
+    customCheckpoints?: AnimalCheckpoint[];
+    fundingSource?: 'CASH_POOL' | 'SUPPLIER_CREDIT' | 'DIRECTOR_LOAN';
+    supplierCreditorName?: string;
+    creditorName?: string;
+    supplierCreditDueDate?: string;
+    duePaymentDate?: string;
+    configuredSalePricePerUnit?: number;
+    configuredSalePricePerKg?: number;
+    actor: OrgMember;
   }): LivestockEntry {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -2594,24 +2803,47 @@ class AgroDataService {
 
     const now = new Date().toISOString();
     const id = `LSTK-${Date.now().toString(36).toUpperCase()}`;
+    const entryDate = params.entryDate || now;
     const targetSaleDate = computeTargetSaleDate(
-      params.entryDate,
+      entryDate,
       params.targetDurationValue,
       params.targetDurationUnit
     );
+
+    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
+
+    // Strict Overdraft & Funding Source Validation Guard:
+    if (params.purchaseCostTotal > 0) {
+      if (params.fundingSource === 'SUPPLIER_CREDIT') {
+        // Trade credit from supplier: validated and processed as a liability without deducting phantom cash
+      } else if (params.autoDeductPurchaseFromLeftMoney) {
+        if (currentLeftMoney <= 0) {
+          throw new Error(
+            `Insufficient liquid funds in Left Money ($0.00 available). Cannot purchase livestock ($${params.purchaseCostTotal.toFixed(2)}) with zero funds. Please select 'Supplier Credit / Borrowed' or deposit capital into the pool first.`
+          );
+        }
+        if (params.purchaseCostTotal > currentLeftMoney) {
+          throw new Error(
+            `Insufficient liquid funds in Left Money pool. Purchase cost ($${params.purchaseCostTotal.toFixed(2)}) exceeds available cash ($${currentLeftMoney.toFixed(2)}). Please select 'Supplier Credit / Borrowed' or deposit capital into the pool first.`
+          );
+        }
+      }
+    }
 
     const galleryPhotos = params.gallery || (params.imageUrl ? [params.imageUrl] : []);
 
     const newEntry: LivestockEntry = {
       id,
+      orgId: targetOrgId,
       locationId: loc.id,
       locationName: loc.name,
       species: params.species.trim().slice(0, 80),
       nameOrTag: params.nameOrTag.trim().slice(0, 140),
-      trackingMode: params.trackingMode,
-      entryDate: params.entryDate,
-      initialAgeValue: params.initialAgeValue,
-      initialAgeUnit: params.initialAgeUnit,
+      trackingMode: params.trackingMode || 'BATCH',
+      entryDate: params.entryDate || now,
+      initialAgeValue: params.initialAgeValue ?? 1,
+      initialAgeUnit: params.initialAgeUnit || 'DAYS',
       targetDurationValue: params.targetDurationValue,
       targetDurationUnit: params.targetDurationUnit,
       targetSaleDate,
@@ -2623,12 +2855,17 @@ class AgroDataService {
       imageUrl: params.imageUrl || galleryPhotos[0],
       gallery: galleryPhotos,
       createdAt: now,
+      customCheckpoints: params.customCheckpoints,
+      fundingSource: params.fundingSource || (params.autoDeductPurchaseFromLeftMoney ? 'CASH_POOL' : undefined),
+      configuredSalePricePerUnit: params.configuredSalePricePerUnit,
+      configuredSalePricePerKg: params.configuredSalePricePerKg,
     };
 
     const initEventId = `EV-LSTK-${Date.now().toString(36).toUpperCase()}`;
     const entryTimestamp = params.entryDate || now;
     const initialLifecycleEvent: LivestockLifecycleEvent = {
       id: initEventId,
+      orgId: newEntry.orgId,
       livestockId: newEntry.id,
       livestockName: newEntry.nameOrTag,
       locationId: loc.id,
@@ -2649,6 +2886,36 @@ class AgroDataService {
 
     const updatedAudits = [...this.state.auditNotifications];
     const updatedExpenses = [...this.state.expenses];
+    const updatedDebts = [...(this.state.debtLiabilities || [])];
+
+    // If acquired on supplier credit, record liability immediately
+    if (params.fundingSource === 'SUPPLIER_CREDIT' && params.purchaseCostTotal > 0) {
+      const debtId = `DEBT-${Date.now().toString(36).toUpperCase()}`;
+      const creditor = (params.supplierCreditorName || (params as any).creditorName || '').trim() || 'Livestock Supplier';
+      const debtNote = `Supplier credit for acquisition of ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}. Creditor: ${creditor}.`;
+      const debtEvent: DebtLiabilityEvent = {
+        id: debtId,
+        orgId: newEntry.orgId || 'org-master',
+        creditorName: creditor,
+        category: 'SUPPLIER_CREDIT',
+        principalAmount: Number(params.purchaseCostTotal.toFixed(2)),
+        remainingBalance: Number(params.purchaseCostTotal.toFixed(2)),
+        borrowDate: now,
+        dueDate: params.supplierCreditDueDate || (params as any).duePaymentDate || new Date(Date.now() + 30 * 86400000).toISOString(),
+        purposeNote: debtNote,
+        status: 'OUTSTANDING',
+        linkedBatchId: newEntry.id,
+        referenceEntityId: newEntry.id,
+        repayments: [],
+        loggedByMemberId: params.actor.id,
+        loggedByName: params.actor.fullName,
+        createdAt: now,
+        auditHash: computeLedgerRecordHash('DEBT', debtId, now, params.purchaseCostTotal, debtNote),
+      };
+      newEntry.fundingDebtId = debtId;
+      updatedDebts.unshift(debtEvent);
+      void this.persistDocumentToCloudIfActive('debt_liabilities', debtEvent.id, debtEvent);
+    }
 
     const regAudit = this.createChainedAuditEvent({
       actor: params.actor,
@@ -2657,9 +2924,9 @@ class AgroDataService {
       eventType: 'LIVESTOCK_REGISTERED',
       severity: 'MILESTONE',
       title: `Registered ${params.initialHeadcount}x ${newEntry.species}: ${newEntry.nameOrTag}`,
-      message: `${newEntry.nameOrTag} (${params.trackingMode}) stocked at ${loc.name}. Target duration: ${params.targetDurationValue} ${params.targetDurationUnit.toLowerCase()}. Notes: ${newEntry.notes}`,
+      message: `${newEntry.nameOrTag} (${params.trackingMode}) stocked at ${loc.name}. Funding: ${params.fundingSource || (params.autoDeductPurchaseFromLeftMoney ? 'CASH_POOL' : 'NONE')}. Notes: ${newEntry.notes}`,
       deltaHeadcount: params.initialHeadcount,
-      deltaFinancial: params.autoDeductPurchaseFromLeftMoney ? -params.purchaseCostTotal : 0,
+      deltaFinancial: params.fundingSource === 'SUPPLIER_CREDIT' ? 0 : params.autoDeductPurchaseFromLeftMoney ? -params.purchaseCostTotal : 0,
       referenceEntityId: newEntry.id,
       photoUrl: params.imageUrl || galleryPhotos[0],
       timestamp: now,
@@ -2667,7 +2934,7 @@ class AgroDataService {
     updatedAudits.unshift(regAudit);
     this.state.auditNotifications = updatedAudits;
 
-    if (params.autoDeductPurchaseFromLeftMoney && params.purchaseCostTotal > 0) {
+    if (params.fundingSource !== 'SUPPLIER_CREDIT' && params.autoDeductPurchaseFromLeftMoney && params.purchaseCostTotal > 0) {
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
       const expNote = `Auto-logged livestock acquisition cost for ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}.`;
       const expEvent: ExpenseLedgerEvent = {
@@ -2698,6 +2965,7 @@ class AgroDataService {
       livestockEvents: [initialLifecycleEvent, ...this.state.livestockEvents],
       expenses: updatedExpenses,
       auditNotifications: updatedAudits,
+      debtLiabilities: updatedDebts,
     };
 
     this.saveLocalState(nextState);
@@ -2715,7 +2983,7 @@ class AgroDataService {
     livestockId: string;
     photoUrl: string;
     caption?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): LivestockLifecycleEvent {
     const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
     if (!entry) throw new Error('Livestock batch or animal not found.');
@@ -2793,12 +3061,40 @@ class AgroDataService {
     referenceTransactionId?: string;
     note: string;
     photoUrl?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): LivestockLifecycleEvent {
     const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
     if (!entry) throw new Error('Livestock batch or animal not found.');
     if (params.note.trim().length < 4) {
       throw new Error('Mandatory note (at least 4 characters) is required.');
+    }
+
+    // Operational bounds validation: verify headcount availability
+    const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === entry.id);
+    const currentHeadcount = entry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+    if (params.eventType === 'MORTALITY_LOSS' && params.headcountDelta) {
+      const loss = Math.abs(params.headcountDelta);
+      if (loss > currentHeadcount) {
+        throw new Error(`Invalid mortality: Headcount loss (${loss}) exceeds current live headcount (${currentHeadcount}).`);
+      }
+    }
+    if (params.eventType === 'SALE_DISPATCH' && params.headcountDelta) {
+      const sold = Math.abs(params.headcountDelta);
+      if (sold > currentHeadcount) {
+        throw new Error(`Invalid sale: Harvest headcount (${sold}) exceeds current live headcount (${currentHeadcount}).`);
+      }
+    }
+    if (params.eventType === 'SLAUGHTER_HARVEST' && params.headcountDelta) {
+      const slaughtered = Math.abs(params.headcountDelta);
+      if (slaughtered > currentHeadcount) {
+        throw new Error(`Invalid harvest: Slaughter count (${slaughtered}) exceeds current live headcount (${currentHeadcount}).`);
+      }
+    }
+    if (params.eventType === 'FARM_CONSUMPTION' && params.headcountDelta) {
+      const consumed = Math.abs(params.headcountDelta);
+      if (consumed > currentHeadcount) {
+        throw new Error(`Invalid consumption: Count (${consumed}) exceeds current live headcount (${currentHeadcount}).`);
+      }
     }
 
     const now = new Date().toISOString();
@@ -2807,6 +3103,7 @@ class AgroDataService {
 
     const newEvent: LivestockLifecycleEvent = {
       id,
+      orgId: entry.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master',
       livestockId: entry.id,
       livestockName: entry.nameOrTag,
       locationId: entry.locationId,
@@ -2851,6 +3148,14 @@ class AgroDataService {
       const reinvestedUsd = Number((rev * (reinvPct / 100)).toFixed(2));
       deltaFinancial = reinvestedUsd;
       title = `Livestock Sale: $${rev.toFixed(2)} (${Math.abs(params.headcountDelta)} sold from ${entry.nameOrTag})`;
+    } else if (params.eventType === 'SLAUGHTER_HARVEST') {
+      auditType = 'GROUND_BROADCAST';
+      severity = 'MILESTONE';
+      title = `Slaughter & Harvest: ${Math.abs(params.headcountDelta)} processed from ${entry.nameOrTag}`;
+    } else if (params.eventType === 'FARM_CONSUMPTION') {
+      auditType = 'GROUND_BROADCAST';
+      severity = 'INFO';
+      title = `Farm / Internal Consumption: ${Math.abs(params.headcountDelta)} from ${entry.nameOrTag}`;
     } else if (params.eventType === 'HEADCOUNT_CONTRA_ADJUSTMENT') {
       auditType = 'LIVESTOCK_CONTRA';
       severity = 'WARNING_CONTRA';
@@ -2910,7 +3215,7 @@ class AgroDataService {
     dayTarget: number;
     milestoneTitle: string;
     customNote?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): AuditNotificationEvent {
     const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
     if (!entry) throw new Error('Livestock batch or animal not found.');
@@ -2965,6 +3270,557 @@ class AgroDataService {
     return audit;
   }
 
+  public recordDebtLiability(params: {
+    orgId?: string;
+    creditorName: string;
+    creditorContact?: string;
+    category: DebtCategory;
+    principalAmount: number;
+    borrowDate?: string;
+    dueDate?: string;
+    interestRatePercent?: number;
+    purposeNote: string;
+    linkedBatchId?: string;
+    linkedAssetId?: string;
+    actor: OrgMember;
+  }): DebtLiabilityEvent {
+    if (!params.creditorName.trim()) throw new Error('Creditor name is required.');
+    if (!params.principalAmount || params.principalAmount <= 0) {
+      throw new Error('Principal amount must be greater than zero.');
+    }
+    if (params.purposeNote.trim().length < 4) {
+      throw new Error('Mandatory purpose explanation (at least 4 characters) is required.');
+    }
+
+    const now = new Date().toISOString();
+    const id = `DEBT-${Date.now().toString(36).toUpperCase()}`;
+    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const amount = Number(params.principalAmount.toFixed(2));
+
+    const newDebt: DebtLiabilityEvent = {
+      id,
+      orgId: targetOrgId,
+      creditorName: params.creditorName.trim(),
+      creditorContact: params.creditorContact?.trim(),
+      category: params.category,
+      principalAmount: amount,
+      remainingBalance: amount,
+      borrowDate: params.borrowDate || now,
+      dueDate: params.dueDate,
+      interestRatePercent: params.interestRatePercent,
+      purposeNote: params.purposeNote.trim(),
+      status: 'OUTSTANDING',
+      linkedBatchId: params.linkedBatchId,
+      linkedAssetId: params.linkedAssetId,
+      repayments: [],
+      loggedByMemberId: params.actor.id,
+      loggedByName: params.actor.fullName,
+      createdAt: now,
+      auditHash: computeLedgerRecordHash('DEBT', id, now, amount, params.purposeNote.trim()),
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Treasury Vault',
+      eventType: 'FINANCIAL_TRANSACTION',
+      severity: 'FINANCIAL',
+      title: `Liability Recorded: $${amount.toFixed(2)} from ${newDebt.creditorName}`,
+      message: `${newDebt.creditorName} (${newDebt.category}) obligation of $${amount.toFixed(2)} logged by ${params.actor.fullName}. Due: ${newDebt.dueDate ? new Date(newDebt.dueDate).toLocaleDateString() : 'Open term'}. Purpose: ${newDebt.purposeNote}`,
+      referenceEntityId: id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      debtLiabilities: [newDebt, ...(this.state.debtLiabilities || [])],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('debt_liabilities', newDebt.id, newDebt);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return newDebt;
+  }
+
+  public repayDebtLiability(params: {
+    debtId: string;
+    amount: number;
+    paymentMethod: string;
+    receiptReference?: string;
+    note?: string;
+    referenceNote?: string;
+    actor: OrgMember;
+  }): DebtRepaymentLog {
+    const debt = (this.state.debtLiabilities || []).find((d) => d.id === params.debtId);
+    if (!debt) throw new Error('Debt liability record not found.');
+    if (params.amount <= 0) throw new Error('Repayment amount must be greater than zero.');
+    if (params.amount > debt.remainingBalance) {
+      throw new Error(`Repayment ($${params.amount.toFixed(2)}) exceeds remaining debt balance ($${debt.remainingBalance.toFixed(2)}).`);
+    }
+
+    const currentLeftMoney = this.getCurrentOrgLeftMoney(debt.orgId);
+    if (params.amount > currentLeftMoney) {
+      throw new Error(`Insufficient liquid funds in Left Money ($${currentLeftMoney.toFixed(2)} available) to disburse repayment of $${params.amount.toFixed(2)}.`);
+    }
+
+    const now = new Date().toISOString();
+    const repId = `REP-${Date.now().toString(36).toUpperCase()}`;
+    const cleanNote = (params.note || params.referenceNote || '').trim() || `Debt repayment to ${debt.creditorName}`;
+
+    const repLog: DebtRepaymentLog = {
+      id: repId,
+      amount: Number(params.amount.toFixed(2)),
+      paidAt: now,
+      paidByMemberId: params.actor.id,
+      paidByName: params.actor.fullName,
+      paymentMethod: params.paymentMethod || 'CASH',
+      receiptReference: params.receiptReference,
+      note: cleanNote,
+      auditHash: computeLedgerRecordHash('DEBT_REPAYMENT', repId, now, params.amount, cleanNote),
+    };
+
+    const newBalance = Number((debt.remainingBalance - params.amount).toFixed(2));
+    const updatedDebt: DebtLiabilityEvent = {
+      ...debt,
+      remainingBalance: newBalance,
+      status: newBalance <= 0.001 ? 'SETTLED' : 'PARTIALLY_PAID',
+      repayments: [repLog, ...(debt.repayments || [])],
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Treasury Vault',
+      eventType: 'FINANCIAL_TRANSACTION',
+      severity: 'FINANCIAL',
+      title: `Debt Repayment: $${params.amount.toFixed(2)} to ${debt.creditorName}`,
+      message: `Repayment of $${params.amount.toFixed(2)} paid to ${debt.creditorName} by ${params.actor.fullName}. Remaining balance: $${newBalance.toFixed(2)}.`,
+      referenceEntityId: debt.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      debtLiabilities: (this.state.debtLiabilities || []).map((d) => (d.id === debt.id ? updatedDebt : d)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('debt_liabilities', updatedDebt.id, updatedDebt);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return repLog;
+  }
+
+  public recordLoanGiven(params: {
+    orgId?: string;
+    borrowerName: string;
+    borrowerContact?: string;
+    category?: LoanCategory;
+    principalAmount: number;
+    agreedReturnDate?: string;
+    interestRatePercent?: number;
+    collateralNote?: string;
+    purposeNote?: string;
+    reason?: string;
+    actor: OrgMember;
+  }): LoanGivenEvent {
+    if (!params.borrowerName.trim()) throw new Error('Borrower name is required.');
+    if (!params.principalAmount || params.principalAmount <= 0) {
+      throw new Error('Loan amount must be greater than zero.');
+    }
+    const rawNote = (params.purposeNote || params.reason || '').trim();
+    if (rawNote.length < 4) {
+      throw new Error('Mandatory purpose explanation (at least 4 characters) is required.');
+    }
+
+    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
+    if (params.principalAmount > currentLeftMoney) {
+      throw new Error(`Insufficient funds in Left Money ($${currentLeftMoney.toFixed(2)} available) to issue loan of $${params.principalAmount.toFixed(2)}.`);
+    }
+
+    const now = new Date().toISOString();
+    const id = `LOAN-OUT-${Date.now().toString(36).toUpperCase()}`;
+    const amount = Number(params.principalAmount.toFixed(2));
+
+    const newLoan: LoanGivenEvent = {
+      id,
+      orgId: targetOrgId,
+      borrowerName: params.borrowerName.trim(),
+      borrowerContact: (params.borrowerContact || '').trim(),
+      category: params.category || 'PARTNER_FARM_LOAN',
+      principalAmount: amount,
+      remainingBalance: amount,
+      disbursedAt: now,
+      agreedReturnDate: params.agreedReturnDate || new Date(Date.now() + 14 * 86400000).toISOString(),
+      interestRatePercent: params.interestRatePercent,
+      collateralNote: params.collateralNote,
+      purposeNote: rawNote,
+      status: 'ACTIVE',
+      repayments: [],
+      disbursedByMemberId: params.actor.id,
+      disbursedByName: params.actor.fullName,
+      createdAt: now,
+      auditHash: computeLedgerRecordHash('LOAN_OUT', id, now, amount, rawNote),
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Treasury Vault',
+      eventType: 'FINANCIAL_TRANSACTION',
+      severity: 'FINANCIAL',
+      title: `Loan Issued: $${amount.toFixed(2)} to ${newLoan.borrowerName}`,
+      message: `Capital advance of $${amount.toFixed(2)} disbursed to ${newLoan.borrowerName} (${newLoan.category}) by ${params.actor.fullName}. Return date: ${new Date(newLoan.agreedReturnDate).toLocaleDateString()}. Note: ${newLoan.purposeNote}`,
+      referenceEntityId: id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      loansGiven: [newLoan, ...(this.state.loansGiven || [])],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('loans_given', newLoan.id, newLoan);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return newLoan;
+  }
+
+  public recoverLoanGiven(params: {
+    loanId: string;
+    amount: number;
+    paymentMethod: string;
+    receiptReference?: string;
+    note?: string;
+    referenceNote?: string;
+    actor: OrgMember;
+  }): LoanRecoveryLog {
+    const loan = (this.state.loansGiven || []).find((l) => l.id === params.loanId);
+    if (!loan) throw new Error('Loan record not found.');
+    if (params.amount <= 0) throw new Error('Recovery amount must be greater than zero.');
+    if (params.amount > loan.remainingBalance) {
+      throw new Error(`Recovery ($${params.amount.toFixed(2)}) exceeds remaining loan balance ($${loan.remainingBalance.toFixed(2)}).`);
+    }
+
+    const now = new Date().toISOString();
+    const recId = `REC-${Date.now().toString(36).toUpperCase()}`;
+    const cleanNote = (params.note || params.referenceNote || '').trim() || `Loan recovery from ${loan.borrowerName}`;
+
+    const recLog: LoanRecoveryLog = {
+      id: recId,
+      amount: Number(params.amount.toFixed(2)),
+      recoveredAt: now,
+      recordedByMemberId: params.actor.id,
+      recordedByName: params.actor.fullName,
+      paymentMethod: params.paymentMethod || 'CASH',
+      receiptReference: params.receiptReference,
+      note: cleanNote,
+      auditHash: computeLedgerRecordHash('LOAN_RECOVERY', recId, now, params.amount, cleanNote),
+    };
+
+    const newBalance = Number((loan.remainingBalance - params.amount).toFixed(2));
+    const updatedLoan: LoanGivenEvent = {
+      ...loan,
+      remainingBalance: newBalance,
+      status: newBalance <= 0.001 ? 'RECOVERED' : 'PARTIALLY_RECOVERED',
+      repayments: [recLog, ...(loan.repayments || [])],
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Treasury Vault',
+      eventType: 'FINANCIAL_TRANSACTION',
+      severity: 'FINANCIAL',
+      title: `Loan Recovered: $${params.amount.toFixed(2)} from ${loan.borrowerName}`,
+      message: `Recovery of $${params.amount.toFixed(2)} returned by ${loan.borrowerName}. Remaining balance: $${newBalance.toFixed(2)}.`,
+      referenceEntityId: loan.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      loansGiven: (this.state.loansGiven || []).map((l) => (l.id === loan.id ? updatedLoan : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('loans_given', updatedLoan.id, updatedLoan);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return recLog;
+  }
+
+  public recordCreditSale(params: {
+    orgId?: string;
+    locationId?: string;
+    livestockId?: string;
+    customerName: string;
+    customerPhone?: string;
+    customerContact?: string;
+    customerAddress?: string;
+    quantitySold: number;
+    unitPrice?: number;
+    unitPriceUsd?: number;
+    totalSaleAmountUsd?: number;
+    depositPaidCash?: number;
+    upfrontDepositUsd?: number;
+    agreedSettlementDate?: string;
+    targetDueDate?: string;
+    paymentTerms?: string;
+    notes?: string;
+    note?: string;
+    actor: OrgMember;
+  }): CreditSaleEvent {
+    if (!params.customerName.trim()) throw new Error('Customer name is required.');
+    if (params.quantitySold <= 0) throw new Error('Quantity sold must be at least 1.');
+    const unitPrice = params.unitPrice || params.unitPriceUsd || 0;
+    if (unitPrice <= 0) throw new Error('Unit price must be greater than zero.');
+    const rawNotes = params.notes || params.note || '';
+    if (rawNotes.trim().length < 4) throw new Error('Mandatory notes (min 4 chars) are required.');
+
+    const resolvedLocId =
+      params.locationId ||
+      (params.livestockId
+        ? this.state.livestockEntries.find((l) => l.id === params.livestockId)?.locationId
+        : undefined) ||
+      this.state.locations[0]?.id;
+    const loc = this.state.locations.find((l) => l.id === resolvedLocId);
+    if (!loc) throw new Error('Valid farm site location is required.');
+
+    const totalAmount = Number((params.totalSaleAmountUsd || (params.quantitySold * unitPrice)).toFixed(2));
+    const deposit = Math.max(0, Number((params.depositPaidCash || params.upfrontDepositUsd || 0).toFixed(2)));
+    if (deposit > totalAmount) {
+      throw new Error(`Upfront deposit ($${deposit.toFixed(2)}) cannot exceed total sale amount ($${totalAmount.toFixed(2)}).`);
+    }
+    const creditRemaining = Number((totalAmount - deposit).toFixed(2));
+    const settlementDate = params.agreedSettlementDate || params.targetDueDate || new Date(Date.now() + 14 * 86400000).toISOString();
+
+    const now = new Date().toISOString();
+    const id = `CSALE-${Date.now().toString(36).toUpperCase()}`;
+    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+
+    let livestockEntry: LivestockEntry | undefined;
+    if (params.livestockId) {
+      livestockEntry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+      if (livestockEntry) {
+        // Also log lifecycle event to reduce live headcount
+        this.logLivestockLifecycleEvent({
+          livestockId: livestockEntry.id,
+          eventType: 'SALE_DISPATCH',
+          headcountDelta: -params.quantitySold,
+          saleRevenueAmount: 0, // Cash is tracked through creditSales customer deposits to prevent double counting
+          reinvestmentPercentage: 100,
+          note: `Credit sale of ${params.quantitySold}x to ${params.customerName}. Total: $${totalAmount}, Deposit: $${deposit}, Credit: $${creditRemaining}. Due: ${settlementDate}. ${rawNotes.trim()}`,
+          actor: params.actor,
+        });
+      }
+    }
+
+    const newCreditSale: CreditSaleEvent = {
+      id,
+      orgId: targetOrgId,
+      locationId: loc.id,
+      locationName: loc.name,
+      customerName: params.customerName.trim(),
+      customerPhone: (params.customerPhone || params.customerContact || '').trim(),
+      customerAddress: params.customerAddress?.trim(),
+      livestockId: params.livestockId,
+      livestockName: livestockEntry?.nameOrTag,
+      quantitySold: params.quantitySold,
+      unitPrice,
+      totalSaleAmount: totalAmount,
+      depositPaidCash: deposit,
+      creditBalanceRemaining: creditRemaining,
+      saleDate: now,
+      agreedSettlementDate: settlementDate,
+      paymentTerms: params.paymentTerms?.trim() || 'Credit sale with agreed settlement date',
+      notes: rawNotes.trim(),
+      status: creditRemaining <= 0 ? 'SETTLED' : deposit > 0 ? 'PARTIALLY_PAID' : 'OUTSTANDING',
+      paymentLogs: [],
+      dateExtensions: [],
+      loggedByMemberId: params.actor.id,
+      loggedByName: params.actor.fullName,
+      createdAt: now,
+      auditHash: computeLedgerRecordHash('CREDIT_SALE', id, now, totalAmount, rawNotes.trim()),
+    };
+
+    // Attach backward-compatible aliases
+    Object.assign(newCreditSale, {
+      remainingCreditBalanceUsd: creditRemaining,
+      totalSaleAmountUsd: totalAmount,
+      upfrontDepositUsd: deposit,
+      targetDueDate: settlementDate,
+    });
+
+    // Broadcast to all members notifying about credit sale terms and due date
+    const formattedDueDate = new Date(settlementDate).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    const broadcastAudit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: loc.id,
+      locationName: loc.name,
+      eventType: 'CREDIT_SALE',
+      severity: 'FINANCIAL',
+      title: `Sale on Credit: ${params.customerName} ($${totalAmount.toFixed(2)})`,
+      message: `Sale on credit logged by ${params.actor.fullName}: ${params.quantitySold}x ${livestockEntry ? livestockEntry.nameOrTag : 'items'} sold to ${params.customerName}. Upfront deposit of $${deposit.toFixed(2)} received; remaining $${creditRemaining.toFixed(2)} due on ${formattedDueDate}. Terms: ${newCreditSale.paymentTerms}.`,
+      referenceEntityId: id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      creditSales: [newCreditSale, ...(this.state.creditSales || [])],
+      auditNotifications: [broadcastAudit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('credit_sales', newCreditSale.id, newCreditSale);
+    void this.persistDocumentToCloudIfActive('audit_notifications', broadcastAudit.id, broadcastAudit);
+    return newCreditSale;
+  }
+
+  public extendCreditSaleDueDate(params: {
+    creditSaleId: string;
+    newAgreedDate?: string;
+    newDueDate?: string;
+    reason: string;
+    actor: OrgMember;
+  }): CreditSaleEvent {
+    const sale = (this.state.creditSales || []).find((s) => s.id === params.creditSaleId);
+    if (!sale) throw new Error('Credit sale record not found.');
+    const newDate = params.newAgreedDate || params.newDueDate;
+    if (!newDate) throw new Error('New agreed due date is required.');
+    const rawReason = (params.reason || '').trim();
+    if (rawReason.length < 4) {
+      throw new Error('Mandatory justification reason required (at least 4 characters).');
+    }
+
+    const now = new Date().toISOString();
+    const extId = `EXT-${Date.now().toString(36).toUpperCase()}`;
+    const previousDate = sale.agreedSettlementDate || (sale as any).targetDueDate || '';
+
+    const extensionLog: CreditSaleDateExtensionLog = {
+      id: extId,
+      previousDate,
+      newAgreedDate: newDate,
+      reason: rawReason,
+      extendedAt: now,
+      authorizedByMemberId: params.actor.id,
+      authorizedByName: params.actor.fullName,
+    };
+    Object.assign(extensionLog, {
+      previousDueDate: previousDate,
+      newDueDate: newDate,
+    });
+
+    const updatedSale: CreditSaleEvent = {
+      ...sale,
+      agreedSettlementDate: newDate,
+      dateExtensions: [extensionLog, ...(sale.dateExtensions || [])],
+    };
+    Object.assign(updatedSale, {
+      targetDueDate: newDate,
+      remainingCreditBalanceUsd: sale.creditBalanceRemaining,
+    });
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: sale.locationId,
+      locationName: sale.locationName,
+      eventType: 'GROUND_BROADCAST',
+      severity: 'WARNING_CONTRA',
+      title: `Credit Sale Due Date Extended: ${sale.customerName}`,
+      message: `Due date for ${sale.customerName} credit balance ($${sale.creditBalanceRemaining.toFixed(2)}) extended from ${new Date(previousDate).toLocaleDateString()} to ${new Date(newDate).toLocaleDateString()} by ${params.actor.fullName}. Reason: ${rawReason}`,
+      referenceEntityId: sale.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      creditSales: (this.state.creditSales || []).map((s) => (s.id === sale.id ? updatedSale : s)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('credit_sales', updatedSale.id, updatedSale);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updatedSale;
+  }
+
+  public recordCreditSalePayment(params: {
+    creditSaleId: string;
+    amount: number;
+    paymentMethod?: string;
+    receiptReference?: string;
+    note?: string;
+    referenceNote?: string;
+    actor: OrgMember;
+  }): CreditSalePaymentLog {
+    const sale = (this.state.creditSales || []).find((s) => s.id === params.creditSaleId);
+    if (!sale) throw new Error('Credit sale record not found.');
+    if (params.amount <= 0) throw new Error('Payment amount must be greater than zero.');
+    if (params.amount > sale.creditBalanceRemaining) {
+      throw new Error(`Payment ($${params.amount.toFixed(2)}) exceeds remaining credit balance ($${sale.creditBalanceRemaining.toFixed(2)}).`);
+    }
+
+    const now = new Date().toISOString();
+    const payId = `CSPAY-${Date.now().toString(36).toUpperCase()}`;
+    const cleanNote = (params.note || params.referenceNote || '').trim() || `Credit installment from ${sale.customerName}`;
+
+    const payLog: CreditSalePaymentLog = {
+      id: payId,
+      amount: Number(params.amount.toFixed(2)),
+      paidAt: now,
+      paymentMethod: params.paymentMethod || 'CASH',
+      receiptReference: params.receiptReference,
+      recordedByMemberId: params.actor.id,
+      recordedByName: params.actor.fullName,
+      note: cleanNote,
+      auditHash: computeLedgerRecordHash('CREDIT_PAYMENT', payId, now, params.amount, cleanNote),
+    };
+
+    const newBalance = Number((sale.creditBalanceRemaining - params.amount).toFixed(2));
+    const updatedSale: CreditSaleEvent = {
+      ...sale,
+      creditBalanceRemaining: newBalance,
+      status: newBalance <= 0.001 ? 'SETTLED' : 'PARTIALLY_PAID',
+      paymentLogs: [payLog, ...(sale.paymentLogs || [])],
+    };
+    Object.assign(updatedSale, {
+      remainingCreditBalanceUsd: newBalance,
+      targetDueDate: sale.agreedSettlementDate,
+    });
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: sale.locationId,
+      locationName: sale.locationName,
+      eventType: 'FINANCIAL_TRANSACTION',
+      severity: 'FINANCIAL',
+      title: `Credit Payment Received: $${params.amount.toFixed(2)} from ${sale.customerName}`,
+      message: `Installment payment of $${params.amount.toFixed(2)} collected from ${sale.customerName} via ${params.paymentMethod}. Remaining debt: $${newBalance.toFixed(2)}.`,
+      referenceEntityId: sale.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      creditSales: (this.state.creditSales || []).map((s) => (s.id === sale.id ? updatedSale : s)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('credit_sales', updatedSale.id, updatedSale);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return payLog;
+  }
+
   public logFixedAssetEvent(params: {
     assetGroupId?: string;
     assetName: string;
@@ -2978,7 +3834,7 @@ class AgroDataService {
     note: string;
     deductFromLeftMoney?: boolean;
     photoUrl?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): FixedAssetLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -2993,6 +3849,7 @@ class AgroDataService {
 
     const newAssetEvent: FixedAssetLedgerEvent = {
       id,
+      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
       assetGroupId: groupId,
       assetName: params.assetName.trim().slice(0, 140),
       category: params.category,
@@ -3020,6 +3877,18 @@ class AgroDataService {
       params.direction === 'CONTRA_REVERSAL' || params.direction === 'DEDUCTION';
     const updatedAudits = [...this.state.auditNotifications];
     const updatedExpenses = [...this.state.expenses];
+
+    const shouldDeduct = params.deductFromLeftMoney !== false && params.valueDelta > 0 && (params.direction === 'INITIAL' || params.direction === 'ADDITION');
+    if (shouldDeduct) {
+      const currentLeftMoney = this.getCurrentOrgLeftMoney(params.actor.orgId || loc.orgId);
+
+      if (currentLeftMoney <= 0) {
+        throw new Error('Insufficient funds in Left Money pool ($0.00 available). Cannot purchase asset with zero money.');
+      }
+      if (params.valueDelta > currentLeftMoney) {
+        throw new Error(`Insufficient funds in Left Money pool. Asset purchase ($${params.valueDelta.toFixed(2)}) exceeds available balance ($${currentLeftMoney.toFixed(2)}).`);
+      }
+    }
 
     const assetAudit = this.createChainedAuditEvent({
       actor: params.actor,
@@ -3086,7 +3955,7 @@ class AgroDataService {
     valueToTransfer: number;
     condition: AssetCondition;
     note: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): { outEvent: FixedAssetLedgerEvent; inEvent: FixedAssetLedgerEvent } {
     if (params.fromLocationId === params.toLocationId) {
       throw new Error('Destination location must be different from origin location.');
@@ -3094,6 +3963,9 @@ class AgroDataService {
     const fromLoc = this.state.locations.find((l) => l.id === params.fromLocationId);
     const toLoc = this.state.locations.find((l) => l.id === params.toLocationId);
     if (!fromLoc || !toLoc) throw new Error('Invalid origin or destination location.');
+    if (params.actor.orgId && (fromLoc.orgId !== params.actor.orgId || toLoc.orgId !== params.actor.orgId)) {
+      throw new Error('Access Denied: Assets cannot be transferred outside of your organization.');
+    }
     if (params.note.trim().length < 4) {
       throw new Error('Mandatory transfer reason note is required.');
     }
@@ -3174,6 +4046,48 @@ class AgroDataService {
     return { outEvent, inEvent };
   }
 
+  public logBatchDirectFeed(params: {
+    livestockId: string;
+    locationId: string;
+    kgConsumed: number;
+    feedType: string;
+    note?: string;
+    actor: OrgMember;
+  }): FeedLedgerEvent {
+    const loc = this.state.locations.find((l) => l.id === params.locationId);
+    if (!loc) throw new Error('Valid farm location is required.');
+    if (params.kgConsumed <= 0) throw new Error('Feed consumed quantity must be greater than 0 kg.');
+
+    const cleanFeedType = params.feedType?.trim() || 'Standard Rations';
+    const cleanNote = params.note?.trim() || `Daily feeding of ${params.kgConsumed} kg (${cleanFeedType})`;
+    const now = new Date().toISOString();
+    const id = `FD-EV-${Date.now().toString(36).toUpperCase()}`;
+
+    const newFeedEvent: FeedLedgerEvent = {
+      id,
+      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
+      locationId: loc.id,
+      feedType: cleanFeedType.slice(0, 120),
+      direction: 'DAILY_CONSUMPTION',
+      bagsDelta: -Math.abs(params.kgConsumed),
+      kgPerBag: 1,
+      linkedLivestockId: params.livestockId,
+      note: cleanNote.slice(0, 500),
+      loggedByMemberId: params.actor.id,
+      loggedByName: params.actor.fullName,
+      createdAt: now,
+      auditHash: computeLedgerRecordHash('FEED', id, now, params.kgConsumed, cleanNote),
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      feedLedger: [newFeedEvent, ...this.state.feedLedger],
+    };
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('feed_ledger', newFeedEvent.id, newFeedEvent);
+    return newFeedEvent;
+  }
+
   public logFeedEvent(params: {
     locationId: string;
     feedType: string;
@@ -3183,7 +4097,7 @@ class AgroDataService {
     linkedLivestockId?: string;
     referenceTransactionId?: string;
     note: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): FeedLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -3194,6 +4108,19 @@ class AgroDataService {
     const now = new Date().toISOString();
     const id = `FD-EV-${Date.now().toString(36).toUpperCase()}`;
     const cleanNote = params.note.trim().slice(0, 500);
+
+    // Feed inventory bounds validation
+    if (params.direction === 'DAILY_CONSUMPTION') {
+      const existingFeed = this.state.feedLedger.filter(
+        (f) => f.locationId === loc.id && f.feedType === params.feedType.trim().slice(0, 120)
+      );
+      const currentStock = existingFeed.reduce((acc, f) => acc + f.bagsDelta, 0);
+      const consumedBags = Math.abs(params.bagsDelta);
+      if (consumedBags > currentStock) {
+        throw new Error(`Insufficient feed stock: Consuming ${consumedBags} bags exceeds available stock of ${currentStock} bags at ${loc.name}.`);
+      }
+    }
+
     const signedBags =
       params.direction === 'DAILY_CONSUMPTION'
         ? -Math.abs(params.bagsDelta)
@@ -3203,6 +4130,7 @@ class AgroDataService {
 
     const newFeedEvent: FeedLedgerEvent = {
       id,
+      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
       locationId: loc.id,
       feedType: params.feedType.trim().slice(0, 120),
       direction: params.direction,
@@ -3253,14 +4181,14 @@ class AgroDataService {
     title: string;
     message: string;
     photoUrl?: string;
-    actor: SyndicateMember;
+    actor: OrgMember;
   }): AuditNotificationEvent {
     if (params.message.trim().length < 4) {
       throw new Error('Broadcast message must be at least 4 characters.');
     }
     const locName =
       params.locationId === 'ALL'
-        ? 'All Locations (Master Syndicate)'
+        ? 'All Locations (Master Organization)'
         : this.state.locations.find((l) => l.id === params.locationId)?.name || 'Farm Site';
 
     const audit = this.createChainedAuditEvent({
@@ -3282,6 +4210,658 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return audit;
+  }
+
+  public createOrganization(params: {
+    name: string;
+    type: OrganizationType;
+    actor: OrgMember;
+    defaultTargetContributionUsd?: number;
+    contributionPaceDefault?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+  }): Organization {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const orgId = `org-${now.toString(36)}`;
+    const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const currentInviteCode = `SEED-${rand}`;
+
+    const newOrg: Organization = {
+      id: orgId,
+      name: params.name.trim().slice(0, 120),
+      type: params.type,
+      adminMemberId: params.actor.id,
+      adminEmail: params.actor.email || params.actor.phoneOrEmail,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      currentInviteCode,
+      inviteCodeCreatedAt: nowIso,
+      inviteCodeExpiresAt: expiresAt,
+      defaultTargetContributionUsd: params.defaultTargetContributionUsd || 1000,
+      contributionPaceDefault: params.contributionPaceDefault || 'MONTHLY',
+      currency: 'USD',
+      currencySymbol: '$',
+      features: {
+        livestockModule: params.type === 'AGRO_FARMING',
+        farmSitesModule: true,
+        feedInventoryModule: params.type === 'AGRO_FARMING',
+        multiSigApprovals: true,
+        publicAuditVerifier: true,
+      },
+    };
+
+    // Update actor to be ORG_ADMIN of this organization
+    const updatedActor: OrgMember = {
+      ...params.actor,
+      orgId: newOrg.id,
+      role: 'ORG_ADMIN',
+      approvalStatus: 'APPROVED',
+      active: true,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: updatedActor,
+      locationId: 'ALL',
+      locationName: 'Organization Master',
+      eventType: 'ORGANIZATION_CREATED',
+      severity: 'MILESTONE',
+      title: `Organization Created: ${newOrg.name}`,
+      message: `Organization registered by ${updatedActor.fullName} (${newOrg.type.replace('_', ' ')}). 24-hr invitation code: ${currentInviteCode}.`,
+      referenceEntityId: newOrg.id,
+      timestamp: nowIso,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: [...(this.state.organizations || []), newOrg],
+      activeOrgId: newOrg.id,
+      members: this.state.members.map((m) => (m.id === updatedActor.id ? updatedActor : m)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('organizations', newOrg.id, newOrg);
+    void this.persistDocumentToCloudIfActive('members', updatedActor.id, updatedActor);
+    if (firestoreDb) {
+      setDoc(doc(firestoreDb, 'invite_codes', currentInviteCode), {
+        code: currentInviteCode,
+        orgId: newOrg.id,
+        orgName: newOrg.name,
+        orgType: newOrg.type,
+        adminName: updatedActor.fullName,
+        expiresAt,
+      }).catch((err) => console.warn('Invite code cloud save warning:', err));
+    }
+    return newOrg;
+  }
+
+  public getActiveOrganization(orgId?: string): Organization {
+    const targetId = orgId || this.state.activeOrgId || 'org-master';
+    const found = (this.state.organizations || []).find((o) => o.id === targetId);
+    if (found) return found;
+
+    const now = Date.now();
+    const fallbackOrg: Organization = {
+      id: targetId,
+      name: 'CapitaSeed Master Syndicate',
+      type: 'AGRO_FARMING',
+      adminMemberId: 'mem-chipo',
+      adminEmail: PRIMARY_ADMIN_EMAIL,
+      createdAt: new Date(now - 30 * 86400000).toISOString(),
+      updatedAt: new Date(now).toISOString(),
+      currentInviteCode: 'SEED-8492',
+      inviteCodeCreatedAt: new Date(now).toISOString(),
+      inviteCodeExpiresAt: new Date(now + 365 * 86400000).toISOString(),
+      defaultTargetContributionUsd: 1000,
+      contributionPaceDefault: 'MONTHLY',
+      currency: 'USD',
+      currencySymbol: '$',
+      description: 'Primary Agro-Farming & Joint Investment Workspace',
+      features: {
+        livestockModule: true,
+        farmSitesModule: true,
+        feedInventoryModule: true,
+        multiSigApprovals: true,
+        publicAuditVerifier: true,
+      },
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: [...(this.state.organizations || []), fallbackOrg],
+      activeOrgId: targetId,
+    };
+    this.saveLocalState(nextState);
+    return fallbackOrg;
+  }
+
+  public updateOrganization(params: {
+    orgId: string;
+    name?: string;
+    type?: OrganizationType;
+    defaultTargetContributionUsd?: number;
+    contributionPaceDefault?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+    actor: OrgMember;
+  }): Organization {
+    if (params.actor.role !== 'ORG_ADMIN' && params.actor.role !== 'SYNDICATE_ADMIN') {
+      throw new Error('Access Denied: Only Organization Admins can update organization settings.');
+    }
+    const org = (this.state.organizations || []).find((o) => o.id === params.orgId);
+    if (!org) {
+      throw new Error(`Organization ${params.orgId} not found.`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedType = params.type !== undefined ? params.type : org.type;
+    const updatedOrg: Organization = {
+      ...org,
+      name: params.name !== undefined ? params.name.trim() : org.name,
+      type: updatedType,
+      defaultTargetContributionUsd:
+        params.defaultTargetContributionUsd !== undefined
+          ? params.defaultTargetContributionUsd
+          : org.defaultTargetContributionUsd,
+      contributionPaceDefault:
+        params.contributionPaceDefault !== undefined
+          ? params.contributionPaceDefault
+          : org.contributionPaceDefault,
+      features: {
+        ...org.features,
+        livestockModule: updatedType === 'AGRO_FARMING',
+        feedInventoryModule: updatedType === 'AGRO_FARMING',
+      },
+      updatedAt: nowIso,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Organization Master',
+      eventType: 'ORGANIZATION_CREATED',
+      severity: 'INFO',
+      title: `Organization Settings Updated: ${updatedOrg.name}`,
+      message: `${params.actor.fullName} updated organization details (Mode: ${updatedOrg.type}, Target: $${updatedOrg.defaultTargetContributionUsd}).`,
+      referenceEntityId: updatedOrg.id,
+      timestamp: nowIso,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: (this.state.organizations || []).map((o) => (o.id === updatedOrg.id ? updatedOrg : o)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('organizations', updatedOrg.id, updatedOrg);
+    return updatedOrg;
+  }
+
+  public updateMemberCapitalTarget(params: {
+    memberId: string;
+    targetContributionUsd: number;
+    contributionPace: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+    actor: OrgMember;
+  }): OrgMember {
+    const isSelf = params.actor.id === params.memberId;
+    const isAdmin = params.actor.role === 'ORG_ADMIN' || params.actor.role === 'SYNDICATE_ADMIN';
+    if (!isSelf && !isAdmin) {
+      throw new Error('Access Denied: Only Admins or the member themselves can update capital targets.');
+    }
+
+    const targetMember = this.state.members.find((m) => m.id === params.memberId);
+    if (!targetMember) {
+      throw new Error(`Member ${params.memberId} not found.`);
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedMember: OrgMember = {
+      ...targetMember,
+      targetContributionUsd: Math.max(0, params.targetContributionUsd),
+      contributionPace: params.contributionPace,
+      updatedAt: nowIso,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Organization Master',
+      eventType: 'MEMBER_PROFILE_UPDATED',
+      severity: 'INFO',
+      title: `Capital Target Updated: ${updatedMember.fullName}`,
+      message: `${params.actor.fullName} configured capital target for ${updatedMember.fullName} to $${updatedMember.targetContributionUsd} (${updatedMember.contributionPace}).`,
+      referenceEntityId: updatedMember.id,
+      timestamp: nowIso,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      members: this.state.members.map((m) => (m.id === updatedMember.id ? updatedMember : m)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+    return updatedMember;
+  }
+
+  public refreshInviteCode(params: {
+    orgId: string;
+    actor: OrgMember;
+  }): Organization {
+    if (!PERMISSIONS.canRefreshInviteCode(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can refresh invitation codes.');
+    }
+    const org = (this.state.organizations || []).find((o) => o.id === params.orgId);
+    if (!org) {
+      throw new Error(`Organization ${params.orgId} not found.`);
+    }
+
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const newCode = `SEED-${rand}`;
+
+    const updatedOrg: Organization = {
+      ...org,
+      currentInviteCode: newCode,
+      inviteCodeCreatedAt: nowIso,
+      inviteCodeExpiresAt: expiresAt,
+      updatedAt: nowIso,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Organization Master',
+      eventType: 'INVITE_CODE_REFRESHED',
+      severity: 'INFO',
+      title: `24-Hour Invite Code Refreshed: ${newCode}`,
+      message: `${params.actor.fullName} refreshed the organization join code. Valid for 24 hours until ${new Date(expiresAt).toLocaleTimeString()}.`,
+      referenceEntityId: updatedOrg.id,
+      timestamp: nowIso,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: (this.state.organizations || []).map((o) => (o.id === updatedOrg.id ? updatedOrg : o)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('organizations', updatedOrg.id, updatedOrg);
+    if (firestoreDb) {
+      if (org.currentInviteCode) {
+        deleteDoc(doc(firestoreDb, 'invite_codes', org.currentInviteCode)).catch(() => { });
+      }
+      setDoc(doc(firestoreDb, 'invite_codes', newCode), {
+        code: newCode,
+        orgId: updatedOrg.id,
+        orgName: updatedOrg.name,
+        orgType: updatedOrg.type,
+        adminName: params.actor.fullName,
+        expiresAt,
+      }).catch((err) => console.warn('Cloud invite_codes write warning:', err));
+    }
+    return updatedOrg;
+  }
+
+  public async joinOrganizationWithCode(params: {
+    inviteCode: string;
+    actor: OrgMember;
+  }): Promise<Organization> {
+    const cleanCode = params.inviteCode.trim().toUpperCase();
+    let orgData: any = null;
+
+    if (firestoreDb) {
+      try {
+        const snap = await getDoc(doc(firestoreDb, 'invite_codes', cleanCode));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (new Date(data.expiresAt).getTime() < Date.now()) {
+            throw new Error('This invitation code has expired after 24 hours. Please ask your administrator to refresh the code in Settings.');
+          }
+          const orgSnap = await getDoc(doc(firestoreDb, 'organizations', data.orgId));
+          if (orgSnap.exists()) {
+            orgData = orgSnap.data();
+          }
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes('expired')) throw err;
+        console.warn('Cloud invite lookup fallback:', err);
+      }
+    }
+
+    if (!orgData) {
+      const foundOrg = (this.state.organizations || []).find(
+        (o) => o.currentInviteCode && o.currentInviteCode.toUpperCase() === cleanCode
+      );
+      if (foundOrg) {
+        if (new Date(foundOrg.inviteCodeExpiresAt).getTime() < Date.now()) {
+          throw new Error('This invitation code has expired after 24 hours. Please ask your administrator to refresh the code in Settings.');
+        }
+        orgData = foundOrg;
+      }
+    }
+
+    if (!orgData) {
+      throw new Error('Invalid invitation code. Please verify the code with your organization administrator.');
+    }
+
+    const now = new Date().toISOString();
+    const updatedMember: OrgMember = {
+      ...params.actor,
+      orgId: orgData.id,
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
+      active: true,
+      targetContributionUsd: orgData.defaultTargetContributionUsd || 1000,
+      contributionPace: orgData.contributionPaceDefault || 'MONTHLY',
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: updatedMember,
+      locationId: 'ALL',
+      locationName: orgData.name,
+      eventType: 'MEMBER_APPROVED',
+      severity: 'INFO',
+      title: `Member Joined: ${updatedMember.fullName}`,
+      message: `${updatedMember.fullName} joined ${orgData.name} using 24-hr invitation code (${cleanCode}).`,
+      referenceEntityId: updatedMember.id,
+      timestamp: now,
+    });
+
+    const orgList = this.state.organizations || [];
+    const hasOrg = orgList.some((o) => o.id === orgData.id);
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: hasOrg ? orgList : [...orgList, orgData],
+      activeOrgId: orgData.id,
+      members: this.state.members.some((m) => m.id === updatedMember.id)
+        ? this.state.members.map((m) => (m.id === updatedMember.id ? updatedMember : m))
+        : [...this.state.members, updatedMember],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+    return orgData;
+  }
+
+  private getInitialCheckpointsForEntry(entry: LivestockEntry): AnimalCheckpoint[] {
+    if (entry.customCheckpoints && entry.customCheckpoints.length > 0) {
+      return [...entry.customCheckpoints];
+    }
+    const defaultProtocols = generateVaccinationProtocols(entry, 0, []);
+    return defaultProtocols.map((p) => ({
+      id: p.id,
+      dayTarget: p.dayTarget,
+      scheduledDate: p.scheduledDate,
+      title: p.title,
+      category: p.category as CheckpointCategory,
+      targetWeightKg: p.targetWeightKg,
+      feedPhase: p.feedPhase,
+      instructions: p.description,
+      completed: p.completed,
+      reminderStatus: p.reminderStatus || 'SCHEDULED',
+    }));
+  }
+
+  public addCheckpointToLivestock(params: {
+    livestockId: string;
+    checkpoint: Omit<AnimalCheckpoint, 'id' | 'completed' | 'reminderStatus'>;
+    actor: OrgMember;
+  }): AnimalCheckpoint {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error(`Livestock entry ${params.livestockId} not found.`);
+
+    const id = `cp-${Date.now().toString(36)}`;
+    const newCheckpoint: AnimalCheckpoint = {
+      ...params.checkpoint,
+      id,
+      completed: false,
+      reminderStatus: 'SCHEDULED',
+    };
+
+    const currentCheckpoints = this.getInitialCheckpointsForEntry(entry);
+    const updatedCheckpoints = [...currentCheckpoints, newCheckpoint].sort(
+      (a, b) => a.dayTarget - b.dayTarget
+    );
+
+    const updatedEntry: LivestockEntry = {
+      ...entry,
+      customCheckpoints: updatedCheckpoints,
+    };
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'CHECKPOINT_CUSTOMIZED',
+      severity: 'INFO',
+      title: `Checkpoint Added: ${newCheckpoint.title}`,
+      message: `Added custom checkpoint (${newCheckpoint.title}, Day ${newCheckpoint.dayTarget}) to ${entry.nameOrTag}.`,
+      referenceEntityId: entry.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === entry.id ? updatedEntry : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    return newCheckpoint;
+  }
+
+  public updateLivestockCheckpoint(params: {
+    livestockId: string;
+    checkpointId: string;
+    updates: Partial<AnimalCheckpoint>;
+    actor: OrgMember;
+  }): AnimalCheckpoint {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error(`Livestock entry ${params.livestockId} not found.`);
+
+    const currentCheckpoints = this.getInitialCheckpointsForEntry(entry);
+    const target = currentCheckpoints.find((c) => c.id === params.checkpointId);
+    if (!target) throw new Error(`Checkpoint ${params.checkpointId} not found.`);
+
+    const updated: AnimalCheckpoint = {
+      ...target,
+      ...params.updates,
+    };
+
+    const updatedCheckpoints = currentCheckpoints
+      .map((c) => (c.id === params.checkpointId ? updated : c))
+      .sort((a, b) => a.dayTarget - b.dayTarget);
+
+    const updatedEntry: LivestockEntry = {
+      ...entry,
+      customCheckpoints: updatedCheckpoints,
+    };
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'CHECKPOINT_CUSTOMIZED',
+      severity: 'INFO',
+      title: `Checkpoint Updated: ${updated.title}`,
+      message: `Updated custom checkpoint (${updated.title}) on ${entry.nameOrTag}.`,
+      referenceEntityId: entry.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === entry.id ? updatedEntry : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    return updated;
+  }
+
+  public deleteLivestockCheckpoint(params: {
+    livestockId: string;
+    checkpointId: string;
+    actor: OrgMember;
+  }): void {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error(`Livestock entry ${params.livestockId} not found.`);
+
+    const currentCheckpoints = this.getInitialCheckpointsForEntry(entry);
+    const target = currentCheckpoints.find((c) => c.id === params.checkpointId);
+    const updatedCheckpoints = currentCheckpoints.filter((c) => c.id !== params.checkpointId);
+
+    const updatedEntry: LivestockEntry = {
+      ...entry,
+      customCheckpoints: updatedCheckpoints,
+    };
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'CHECKPOINT_CUSTOMIZED',
+      severity: 'INFO',
+      title: `Checkpoint Removed: ${target?.title || params.checkpointId}`,
+      message: `Deleted checkpoint from ${entry.nameOrTag}.`,
+      referenceEntityId: entry.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === entry.id ? updatedEntry : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+  }
+
+  public configureLivestockValuationPrice(params: {
+    livestockId: string;
+    configuredSalePricePerUnit: number;
+    configuredSalePricePerKg?: number;
+    actor: OrgMember;
+  }): LivestockEntry {
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    if (!entry) throw new Error(`Livestock entry ${params.livestockId} not found.`);
+
+    const updatedEntry: LivestockEntry = {
+      ...entry,
+      configuredSalePricePerUnit: params.configuredSalePricePerUnit,
+      ...(params.configuredSalePricePerKg !== undefined
+        ? { configuredSalePricePerKg: params.configuredSalePricePerKg }
+        : {}),
+    };
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: entry.locationId,
+      locationName: entry.locationName,
+      eventType: 'LIVESTOCK_UPDATED',
+      severity: 'INFO',
+      title: `Valuation Configured: ${entry.nameOrTag}`,
+      message: `Configured valuation price $${params.configuredSalePricePerUnit}/unit for ${entry.nameOrTag} (${entry.species}) by ${params.actor.fullName}.`,
+      referenceEntityId: entry.id,
+      timestamp: now,
+      deltaFinancial: params.configuredSalePricePerUnit,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === entry.id ? updatedEntry : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    return updatedEntry;
+  }
+
+  public saveCustomRecipeTemplate(params: {
+    name: string;
+    species: string;
+    recommendedDurationDays: number;
+    targetSaleWeightKg: number;
+    checkpoints: Omit<AnimalCheckpoint, 'id' | 'completed' | 'completedAt' | 'reminderStatus'>[];
+    actor: OrgMember;
+    notes?: string;
+  }): FarmRecipeTemplate {
+    const now = new Date().toISOString();
+    const id = `recipe-${Date.now().toString(36)}`;
+    const template: FarmRecipeTemplate = {
+      id,
+      orgId: params.actor.orgId || 'org-master',
+      name: params.name.trim().slice(0, 120),
+      species: params.species.trim(),
+      recommendedDurationDays: params.recommendedDurationDays,
+      targetSaleWeightKg: params.targetSaleWeightKg,
+      checkpoints: params.checkpoints,
+      isCustomOrgRecipe: true,
+      createdAt: now,
+      notes: params.notes,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Organization Recipes',
+      eventType: 'RECIPE_TEMPLATE_SAVED',
+      severity: 'INFO',
+      title: `Custom Farm Recipe Saved: ${template.name}`,
+      message: `Recipe saved with ${template.checkpoints.length} custom checkpoints by ${params.actor.fullName}.`,
+      referenceEntityId: template.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      customRecipes: [...(this.state.customRecipes || []), template],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('custom_recipes', template.id, template);
+    return template;
+  }
+
+  public markNotificationRead(notificationId: string, memberId: string): AuditNotificationEvent | null {
+    let target: AuditNotificationEvent | null = null;
+    const updated = this.state.auditNotifications.map((n) => {
+      if (n.id !== notificationId) return n;
+      const readList = Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [];
+      if (readList.includes(memberId)) {
+        target = n;
+        return n;
+      }
+      const nextRead = [...readList, memberId];
+      if (firestoreDb && !n.id.startsWith('local-')) {
+        updateDoc(doc(firestoreDb, 'audit_notifications', n.id), {
+          readByMemberIds: nextRead,
+        }).catch((err) => console.warn('Cloud notification read update warning:', err));
+      }
+      target = { ...n, readByMemberIds: nextRead };
+      return target;
+    });
+
+    this.saveLocalState({
+      ...this.state,
+      auditNotifications: updated,
+    });
+    return target;
   }
 
   public markAllNotificationsRead(memberId: string): void {

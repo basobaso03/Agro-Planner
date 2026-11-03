@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Agro Planner",
-  "short_name": "Agro Planner",
-  "description": "Multi-Location Livestock & Syndicate ERP Mobile Application by BASOBASO SOFTWARES with an immutable SHA-256 append-only ledger, biometric security, and real-time livestock lifecycle tracking.",
+  "name": "CapitaSeed",
+  "short_name": "CapitaSeed",
+  "description": "Enterprise Operations & Capital Platform by BASOBASO SOFTWARES with an immutable SHA-256 append-only ledger, biometric security, and flexible lifecycle tracking.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ShieldCheck,
   SearchCheck,
@@ -12,7 +12,7 @@ import type {
   AuditNotificationEvent,
   FarmLocation,
   NotificationSeverity,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
 import {
   verifyAuditChainIntegrity,
@@ -25,7 +25,7 @@ import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
 interface AuditAlertsTabProps {
   auditNotifications: AuditNotificationEvent[];
   locations: FarmLocation[];
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
   cloudUserEmail?: string | null;
   onPostBroadcast: (data: {
     locationId: string;
@@ -55,6 +55,7 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
   >('ALL');
 
   // Broadcast Composer State
+  const alertFileInputRef = useRef<HTMLInputElement>(null);
   const [bLocId, setBLocId] = useState(
     activeMember.assignedLocationId || locations[0]?.id || 'ALL'
   );
@@ -109,6 +110,7 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
       setPhotoError(err instanceof Error ? err.message : 'Photo compression failed');
     } finally {
       setIsCompressingPhoto(false);
+      e.target.value = '';
     }
   };
 
@@ -222,7 +224,7 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Write detailed ground message for remote syndicate members..."
+                  placeholder="Write detailed ground message for organization members..."
                   value={bMessage}
                   onChange={(e) => setBMessage(e.target.value)}
                   className="flex-1 bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 focus:bg-white"
@@ -256,17 +258,24 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
                   </button>
                 </div>
               ) : (
-                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-[#CFC5B2] hover:border-amber-500 bg-[#FAF8F5] text-xs font-semibold text-slate-700 cursor-pointer transition-colors">
+                <div>
                   <input
+                    ref={alertFileInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoUpload}
                     disabled={isCompressingPhoto}
-                    className="hidden"
+                    style={{ display: 'none' }}
                   />
-                  <Camera className="w-3.5 h-3.5 text-amber-600" />
-                  <span>{isCompressingPhoto ? 'Compressing...' : 'Attach Field Photo'}</span>
-                </label>
+                  <button
+                    type="button"
+                    onClick={() => alertFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-dashed border-[#CFC5B2] hover:border-amber-500 bg-[#FAF8F5] text-xs font-semibold text-slate-700 cursor-pointer transition-colors"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{isCompressingPhoto ? 'Compressing...' : 'Attach Field Photo (Single Tap)'}</span>
+                  </button>
+                </div>
               )}
               {photoError && <span className="text-xs text-rose-600 font-medium">{photoError}</span>}
             </div>
@@ -358,10 +367,10 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-[#064e3b]" />
-                Immutable Syndicate Ledger & Verifier
+                Immutable Financial Ledger &amp; Verifier
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Automated tamper-evident verification ensuring every expense, livestock event, and capital deposit remains permanently authentic and unalterable.
+                Automated tamper-evident verification ensuring every expense, lifecycle event, and capital deposit remains permanently authentic and unalterable.
               </p>
             </div>
             <button
@@ -394,7 +403,7 @@ export const AuditAlertsTab: React.FC<AuditAlertsTabProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-700">
-                Continuous Ledger Chain: All {!showNumbers ? '••' : verificationResult.totalBlocksChecked} consecutive syndicate events are mathematically sealed and verified without alteration.
+                Continuous Ledger Chain: All {!showNumbers ? '••' : verificationResult.totalBlocksChecked} consecutive ledger events are mathematically sealed and verified without alteration.
               </p>
             </div>
           )}

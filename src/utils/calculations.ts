@@ -15,7 +15,10 @@ import type {
   MemberEquitySummary,
   ProtocolMilestone,
   SiteComparisonSummary,
-  SyndicateMember,
+  OrgMember,
+  DebtLiabilityEvent,
+  LoanGivenEvent,
+  CreditSaleEvent,
 } from '../types/agro.ts';
 
 const MS_PER_DAY = 86_400_000;
@@ -97,7 +100,19 @@ export function generateVaccinationProtocols(
     description?: string;
   }[] = [];
 
-  if (lowerSpecies.includes('broiler') || lowerSpecies.includes('chicken') || lowerSpecies.includes('layer') || lowerSpecies.includes('poultry')) {
+  // 1. If entry has user-defined custom checkpoints, prioritize the custom farm recipe
+  if (entry.customCheckpoints && entry.customCheckpoints.length > 0) {
+    templates = entry.customCheckpoints.map((cp) => ({
+      dayTarget: cp.dayTarget,
+      title: cp.title,
+      category: (cp.category === 'MEDICATION' || cp.category === 'GENERAL_TASK'
+        ? 'BIOSECURITY'
+        : cp.category) as ProtocolMilestone['category'],
+      targetWeightKg: cp.targetWeightKg,
+      feedPhase: cp.feedPhase,
+      description: cp.instructions,
+    }));
+  } else if (lowerSpecies.includes('broiler') || lowerSpecies.includes('chicken') || lowerSpecies.includes('layer') || lowerSpecies.includes('poultry')) {
     templates = [
       {
         dayTarget: 1,
@@ -229,7 +244,7 @@ export function generateVaccinationProtocols(
     ];
   }
 
-  const entryMs = new Date(entry.entryDate).getTime();
+  const entryMs = new Date(entry.entryDate || entry.createdAt || Date.now()).getTime();
 
   return templates.map((tpl, idx) => {
     const matchingEvent = vaxEvents.find((ev) => {
@@ -237,7 +252,7 @@ export function generateVaccinationProtocols(
       // Match explicit day number (e.g. "day 14" or "day 7")
       if (noteLower.includes(`day ${tpl.dayTarget}`)) return true;
       // Match key disease / protocol terms
-      if ((tpl.title.toLowerCase().includes('ibd') || tpl.title.toLowerCase().includes('gumboro')) && (noteLower.includes('ibd') || noteLower.includes('gumboro'))) return true;
+      if (tpl.title.toLowerCase().includes('ibd') && noteLower.includes('ibd')) return true;
       if (tpl.title.toLowerCase().includes('newcastle') && noteLower.includes('newcastle')) return true;
       if (tpl.title.toLowerCase().includes('starter') && noteLower.includes('starter')) return true;
       if (tpl.title.toLowerCase().includes('grower') && noteLower.includes('grower')) return true;
@@ -294,7 +309,7 @@ export function computeLivestockStatus(
   nowIso: string = new Date().toISOString()
 ): LivestockComputedStatus {
   const nowMs = new Date(nowIso).getTime();
-  const entryMs = new Date(entry.entryDate).getTime();
+  const entryMs = new Date(entry.entryDate || entry.createdAt || Date.now()).getTime();
 
   const initialAgeDays = convertToDays(entry.initialAgeValue, entry.initialAgeUnit);
   const daysOnFarm = Math.max(0, Math.floor((nowMs - entryMs) / MS_PER_DAY));
@@ -348,6 +363,10 @@ export function computeLivestockStatus(
     .filter((e) => e.eventType === 'SALE_DISPATCH')
     .reduce((acc, ev) => acc + Math.abs(ev.headcountDelta), 0);
 
+  const totalSlaughteredOrConsumed = eventsForLivestock
+    .filter((e) => e.eventType === 'SLAUGHTER_HARVEST' || e.eventType === 'FARM_CONSUMPTION')
+    .reduce((acc, ev) => acc + Math.abs(ev.headcountDelta), 0);
+
   const totalContraDelta = eventsForLivestock
     .filter((e) => e.eventType === 'HEADCOUNT_CONTRA_ADJUSTMENT')
     .reduce((acc, ev) => acc + ev.headcountDelta, 0);
@@ -379,6 +398,33 @@ export function computeLivestockStatus(
     (currentLiveHeadcount * unitPurchaseCost * growthMultiplier).toFixed(2)
   );
 
+  // Configured Selling Price & Expected Income Engine
+  const configuredSalePricePerUnit =
+    typeof entry.configuredSalePricePerUnit === 'number' && entry.configuredSalePricePerUnit > 0
+      ? entry.configuredSalePricePerUnit
+      : entry.species.toLowerCase().includes('broiler')
+        ? 6.0
+        : entry.species.toLowerCase().includes('goat')
+          ? 120.0
+          : entry.species.toLowerCase().includes('layer')
+            ? 8.0
+            : unitPurchaseCost * 1.5 || 10.0;
+
+  const expectedRevenuePerAnimalUsd =
+    typeof entry.configuredSalePricePerKg === 'number' && entry.configuredSalePricePerKg > 0
+      ? Number(((latestWeightEvent?.weightAvgKg || entry.targetSaleWeightKg || 2.0) * entry.configuredSalePricePerKg).toFixed(2))
+      : configuredSalePricePerUnit;
+
+  const totalExpectedRevenueUsd = Number(
+    (currentLiveHeadcount * expectedRevenuePerAnimalUsd).toFixed(2)
+  );
+
+  // Projected margin = Expected Revenue - Initial cost of live stock - estimated feed costs ($0.60/kg feed)
+  const estimatedFeedCostUsd = totalFeedConsumedKg * 0.65;
+  const totalProjectedMarginUsd = Number(
+    (totalExpectedRevenueUsd - (currentLiveHeadcount * unitPurchaseCost + estimatedFeedCostUsd)).toFixed(2)
+  );
+
   return {
     entry,
     initialAgeDays,
@@ -394,13 +440,20 @@ export function computeLivestockStatus(
     totalMortalities: effectiveMortalities,
     totalBirths,
     totalSold,
+    totalSlaughteredOrConsumed,
     totalContraDelta,
     mortalityRatePercent,
     totalFeedConsumedKg: Math.max(0, Number(totalFeedConsumedKg.toFixed(1))),
     latestWeightAvgKg: latestWeightEvent?.weightAvgKg,
     estimatedCurrentValueUsd,
+    configuredSalePricePerUnit,
+    configuredSalePricePerKg: entry.configuredSalePricePerKg,
+    expectedRevenuePerAnimalUsd,
+    totalExpectedRevenueUsd,
+    totalProjectedMarginUsd,
     lifecycleEvents: eventsForLivestock,
     protocols: generateVaccinationProtocols(entry, currentTotalAgeDays, eventsForLivestock),
+    customCheckpoints: entry.customCheckpoints,
   };
 }
 
@@ -467,6 +520,9 @@ export function computeFinancialSummary(params: {
   livestockStatuses: LivestockComputedStatus[];
   livestockEvents: LivestockLifecycleEvent[];
   filterLocationId?: string;
+  debtLiabilities?: DebtLiabilityEvent[];
+  loansGiven?: LoanGivenEvent[];
+  creditSales?: CreditSaleEvent[];
 }): FinancialSummary {
   const {
     capitalContributions,
@@ -475,9 +531,12 @@ export function computeFinancialSummary(params: {
     livestockStatuses,
     livestockEvents,
     filterLocationId = 'ALL',
+    debtLiabilities = [],
+    loansGiven = [],
+    creditSales = [],
   } = params;
 
-  const totalSyndicatePool = Number(
+  const totalPool = Number(
     capitalContributions.reduce((acc, c) => acc + c.amount, 0).toFixed(2)
   );
 
@@ -525,7 +584,7 @@ export function computeFinancialSummary(params: {
 
   const distributedDividendsCash = Number((totalSalesRevenue - reinvestedSalesCash).toFixed(2));
 
-  // Master Syndicate Left Money = Total Syndicate Pool + Reinvested Sales Cash - Approved Expenses
+  // Master Organization Left Money = Total Pool + Reinvested Sales Cash - Approved Expenses
   const allApprovedExpenses = Number(
     expenses
       .filter((e) => e.approvalStatus === 'APPROVED')
@@ -543,8 +602,72 @@ export function computeFinancialSummary(params: {
       .toFixed(2)
   );
 
+  // Expanded Banking Ledger Computations:
+  const totalBorrowedDebtOutstanding = Number(
+    debtLiabilities
+      .filter((d) => d.status !== 'SETTLED')
+      .reduce((acc, d) => acc + (typeof d.remainingBalance === 'number' ? d.remainingBalance : d.principalAmount), 0)
+      .toFixed(2)
+  );
+
+  const totalDebtRepaid = Number(
+    debtLiabilities
+      .reduce((acc, d) => acc + (d.repayments || []).reduce((rAcc, r) => rAcc + r.amount, 0), 0)
+      .toFixed(2)
+  );
+
+  const totalLoansGivenOutstanding = Number(
+    loansGiven
+      .filter((l) => l.status !== 'RECOVERED')
+      .reduce((acc, l) => acc + (typeof l.remainingBalance === 'number' ? l.remainingBalance : l.principalAmount), 0)
+      .toFixed(2)
+  );
+
+  const totalLoansRecovered = Number(
+    loansGiven
+      .reduce((acc, l) => acc + (l.repayments || []).reduce((rAcc, r) => rAcc + r.amount, 0), 0)
+      .toFixed(2)
+  );
+
+  const totalCreditSalesOutstanding = Number(
+    creditSales
+      .filter((cs) => cs.status !== 'SETTLED')
+      .reduce((acc, cs) => acc + (typeof cs.creditBalanceRemaining === 'number' ? cs.creditBalanceRemaining : cs.totalSaleAmount - cs.depositPaidCash), 0)
+      .toFixed(2)
+  );
+
+  const totalCustomerDepositsCollected = Number(
+    creditSales
+      .reduce((acc, cs) => {
+        const deposit = cs.depositPaidCash || 0;
+        const installments = (cs.paymentLogs || []).reduce((pAcc, p) => pAcc + p.amount, 0);
+        return acc + deposit + installments;
+      }, 0)
+      .toFixed(2)
+  );
+
+  // Cash flow adjustments from lending and debt
+  const loansDisbursedCash = Number(
+    loansGiven.reduce((acc, l) => acc + l.principalAmount, 0).toFixed(2)
+  );
+  const externalCashLoansBorrowed = Number(
+    debtLiabilities
+      .filter((d) => d.category === 'EXTERNAL_LOAN' || d.category === 'DIRECTOR_MEMBER_ADVANCE')
+      .reduce((acc, d) => acc + d.principalAmount, 0)
+      .toFixed(2)
+  );
+
   const leftMoney = Number(
-    (totalSyndicatePool + allReinvestedSales - allApprovedExpenses).toFixed(2)
+    (
+      totalPool +
+      allReinvestedSales +
+      totalCustomerDepositsCollected +
+      externalCashLoansBorrowed +
+      totalLoansRecovered -
+      allApprovedExpenses -
+      loansDisbursedCash -
+      totalDebtRepaid
+    ).toFixed(2)
   );
 
   const filteredAssets =
@@ -565,12 +688,35 @@ export function computeFinancialSummary(params: {
     filteredStatuses.reduce((acc, s) => acc + s.estimatedCurrentValueUsd, 0).toFixed(2)
   );
 
-  const totalSyndicateNav = Number(
-    (leftMoney + totalFixedAssetsValue + estimatedActiveLivestockValue).toFixed(2)
+  const totalExpectedLivestockRevenue = Number(
+    filteredStatuses
+      .reduce((acc, s) => acc + (s.totalExpectedRevenueUsd || s.estimatedCurrentValueUsd), 0)
+      .toFixed(2)
+  );
+
+  const netFinancialPosition = Number(
+    (
+      leftMoney +
+      totalCreditSalesOutstanding +
+      totalLoansGivenOutstanding -
+      totalBorrowedDebtOutstanding
+    ).toFixed(2)
+  );
+
+  const totalNav = Number(
+    (
+      leftMoney +
+      totalCreditSalesOutstanding +
+      totalLoansGivenOutstanding +
+      totalFixedAssetsValue +
+      estimatedActiveLivestockValue -
+      totalBorrowedDebtOutstanding
+    ).toFixed(2)
   );
 
   return {
-    totalSyndicatePool,
+    totalPool,
+    totalSyndicatePool: totalPool,
     approvedExpenses,
     pendingMultiSigExpenses,
     totalSalesRevenue,
@@ -579,7 +725,16 @@ export function computeFinancialSummary(params: {
     leftMoney,
     totalFixedAssetsValue,
     estimatedActiveLivestockValue,
-    totalSyndicateNav,
+    totalExpectedLivestockRevenue,
+    totalBorrowedDebtOutstanding,
+    totalLoansGivenOutstanding,
+    totalCreditSalesOutstanding,
+    totalCustomerDepositsCollected,
+    totalDebtRepaid,
+    totalLoansRecovered,
+    netFinancialPosition,
+    totalNav,
+    totalSyndicateNav: totalNav,
   };
 }
 
@@ -587,9 +742,9 @@ export function computeFinancialSummary(params: {
  * 1. Member Net Contribution & Profit-Sharing Percentage
  */
 export function computeMemberEquities(
-  members: SyndicateMember[],
+  members: OrgMember[],
   capitalContributions: CapitalContributionEvent[],
-  totalSyndicateNav: number
+  totalNav: number
 ): MemberEquitySummary[] {
   const memberTotals = members.map((member) => {
     const events = capitalContributions.filter((c) => c.memberId === member.id);
@@ -617,12 +772,27 @@ export function computeMemberEquities(
         totalPool > 0 ? Number(((item.netContribution / totalPool) * 100).toFixed(2)) : 0;
       const impliedNavEquityUsd =
         totalPool > 0
-          ? Number(((item.netContribution / totalPool) * totalSyndicateNav).toFixed(2))
+          ? Number(((item.netContribution / totalPool) * totalNav).toFixed(2))
           : 0;
+
+      const targetContributionUsd = item.member.targetContributionUsd || 1000;
+      const progressPercentage = Math.min(
+        100,
+        Math.round((item.netContribution / Math.max(1, targetContributionUsd)) * 100)
+      );
+      const remainingToTargetUsd = Math.max(0, targetContributionUsd - item.netContribution);
+      const isGoalMet = item.netContribution >= targetContributionUsd;
+      const contributionPace = item.member.contributionPace || 'MONTHLY';
+
       return {
         ...item,
         profitSharePercentage,
         impliedNavEquityUsd,
+        targetContributionUsd,
+        progressPercentage,
+        remainingToTargetUsd,
+        isGoalMet,
+        contributionPace,
       };
     })
     .sort((a, b) => b.netContribution - a.netContribution);

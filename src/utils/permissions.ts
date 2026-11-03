@@ -1,88 +1,135 @@
-import type { Role, SyndicateMember } from '../types/agro.ts';
+import type { Role, OrgMember } from '../types/agro.ts';
 
 export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
 
 /**
  * Role-Based Access Control (RBAC) & Data Redaction Engine
- * Defines security boundaries between Syndicate Admin, Treasurer, Remote Investor, and Ground Operator.
+ * Defines security boundaries between Organization Admin, Treasurer, Member, and Ground Operator.
  */
 
 export const PERMISSIONS = {
   // Master Liquid Capital Pool & Total Investor NAV
   canViewMasterTreasury: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER' || role === 'REMOTE_INVESTOR';
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'MEMBER' ||
+      role === 'REMOTE_INVESTOR'
+    );
   },
 
   // Full Capital Pool & Investor Equity Ledger Tab
   canViewCapitalPoolTab: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER' || role === 'REMOTE_INVESTOR';
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'MEMBER' ||
+      role === 'REMOTE_INVESTOR'
+    );
   },
 
-  // Accessing the Syndicate Members management tab
+  // Accessing the Organization Members management tab
   canManageMembers: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
   },
 
-  // Founder-Only Zero-Trust Clearance: Only the primary founder email can add, edit, suspend, or delete members
-  canManageMemberCRUD: (member?: SyndicateMember | null): boolean => {
+  // Member CRUD authority (with multi-tenant organization boundary check)
+  canManageMemberCRUD: (member?: OrgMember | null, activeOrgId?: string): boolean => {
     if (!member) return false;
-    const email = (member.email || member.phoneOrEmail || '').trim().toLowerCase();
-    return email === PRIMARY_ADMIN_EMAIL;
+    const isOrgAdmin = member.role === 'ORG_ADMIN' || member.role === 'SYNDICATE_ADMIN';
+    if (!isOrgAdmin) return false;
+    if (activeOrgId && member.orgId && member.orgId !== activeOrgId) {
+      return false;
+    }
+    return true;
   },
 
-  // Adding Legal Farm Locations
+  // Adding Legal Farm / Venture Locations
   canAddLocations: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  // Editing Legal Farm / Venture Locations
+  canEditLocation: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  // Deleting / Archiving Legal Farm / Venture Locations
+  canDeleteLocation: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  // Manually refreshing 24-hr invitation codes in Settings
+  canRefreshInviteCode: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  // Managing custom livestock recipes and checkpoints
+  canManageCustomRecipes: (role: Role): boolean => {
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'GROUND_OPERATOR' ||
+      role === 'TREASURER'
+    );
   },
 
   // Logging Direct Capital Deposits or Capital Injections
   canLogCapitalDeposit: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
   // Maker-Checker Governance: Approving Expenses > $150
   canApproveMultiSig: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
   // Posting Accounting Contra-Reversals on any Ledger
   canPostContraReversals: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
-  // Configuring Profit Reinvestment Splits vs Investor Dividends on Sales
+  // Configuring Profit Reinvestment Splits vs Dividends on Sales
   canConfigureProfitSplits: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
   // Adjusting Fixed Capital Asset Book Values / Depreciation
   canAdjustAssetValuation: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
-  // Viewing System-Level Technical Configuration (Firebase Credentials Override, Cloud Disconnect, Capacitor APK)
+  // Viewing System-Level Technical Configuration
   canViewSystemConfig: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
   },
 
   // Viewing Cryptographic SHA-256 Ledger Forensics
   canViewHashChain: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER' || role === 'REMOTE_INVESTOR';
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'MEMBER' ||
+      role === 'REMOTE_INVESTOR'
+    );
   },
 
-  // Modifying Official Syndicate Brand Logos and Theme Defaults
+  // Modifying Official Brand Logos and Theme Defaults
   canManageBranding: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
   },
 
   // Seeing other members' personal phone numbers or email addresses unmasked
   canViewUnmaskedPII: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
   },
 
   // Seeing all individual investor equity stakes and dollar amounts vs just one's own stake
   canViewAllInvestorStakes: (role: Role): boolean => {
-    return role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 };
 
@@ -126,21 +173,23 @@ export function getRoleMeta(role?: Role | null): {
   desc: string;
 } {
   switch (role) {
+    case 'ORG_ADMIN':
     case 'SYNDICATE_ADMIN':
       return {
-        label: 'Syndicate Admin',
+        label: 'Organization Admin',
         badgeClass: 'bg-purple-900/80 text-purple-200 border-purple-700/60',
-        desc: 'Full administrative authority across all syndicate ledgers, members, and cloud configuration.',
+        desc: 'Full administrative authority across all organization ledgers, members, sites, and cloud configuration.',
       };
     case 'TREASURER':
       return {
-        label: 'Syndicate Treasurer',
+        label: 'Treasurer',
         badgeClass: 'bg-amber-900/80 text-amber-200 border-amber-700/60',
         desc: 'Multi-sig expense authorizer, capital pool custodian, and contra-entry auditor.',
       };
+    case 'MEMBER':
     case 'REMOTE_INVESTOR':
       return {
-        label: 'Remote Investor',
+        label: 'Member',
         badgeClass: 'bg-emerald-900/80 text-emerald-200 border-emerald-700/60',
         desc: 'Capital contributor with real-time portfolio, dividend, and growth telemetry access.',
       };
@@ -152,9 +201,9 @@ export function getRoleMeta(role?: Role | null): {
       };
     default:
       return {
-        label: 'Syndicate Member',
+        label: 'Member',
         badgeClass: 'bg-slate-800 text-slate-200 border-slate-700',
-        desc: 'Authorized syndicate participant.',
+        desc: 'Authorized organization participant.',
       };
   }
 }

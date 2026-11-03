@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus,
   MinusCircle,
@@ -22,40 +22,52 @@ import {
   Radio,
   Send,
   Calendar,
+  Pencil,
+  Trash2,
+  Wheat,
+  ClipboardList,
+  Utensils,
+  Scissors,
 } from 'lucide-react';
 import { LivestockGrowthCharts } from './LivestockGrowthCharts.tsx';
+import { RecipeBuilderModal } from './RecipeBuilderModal.tsx';
 import type {
+  AnimalCheckpoint,
+  CheckpointCategory,
   DurationUnit,
   FarmLocation,
+  FarmRecipeTemplate,
   LivestockComputedStatus,
+  LivestockEntry,
   LivestockLifecycleEvent,
   MemberEquitySummary,
-  SyndicateMember,
+  OrgMember,
   TrackingMode,
 } from '../types/agro.ts';
+import { dataService } from '../services/dataService.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { computeDividendDistribution } from '../utils/calculations.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
 
 const SPECIES_PRESETS = [
-  { id: 'Broilers', name: 'Broilers', emoji: '🐔', cycle: '42-Day Meat Cycle' },
-  { id: 'Layers', name: 'Layers', emoji: '🥚', cycle: '72-Week Egg Cycle' },
-  { id: 'Boer Goats', name: 'Boer Goats', emoji: '🐐', cycle: '8-Month Stud/Market' },
-  { id: 'Indigenous Goats', name: 'Indigenous Goats', emoji: '🐐', cycle: '8-Month Hardy' },
-  { id: 'Cattle', name: 'Cattle', emoji: '🐄', cycle: '18-Month Beef/Dairy' },
-  { id: 'Sheep', name: 'Sheep', emoji: '🐑', cycle: '8-Month Dorper' },
-  { id: 'Pigs', name: 'Pigs / Swine', emoji: '🐖', cycle: '6-Month Pork' },
-  { id: 'Zebras', name: 'Zebras', emoji: '🦓', cycle: '24-Month Game' },
-  { id: 'Ostriches', name: 'Ostriches', emoji: '🪶', cycle: '12-Month Feathers/Meat' },
-  { id: 'Rabbits', name: 'Rabbits', emoji: '🐇', cycle: '4-Month Micro-Herd' },
-  { id: 'CUSTOM', name: 'Custom Species', emoji: '✨', cycle: 'Custom Parameters' },
+  { id: 'Broilers', name: 'Broilers', emoji: '🐔', cycle: 'Meat Birds (Customizable Days)' },
+  { id: 'Layers', name: 'Layers', emoji: '🥚', cycle: 'Egg Production (Customizable Cycle)' },
+  { id: 'Boer Goats', name: 'Boer Goats', emoji: '🐐', cycle: 'Stud / Commercial Meat' },
+  { id: 'Indigenous Goats', name: 'Indigenous Goats', emoji: '🐐', cycle: 'Hardy Local Breed' },
+  { id: 'Cattle', name: 'Cattle', emoji: '🐄', cycle: 'Beef / Dairy Cycle' },
+  { id: 'Sheep', name: 'Sheep', emoji: '🐑', cycle: 'Dorper / Meat Breed' },
+  { id: 'Pigs', name: 'Pigs / Swine', emoji: '🐖', cycle: 'Pork Production Cycle' },
+  { id: 'Zebras', name: 'Zebras', emoji: '🦓', cycle: 'Game & Wildlife Management' },
+  { id: 'Ostriches', name: 'Ostriches', emoji: '🪶', cycle: 'Feathers & Game Meat' },
+  { id: 'Rabbits', name: 'Rabbits', emoji: '🐇', cycle: 'Micro-Livestock Breeding' },
+  { id: 'CUSTOM', name: 'Custom Species', emoji: '✨', cycle: 'Custom Duration & Parameters' },
 ];
 
 interface LivestockTabProps {
   livestockStatuses: LivestockComputedStatus[];
   locations: FarmLocation[];
   selectedLocationId: string;
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
   memberEquities: MemberEquitySummary[];
   onRegisterLivestock: (data: {
     locationId: string;
@@ -74,7 +86,15 @@ interface LivestockTabProps {
     autoDeductPurchaseFromLeftMoney: boolean;
     imageUrl?: string;
     gallery?: string[];
+    customCheckpoints?: AnimalCheckpoint[];
+    fundingSource?: 'CASH_POOL' | 'SUPPLIER_CREDIT' | 'DIRECTOR_LOAN';
+    supplierCreditorName?: string;
+    supplierCreditDueDate?: string;
+    configuredSalePricePerUnit?: number;
+    configuredSalePricePerKg?: number;
   }) => void;
+  customRecipes?: FarmRecipeTemplate[];
+  leftMoney?: number;
   onLogLifecycleEvent: (data: {
     livestockId: string;
     eventType: LivestockLifecycleEvent['eventType'];
@@ -106,6 +126,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   onLogLifecycleEvent,
   onAddLivestockPhoto,
   onBroadcastMilestone,
+  customRecipes = [],
+  leftMoney = 0,
   showNumbers = true,
 }) => {
   const [speciesFilter, setSpeciesFilter] = useState('All');
@@ -114,6 +136,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
 
   // Register New Animal / Batch Modal State
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showRecipeBuilder, setShowRecipeBuilder] = useState(false);
+  const [regCustomCheckpoints, setRegCustomCheckpoints] = useState<AnimalCheckpoint[]>([]);
   const [regLocationId, setRegLocationId] = useState(
     selectedLocationId !== 'ALL'
       ? selectedLocationId
@@ -130,13 +154,155 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [regTargetDurVal, setRegTargetDurVal] = useState('42');
   const [regTargetDurUnit, setRegTargetDurUnit] = useState<DurationUnit>('DAYS');
   const [regCost, setRegCost] = useState('95');
+  const [regFundingSource, setRegFundingSource] = useState<'CASH_POOL' | 'SUPPLIER_CREDIT'>('CASH_POOL');
+  const [regCreditorName, setRegCreditorName] = useState("Irvine's Hatcheries");
+  const [regCreditorDueDate, setRegCreditorDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [regSalePriceUnit, setRegSalePriceUnit] = useState('6.00');
+  const [regSalePriceKg, setRegSalePriceKg] = useState('');
   const [regTargetWeight, setRegTargetWeight] = useState('2.2');
   const [regAutoExpense, setRegAutoExpense] = useState(true);
   const [regNotes, setRegNotes] = useState('');
   const [regError, setRegError] = useState('');
   const [broadcastSuccessId, setBroadcastSuccessId] = useState<string | null>(null);
 
+  // Active Livestock Checkpoint CRUD State
+  const canManageCustom = PERMISSIONS.canManageCustomRecipes(activeMember.role);
+  const [activeCheckpointModal, setActiveCheckpointModal] = useState<{
+    livestockId: string;
+    batchName: string;
+    checkpointToEdit?: AnimalCheckpoint | null;
+  } | null>(null);
+  const [cpDay, setCpDay] = useState<number>(7);
+  const [cpDate, setCpDate] = useState<string>('');
+  const [cpTitle, setCpTitle] = useState('');
+  const [cpCategory, setCpCategory] = useState<CheckpointCategory>('VACCINE');
+  const [cpWeight, setCpWeight] = useState<string>('');
+  const [cpFeed, setCpFeed] = useState('');
+  const [cpInstructions, setCpInstructions] = useState('');
+  const [cpError, setCpError] = useState('');
+
+  const handleOpenAddCheckpoint = (entry: LivestockEntry) => {
+    setActiveCheckpointModal({
+      livestockId: entry.id,
+      batchName: entry.nameOrTag,
+      checkpointToEdit: null,
+    });
+    setCpDay(7);
+    setCpDate('');
+    setCpTitle('');
+    setCpCategory('VACCINE');
+    setCpWeight('');
+    setCpFeed('');
+    setCpInstructions('');
+    setCpError('');
+  };
+
+  const handleOpenEditCheckpoint = (
+    entry: LivestockEntry,
+    cp: {
+      id: string;
+      dayTarget: number;
+      scheduledDate?: string;
+      title: string;
+      category: CheckpointCategory;
+      targetWeightKg?: number;
+      feedPhase?: string;
+      description?: string;
+    }
+  ) => {
+    setActiveCheckpointModal({
+      livestockId: entry.id,
+      batchName: entry.nameOrTag,
+      checkpointToEdit: {
+        id: cp.id,
+        dayTarget: cp.dayTarget,
+        scheduledDate: cp.scheduledDate,
+        title: cp.title,
+        category: cp.category,
+        targetWeightKg: cp.targetWeightKg,
+        feedPhase: cp.feedPhase,
+        instructions: cp.description,
+        completed: false,
+        reminderStatus: 'SCHEDULED',
+      },
+    });
+    setCpDay(cp.dayTarget);
+    setCpDate(cp.scheduledDate || '');
+    setCpTitle(cp.title);
+    setCpCategory(cp.category);
+    setCpWeight(cp.targetWeightKg ? String(cp.targetWeightKg) : '');
+    setCpFeed(cp.feedPhase || '');
+    setCpInstructions(cp.description || '');
+    setCpError('');
+  };
+
+  const handleSaveActiveCheckpoint = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCheckpointModal) return;
+    if (!cpTitle.trim()) {
+      setCpError('Checkpoint title is required.');
+      return;
+    }
+    setCpError('');
+    try {
+      if (activeCheckpointModal.checkpointToEdit) {
+        dataService.updateLivestockCheckpoint({
+          livestockId: activeCheckpointModal.livestockId,
+          checkpointId: activeCheckpointModal.checkpointToEdit.id,
+          updates: {
+            dayTarget: Number(cpDay) || 1,
+            scheduledDate: cpDate || undefined,
+            title: cpTitle.trim(),
+            category: cpCategory,
+            targetWeightKg: cpWeight ? Number(cpWeight) : undefined,
+            feedPhase: cpFeed.trim() || undefined,
+            instructions: cpInstructions.trim() || undefined,
+          },
+          actor: activeMember,
+        });
+      } else {
+        dataService.addCheckpointToLivestock({
+          livestockId: activeCheckpointModal.livestockId,
+          checkpoint: {
+            dayTarget: Number(cpDay) || 1,
+            scheduledDate: cpDate || undefined,
+            title: cpTitle.trim(),
+            category: cpCategory,
+            targetWeightKg: cpWeight ? Number(cpWeight) : undefined,
+            feedPhase: cpFeed.trim() || undefined,
+            instructions: cpInstructions.trim() || undefined,
+          },
+          actor: activeMember,
+        });
+      }
+      setActiveCheckpointModal(null);
+    } catch (err: unknown) {
+      setCpError(err instanceof Error ? err.message : 'Failed to save checkpoint.');
+    }
+  };
+
+  const handleDeleteActiveCheckpoint = (livestockId: string, checkpointId: string) => {
+    if (!window.confirm('Are you sure you want to delete this checkpoint from this batch?')) return;
+    try {
+      dataService.deleteLivestockCheckpoint({
+        livestockId,
+        checkpointId,
+        actor: activeMember,
+      });
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to delete checkpoint.');
+    }
+  };
+
   // Ground Photo & Gallery State
+  const regFileInputRef = useRef<HTMLInputElement>(null);
+  const evFileInputRef = useRef<HTMLInputElement>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement>(null);
+
   const [regImage, setRegImage] = useState<string | null>(null);
   const [evPhoto, setEvPhoto] = useState<string | null>(null);
   const [galleryTarget, setGalleryTarget] = useState<LivestockComputedStatus | null>(null);
@@ -144,6 +310,17 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   const [newGalleryPhoto, setNewGalleryPhoto] = useState<string | null>(null);
   const [newGalleryCaption, setNewGalleryCaption] = useState('');
   const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+
+  // Quick Direct Feed Log Modal State
+  const [feedModalStatus, setFeedModalStatus] = useState<LivestockComputedStatus | null>(null);
+  const [feedKg, setFeedKg] = useState('');
+  const [feedType, setFeedType] = useState('Standard Feed');
+  const [feedNote, setFeedNote] = useState('');
+  const [feedError, setFeedError] = useState('');
+  const [feedSuccess, setFeedSuccess] = useState('');
+
+  // Dedicated Checkpoints Modal State
+  const [selectedCheckpointsStatus, setSelectedCheckpointsStatus] = useState<LivestockComputedStatus | null>(null);
 
   const handlePhotoFileChange = async (
     file: File | undefined,
@@ -177,6 +354,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
     | 'BIRTH_OFFSPRING'
     | 'VACCINATION_HEALTH'
     | 'SALE_DISPATCH'
+    | 'SLAUGHTER_HARVEST'
+    | 'FARM_CONSUMPTION'
     | 'HEADCOUNT_CONTRA_ADJUSTMENT'
     | 'WEIGHT_CHECK';
   } | null>(null);
@@ -223,6 +402,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
   // Intelligent preset autofill for species
   const handleSpeciesChange = (species: string) => {
     setRegSpecies(species);
+    setCustomSpeciesName(species === 'CUSTOM' ? '' : species);
     if (species === 'Broilers') {
       setRegHeadcount('100');
       setRegMode('BATCH');
@@ -313,6 +493,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
       | 'BIRTH_OFFSPRING'
       | 'VACCINATION_HEALTH'
       | 'SALE_DISPATCH'
+      | 'SLAUGHTER_HARVEST'
+      | 'FARM_CONSUMPTION'
       | 'HEADCOUNT_CONTRA_ADJUSTMENT'
       | 'WEIGHT_CHECK'
   ) => {
@@ -330,9 +512,9 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalSpecies = regSpecies === 'CUSTOM' ? customSpeciesName.trim() : regSpecies;
+    const finalSpecies = customSpeciesName.trim() || regSpecies;
     if (!finalSpecies) {
-      setRegError('Please enter a species name for your custom animal (e.g. Zebras).');
+      setRegError('Please enter a species/category name (e.g. Layers 50-Week, Broilers, Boer Goats).');
       return;
     }
     if (!regNameOrTag.trim() || regNotes.trim().length < 4) {
@@ -361,19 +543,54 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
         purchaseCostTotal: cost,
         targetSaleWeightKg: parseFloat(regTargetWeight) || undefined,
         notes: regNotes.trim(),
-        autoDeductPurchaseFromLeftMoney: regAutoExpense,
+        autoDeductPurchaseFromLeftMoney: regFundingSource === 'CASH_POOL' && regAutoExpense,
+        fundingSource: regFundingSource,
+        supplierCreditorName: regFundingSource === 'SUPPLIER_CREDIT' ? regCreditorName.trim() : undefined,
+        supplierCreditDueDate: regFundingSource === 'SUPPLIER_CREDIT' ? regCreditorDueDate : undefined,
+        configuredSalePricePerUnit: parseFloat(regSalePriceUnit) || undefined,
+        configuredSalePricePerKg: parseFloat(regSalePriceKg) || undefined,
         imageUrl: regImage || undefined,
         gallery: regImage ? [regImage] : [],
+        customCheckpoints: regCustomCheckpoints.length > 0 ? regCustomCheckpoints : undefined,
       });
       setRegNameOrTag('');
       setCustomSpeciesName('');
       setRegNotes('');
       setRegMoveInDate(new Date().toISOString().split('T')[0]);
       setRegImage(null);
+      setRegCustomCheckpoints([]);
       setRegError('');
       setShowRegisterModal(false);
     } catch (err) {
       setRegError(err instanceof Error ? err.message : 'Failed to register livestock.');
+    }
+  };
+
+  const handleDirectFeedSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedModalStatus) return;
+    const kg = parseFloat(feedKg);
+    if (isNaN(kg) || kg <= 0) {
+      setFeedError('Please enter a valid feed weight in kilograms (greater than 0).');
+      return;
+    }
+    try {
+      dataService.logBatchDirectFeed({
+        livestockId: feedModalStatus.entry.id,
+        locationId: feedModalStatus.entry.locationId,
+        kgConsumed: kg,
+        feedType: feedType.trim() || 'Standard Feed',
+        note: feedNote.trim() || `Direct ground feeding: ${kg} kg ${feedType.trim() || 'feed'} logged`,
+        actor: activeMember,
+      });
+      setFeedSuccess(`Successfully logged ${kg} kg feed consumed!`);
+      setTimeout(() => {
+        setFeedModalStatus(null);
+        setFeedSuccess('');
+        setFeedError('');
+      }, 1000);
+    } catch (err) {
+      setFeedError(err instanceof Error ? err.message : 'Failed to log feed.');
     }
   };
 
@@ -396,7 +613,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
         return;
       }
       headcountDelta = 0;
-    } else if (mode === 'MORTALITY_LOSS' || mode === 'SALE_DISPATCH') {
+    } else if (mode === 'MORTALITY_LOSS' || mode === 'SALE_DISPATCH' || mode === 'SLAUGHTER_HARVEST' || mode === 'FARM_CONSUMPTION') {
       if (rawQty <= 0 || rawQty > status.currentLiveHeadcount) {
         setEvError(
           `Quantity must be between 1 and current live headcount (${status.currentLiveHeadcount}).`
@@ -541,15 +758,15 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
             return (
               <article
                 key={status.entry.id}
-                className="rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-5 space-y-4"
+                className="rounded-3xl bg-white border border-[#E8DFCE] p-4 sm:p-5 space-y-4 shadow-sm text-slate-950"
               >
                 {/* Header & Live Countdown */}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="text-emerald-400 font-semibold">{status.entry.species}</span>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="text-emerald-700 font-bold">{status.entry.species}</span>
                       <span aria-hidden="true">·</span>
-                      <span>{status.entry.locationName}</span>
+                      <span className="font-medium">{status.entry.locationName}</span>
                       <span aria-hidden="true">·</span>
                       <span className="font-mono whitespace-nowrap">
                         {status.entry.trackingMode === 'INDIVIDUAL_TAG'
@@ -557,20 +774,20 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                           : 'Batch Tracking'}
                       </span>
                     </div>
-                    <h2 className="text-base sm:text-lg font-bold text-white mt-0.5">
+                    <h2 className="text-base sm:text-lg font-black text-slate-950 mt-0.5">
                       {status.entry.nameOrTag}
                     </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">{status.entry.notes}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{status.entry.notes}</p>
                   </div>
 
                   {/* Countdown Status Text */}
                   <div className="text-right">
                     <div
                       className={`inline-flex items-center gap-1.5 text-xs font-bold font-mono ${isUrgent
-                        ? 'text-rose-400'
+                        ? 'text-rose-600'
                         : isWarn
-                          ? 'text-amber-300'
-                          : 'text-emerald-400'
+                          ? 'text-amber-600'
+                          : 'text-emerald-700'
                         }`}
                     >
                       {isUrgent ? (
@@ -582,7 +799,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       )}
                       {status.countdownBadgeText}
                     </div>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                       Target Sale Date: {new Date(status.entry.targetSaleDate).toLocaleDateString()}
                     </p>
                   </div>
@@ -595,15 +812,15 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   status.lifecycleEvents.some((e) => e.photoUrl)
                 ) && (
                     <div className="pt-1 pb-1">
-                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
-                        <span className="flex items-center gap-1.5 font-semibold text-amber-300">
-                          <Camera className="w-3.5 h-3.5 text-amber-400" />
+                      <div className="flex items-center justify-between text-xs text-slate-600 mb-1.5">
+                        <span className="flex items-center gap-1.5 font-bold text-amber-800">
+                          <Camera className="w-3.5 h-3.5 text-amber-600" />
                           Live Ground Evidence &amp; Progress Photos
                         </span>
                         <button
                           type="button"
                           onClick={() => setGalleryTarget(status)}
-                          className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline cursor-pointer"
+                          className="text-[11px] text-amber-700 hover:text-amber-800 font-bold underline cursor-pointer"
                         >
                           Open Full Gallery
                         </button>
@@ -627,14 +844,14 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                                   caption: `${status.entry.nameOrTag} · Photo #${idx + 1}`,
                                 })
                               }
-                              className="relative group shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-slate-700 hover:border-amber-400 transition-all cursor-pointer shadow-xs"
+                              className="relative group shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border border-[#E8DFCE] hover:border-amber-500 transition-all cursor-pointer shadow-xs"
                             >
                               <img
                                 src={imgUrl}
                                 alt={`${status.entry.nameOrTag} ground photo`}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
-                              <div className="absolute inset-0 bg-slate-900/30 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                              <div className="absolute inset-0 bg-slate-900/20 group-hover:bg-transparent transition-colors flex items-center justify-center">
                                 <Maximize2 className="w-3.5 h-3.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                               </div>
                             </button>
@@ -642,9 +859,9 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                         <button
                           type="button"
                           onClick={() => setGalleryTarget(status)}
-                          className="shrink-0 h-16 sm:h-20 px-3 rounded-xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-950/60 hover:bg-slate-900 text-[11px] font-semibold text-amber-300 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
+                          className="shrink-0 h-16 sm:h-20 px-3 rounded-2xl border border-dashed border-[#D5C7B0] hover:border-amber-500 bg-[#FAF8F5] hover:bg-[#F5EFE6] text-[11px] font-bold text-amber-800 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer"
                         >
-                          <Upload className="w-4 h-4 text-amber-400" />
+                          <Upload className="w-4 h-4 text-amber-600" />
                           <span>+ Add Photo</span>
                         </button>
                       </div>
@@ -654,22 +871,22 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 {/* Progress Bar */}
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="text-slate-300">
+                    <span className="text-slate-600">
                       Current Age:{' '}
-                      <strong className="font-mono text-white">{!showNumbers ? '••••' : status.formattedCurrentAge}</strong>
+                      <strong className="font-mono text-slate-950 font-bold">{!showNumbers ? '••••' : status.formattedCurrentAge}</strong>
                     </span>
-                    <span className="font-mono text-slate-400">
+                    <span className="font-mono text-slate-500">
                       {!showNumbers ? '••%' : `${status.progressPercentage}%`} of {!showNumbers ? '••' : status.entry.targetDurationValue}{' '}
                       {status.entry.targetDurationUnit.toLowerCase()} cycle
                     </span>
                   </div>
-                  <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="w-full h-2.5 rounded-full bg-slate-100 border border-slate-200/60 overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-transform duration-200 ${isUrgent
                         ? 'bg-rose-500'
                         : isWarn
                           ? 'bg-amber-500'
-                          : 'bg-emerald-500'
+                          : 'bg-emerald-600'
                         }`}
                       style={{ width: `${status.progressPercentage}%` }}
                     />
@@ -677,50 +894,91 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </div>
 
                 {/* 5 Key Metrics Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-800/80 text-xs">
-                  <div>
-                    <p className="text-[11px] text-slate-400">Live Headcount</p>
-                    <p className="font-mono font-bold text-emerald-300 text-sm mt-0.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-3 border-t border-[#F0EBE1] text-xs">
+                  <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
+                    <p className="text-[11px] text-slate-500 font-medium">Live Headcount</p>
+                    <p className="font-mono font-bold text-emerald-700 text-sm mt-0.5">
                       {!showNumbers ? '••••' : status.currentLiveHeadcount}{' '}
-                      <span className="text-slate-400 font-normal text-xs">
+                      <span className="text-slate-500 font-normal text-xs">
                         / {!showNumbers ? '••••' : `${status.entry.initialHeadcount} init`}
                       </span>
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400">Births / Offspring</p>
-                    <p className="font-mono font-bold text-white text-sm mt-0.5">
+                  <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
+                    <p className="text-[11px] text-slate-500 font-medium">Births / Offspring</p>
+                    <p className="font-mono font-bold text-slate-900 text-sm mt-0.5">
                       {!showNumbers ? '••••' : `+${status.totalBirths}`}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400">Mortality Rate</p>
-                    <p className="font-mono font-bold text-amber-300 text-sm mt-0.5">
+                  <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
+                    <p className="text-[11px] text-slate-500 font-medium">Mortality Rate</p>
+                    <p className="font-mono font-bold text-amber-700 text-sm mt-0.5">
                       {!showNumbers ? '••%' : `${status.mortalityRatePercent}%`} ({!showNumbers ? '••' : status.totalMortalities} lost)
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400">Feed Consumed</p>
-                    <p className="font-mono font-bold text-slate-200 text-sm mt-0.5">
+                  <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] relative group">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-slate-500 font-medium">Feed Consumed</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedModalStatus(status);
+                          setFeedKg('');
+                          setFeedType('Standard Feed');
+                          setFeedNote('');
+                          setFeedError('');
+                          setFeedSuccess('');
+                        }}
+                        className="text-[10px] font-bold text-amber-700 hover:text-amber-800 underline cursor-pointer"
+                      >
+                        + Log
+                      </button>
+                    </div>
+                    <p className="font-mono font-bold text-slate-900 text-sm mt-0.5">
                       {!showNumbers ? '••••••' : `${status.totalFeedConsumedKg} kg`}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400">Est. Herd Value</p>
-                    <p className="font-mono font-bold text-white text-sm mt-0.5">
+                  <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
+                    <p className="text-[11px] text-slate-500 font-medium">Est. Herd Value</p>
+                    <p className="font-mono font-bold text-slate-950 text-sm mt-0.5">
                       {!showNumbers ? '••••••••' : `$${status.estimatedCurrentValueUsd.toFixed(0)}`}
                     </p>
                   </div>
                 </div>
 
-                {/* 6 Append-Only Action Buttons + Ground Gallery */}
-                <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+                {/* Action Buttons Strip */}
+                <div className="pt-2 border-t border-[#F0EBE1] flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedModalStatus(status);
+                      setFeedKg('');
+                      setFeedType('Standard Feed');
+                      setFeedNote('');
+                      setFeedError('');
+                      setFeedSuccess('');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-xs font-black text-white flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                  >
+                    <Wheat className="w-4 h-4" />
+                    Log Feed Consumed
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCheckpointsStatus(status)}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <ClipboardList className="w-4 h-4 text-emerald-700" />
+                    View All Checkpoints ({completedProtocols}/{status.protocols.length})
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setGalleryTarget(status)}
-                    className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E8DFCE] text-xs font-semibold text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <Camera className="w-3.5 h-3.5 text-amber-400" />
+                    <Camera className="w-3.5 h-3.5 text-amber-600" />
                     Ground Gallery ({
                       new Set([
                         ...(status.entry.imageUrl ? [status.entry.imageUrl] : []),
@@ -733,43 +991,43 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'MORTALITY_LOSS')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-700/60 text-xs font-medium text-rose-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-medium text-rose-800 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <MinusCircle className="w-3.5 h-3.5" />
+                    <MinusCircle className="w-3.5 h-3.5 text-rose-600" />
                     Log Mortality / Loss
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'BIRTH_OFFSPRING')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-medium text-emerald-800 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <PlusCircle className="w-3.5 h-3.5" />
+                    <PlusCircle className="w-3.5 h-3.5 text-emerald-600" />
                     Log Birth / Offspring
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'VACCINATION_HEALTH')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-sky-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-xs font-medium text-sky-800 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <Syringe className="w-3.5 h-3.5" />
+                    <Syringe className="w-3.5 h-3.5 text-sky-600" />
                     Log Vaccine
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'WEIGHT_CHECK')}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-emerald-950/60 border border-slate-700 hover:border-emerald-700/60 text-xs font-medium text-emerald-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs font-medium text-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <Scale className="w-3.5 h-3.5" />
+                    <Scale className="w-3.5 h-3.5 text-slate-600" />
                     Weigh-In Check
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenActionModal(status, 'SALE_DISPATCH')}
-                    className="px-3 py-2 rounded-xl bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-600/60 text-xs font-semibold text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
                   >
                     <DollarSign className="w-3.5 h-3.5" />
                     {activeMember.role === 'GROUND_OPERATOR'
@@ -777,186 +1035,81 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       : 'Log Sale & Distribute Profit'}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => handleOpenActionModal(status, 'SLAUGHTER_HARVEST')}
+                    className="px-3 py-2 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-xs font-medium text-orange-900 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-orange-600" />
+                    Slaughter / Harvest
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenActionModal(status, 'FARM_CONSUMPTION')}
+                    className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-xs font-medium text-purple-900 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Utensils className="w-3.5 h-3.5 text-purple-600" />
+                    Internal / Farm Use
+                  </button>
+
                   {PERMISSIONS.canPostContraReversals(activeMember.role) && (
                     <button
                       type="button"
                       onClick={() => handleOpenActionModal(status, 'HEADCOUNT_CONTRA_ADJUSTMENT')}
-                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-amber-950/60 border border-slate-700 hover:border-amber-700/60 text-xs font-medium text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-xs font-medium text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <Scale className="w-3.5 h-3.5" />
+                      <Scale className="w-3.5 h-3.5 text-amber-700" />
                       Post Contra-Adjustment
                     </button>
                   )}
                 </div>
 
-                {/* Expandable Vaccination & Feed Protocol Checklist + Immutable History */}
-                <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                {/* Collapsible Append-Only Event Log */}
+                <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between text-xs">
                   <button
                     type="button"
-                    onClick={() =>
-                      setExpandedProtocolsId(isProtocolsOpen ? null : status.entry.id)
-                    }
-                    className="text-slate-300 hover:text-white font-medium flex items-center gap-1"
-                  >
-                    {isProtocolsOpen ? (
-                      <ChevronUp className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-emerald-400" />
-                    )}
-                    Vaccination & Feed Protocol Schedule ({completedProtocols}/{status.protocols.length} Completed)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedHistoryId(isHistoryOpen ? null : status.entry.id)
-                    }
-                    className="text-slate-400 hover:text-white font-mono flex items-center gap-1"
+                    onClick={() => setExpandedHistoryId(isHistoryOpen ? null : status.entry.id)}
+                    className="text-slate-600 hover:text-slate-900 font-mono flex items-center gap-1 cursor-pointer"
                   >
                     {isHistoryOpen ? (
-                      <ChevronUp className="w-4 h-4" />
+                      <ChevronUp className="w-4 h-4 text-emerald-600" />
                     ) : (
-                      <ChevronDown className="w-4 h-4" />
+                      <ChevronDown className="w-4 h-4 text-emerald-600" />
                     )}
                     Append-Only Event Log ({status.lifecycleEvents.length})
                   </button>
                 </div>
 
-                {isProtocolsOpen && (
-                  <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
-                    <p className="text-xs font-semibold text-slate-300">
-                      Standard {status.entry.species} Biosecurity, Vaccine & Feed Schedule
-                    </p>
-                    <div className="divide-y divide-slate-800/70">
-                      {status.protocols.map((proto) => {
-                        const isBroadcastActive = broadcastSuccessId === `${status.entry.id}-${proto.dayTarget}`;
-                        return (
-                          <div
-                            key={proto.id}
-                            className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
-                          >
-                            <div className="flex items-start gap-2.5 min-w-0">
-                              <CheckCircle2
-                                className={`w-4 h-4 shrink-0 mt-0.5 ${proto.completed ? 'text-emerald-400' : 'text-slate-600'
-                                  }`}
-                              />
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span
-                                    className={
-                                      proto.completed ? 'text-slate-200 font-medium' : 'text-slate-400'
-                                    }
-                                  >
-                                    {proto.title}
-                                  </span>
-                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-mono uppercase bg-slate-800 text-slate-300">
-                                    {proto.category.replace('_', ' ')}
-                                  </span>
-                                  {proto.targetWeightKg && (
-                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800/50">
-                                      Target: {proto.targetWeightKg} kg
-                                    </span>
-                                  )}
-                                </div>
-                                {proto.feedPhase && (
-                                  <p className="text-[11px] text-amber-400/90 font-medium mt-0.5">
-                                    Feed Phase: {proto.feedPhase}
-                                  </p>
-                                )}
-                                {proto.description && (
-                                  <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">
-                                    {proto.description}
-                                  </p>
-                                )}
-                                {proto.completedNote && (
-                                  <p className="text-[11px] text-emerald-400/80 font-mono mt-0.5">
-                                    ✓ {proto.completedNote}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                              <div className="text-right">
-                                <span className="block font-mono text-[11px] text-slate-300">
-                                  {proto.scheduledDate ? `${proto.scheduledDate} · ${proto.dispatchTime || '07:00 AM'}` : `Day ${proto.dayTarget}`}
-                                </span>
-                                <span
-                                  className={`inline-block text-[10px] font-mono px-1.5 py-0.2 rounded ${proto.completed
-                                      ? 'bg-emerald-500/20 text-emerald-400'
-                                      : proto.reminderStatus === 'DUE_TODAY'
-                                        ? 'bg-amber-500/20 text-amber-300 animate-pulse'
-                                        : proto.reminderStatus === 'OVERDUE'
-                                          ? 'bg-rose-500/20 text-rose-300'
-                                          : 'bg-slate-800 text-slate-400'
-                                    }`}
-                                >
-                                  {proto.completed ? 'Done' : proto.reminderStatus === 'DUE_TODAY' ? 'Due Today' : `Due Day ${proto.dayTarget}`}
-                                </span>
-                              </div>
-
-                              {onBroadcastMilestone && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    onBroadcastMilestone({
-                                      livestockId: status.entry.id,
-                                      dayTarget: proto.dayTarget,
-                                      milestoneTitle: proto.title,
-                                      customNote: proto.description,
-                                    });
-                                    setBroadcastSuccessId(`${status.entry.id}-${proto.dayTarget}`);
-                                    setTimeout(() => setBroadcastSuccessId(null), 4000);
-                                  }}
-                                  title="Dispatch milestone reminder & status update to all organisation members"
-                                  className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 text-[11px] font-medium ${isBroadcastActive
-                                      ? 'bg-emerald-600 border-emerald-500 text-white'
-                                      : 'bg-slate-900 border-slate-700 hover:border-amber-500 text-slate-300 hover:text-white'
-                                    }`}
-                                >
-                                  <Radio className="w-3.5 h-3.5 text-amber-400" />
-                                  <span className="hidden sm:inline">
-                                    {isBroadcastActive ? 'Broadcasted' : 'Broadcast'}
-                                  </span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
                 {isHistoryOpen && (
-                  <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
-                    <p className="text-xs font-semibold text-slate-300">
+                  <div className="bg-[#FAF8F5] border border-[#E8DFCE] rounded-2xl p-3.5 space-y-2.5">
+                    <p className="text-xs font-bold text-slate-800">
                       Immutable Lifecycle Ledger (Zero Edits / Zero Deletes)
                     </p>
-                    <div className="divide-y divide-slate-800/70">
+                    <div className="divide-y divide-[#E8DFCE]">
                       {status.lifecycleEvents.map((ev) => (
                         <div key={ev.id} className="py-2.5 space-y-1 text-xs">
-                          <div className="flex items-center justify-between text-slate-400 font-mono text-[11px]">
+                          <div className="flex items-center justify-between text-slate-500 font-mono text-[11px]">
                             <span>
-                              <strong className="text-slate-200 font-mono">Ref #{ev.id.slice(-6).toUpperCase()}</strong> ·{' '}
-                              <span className="text-emerald-400 capitalize font-medium">{ev.eventType.toLowerCase().replace(/_/g, ' ')}</span>
+                              <strong className="text-slate-800 font-mono">Ref #{ev.id.slice(-6).toUpperCase()}</strong> ·{' '}
+                              <span className="text-emerald-700 capitalize font-medium">{ev.eventType.toLowerCase().replace(/_/g, ' ')}</span>
                               {ev.referenceTransactionId ? ` · Linked Ref #${ev.referenceTransactionId.slice(-6).toUpperCase()}` : ''}
                             </span>
                             <span>{new Date(ev.createdAt).toLocaleDateString()}</span>
                           </div>
-                          <p className="text-slate-200">{ev.note}</p>
-                          <div className="flex items-center justify-between text-[11px] text-slate-400">
-                            <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <p className="text-slate-800">{ev.note}</p>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                               Verified Log · By {ev.loggedByName}
                             </span>
                             <span
                               className={
                                 ev.headcountDelta > 0
-                                  ? 'text-emerald-400 font-bold'
+                                  ? 'text-emerald-700 font-bold'
                                   : ev.headcountDelta < 0
-                                    ? 'text-rose-400 font-bold'
-                                    : 'text-slate-300'
+                                    ? 'text-rose-600 font-bold'
+                                    : 'text-slate-700'
                               }
                             >
                               {!showNumbers ? '•••• hd' : `${ev.headcountDelta > 0 ? `+${ev.headcountDelta}` : ev.headcountDelta} hd`}
@@ -1064,22 +1217,22 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       className="w-full bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-xl px-3.5 py-2.5 text-xs text-white appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/70"
                     >
                       <optgroup label="Poultry">
-                        <option value="Broilers">🐔 Broilers (Meat Birds — 42-day cycle)</option>
-                        <option value="Layers">🥚 Layers (Egg Production — 72-week cycle)</option>
+                        <option value="Broilers">🐔 Broilers (Meat Birds — Customizable Days)</option>
+                        <option value="Layers">🥚 Layers (Egg Production — Customizable Cycle)</option>
                       </optgroup>
                       <optgroup label="Livestock & Ruminants">
-                        <option value="Boer Goats">🐐 Boer Goats (Stud / Commercial — 8 months)</option>
-                        <option value="Indigenous Goats">🐐 Indigenous Goats (Hardy Breed — 8 months)</option>
-                        <option value="Cattle">🐄 Cattle (Beef / Dairy — 18 months)</option>
-                        <option value="Sheep">🐑 Sheep (Dorper / Meat — 8 months)</option>
-                        <option value="Pigs">🐖 Pigs / Swine (6 months)</option>
+                        <option value="Boer Goats">🐐 Boer Goats (Stud / Commercial Meat)</option>
+                        <option value="Indigenous Goats">🐐 Indigenous Goats (Hardy Breed)</option>
+                        <option value="Cattle">🐄 Cattle (Beef / Dairy)</option>
+                        <option value="Sheep">🐑 Sheep (Dorper / Meat)</option>
+                        <option value="Pigs">🐖 Pigs / Swine</option>
                       </optgroup>
                       <optgroup label="Game, Wildlife & Equines">
-                        <option value="Zebras">🦓 Zebras (Game / Wildlife — 24 months)</option>
-                        <option value="Ostriches">🪶 Ostriches (Game / Feathers — 12 months)</option>
+                        <option value="Zebras">🦓 Zebras (Game / Wildlife)</option>
+                        <option value="Ostriches">🪶 Ostriches (Game / Feathers)</option>
                       </optgroup>
                       <optgroup label="Micro-Livestock">
-                        <option value="Rabbits">🐇 Rabbits (Meat / Breeding — 4 months)</option>
+                        <option value="Rabbits">🐇 Rabbits (Meat / Breeding)</option>
                       </optgroup>
                       <optgroup label="Custom / Other">
                         <option value="CUSTOM">✨ + Other / Custom Species (Type Name)...</option>
@@ -1088,23 +1241,20 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
 
-                  {regSpecies === 'CUSTOM' && (
-                    <div className="mt-2.5">
-                      <label htmlFor="reg-custom-species" className="block text-xs font-semibold text-emerald-400 mb-1">
-                        Enter Custom Species Name *
-                      </label>
-                      <input
-                        id="reg-custom-species"
-                        type="text"
-                        required
-                        placeholder="e.g. Zebras, Quails, Plains Zebra, Honeybees"
-                        value={customSpeciesName}
-                        onChange={(e) => setCustomSpeciesName(e.target.value)}
-                        className="w-full bg-slate-950 border border-emerald-500/70 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                        autoFocus
-                      />
-                    </div>
-                  )}
+                  <div className="mt-2.5">
+                    <label htmlFor="reg-custom-species" className="block text-xs font-semibold text-emerald-400 mb-1">
+                      Species / Category Name * (Customizable)
+                    </label>
+                    <input
+                      id="reg-custom-species"
+                      type="text"
+                      required
+                      placeholder="e.g. Layers (50-week), Lohmann Brown, Broilers, Boer Goats"
+                      value={customSpeciesName}
+                      onChange={(e) => setCustomSpeciesName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -1292,6 +1442,162 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 </div>
               </div>
 
+              {/* Configured Selling Price Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label htmlFor="reg-saleprice" className="block text-xs font-medium text-slate-300 mb-1">
+                    Configured Selling Price ($ / animal) *
+                  </label>
+                  <input
+                    id="reg-saleprice"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 6.00"
+                    value={regSalePriceUnit}
+                    onChange={(e) => setRegSalePriceUnit(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Expected revenue calculation per bird/animal.</p>
+                </div>
+                <div>
+                  <label htmlFor="reg-salepricekg" className="block text-xs font-medium text-slate-300 mb-1">
+                    Selling Price per Kg ($ / kg, optional)
+                  </label>
+                  <input
+                    id="reg-salepricekg"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="e.g. 2.80"
+                    value={regSalePriceKg}
+                    onChange={(e) => setRegSalePriceKg(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-amber-500/70"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Alternative live-weight pricing per kilogram.</p>
+                </div>
+              </div>
+
+              {/* Funding Source & Liquid Cash Overdraft Verification */}
+              {(() => {
+                const cost = parseFloat(regCost) || 0;
+                const isOverdraft = cost > leftMoney;
+
+                return (
+                  <div className={`p-3.5 rounded-2xl border text-xs space-y-2.5 transition-all ${isOverdraft
+                      ? 'bg-amber-500/10 border-amber-500/40'
+                      : 'bg-slate-950 border-slate-800'
+                    }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <DollarSign className="w-4 h-4 text-amber-400" />
+                        Funding Source &amp; Cash Verification
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-400">
+                        Money on Ground: <strong className={leftMoney <= 0 ? 'text-rose-400' : 'text-emerald-400'}>${leftMoney.toFixed(2)}</strong>
+                      </span>
+                    </div>
+
+                    {isOverdraft && (
+                      <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                        <span>
+                          Warning: Insufficient liquid funds! Left Money has <strong>${leftMoney.toFixed(2)}</strong>, but this purchase requires <strong>${cost.toFixed(2)}</strong> (Deficit: ${(cost - leftMoney).toFixed(2)}).
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegFundingSource('SUPPLIER_CREDIT');
+                          setRegAutoExpense(false);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${regFundingSource === 'SUPPLIER_CREDIT'
+                            ? 'bg-amber-500 text-white border-amber-400 font-bold shadow-xs'
+                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                          }`}
+                      >
+                        <span className="block font-bold text-xs">Acquired on Supplier Credit</span>
+                        <span className="text-[10px] block opacity-85">Chicks/stock taken on credit from supplier</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isOverdraft}
+                        onClick={() => {
+                          setRegFundingSource('CASH_POOL');
+                          setRegAutoExpense(true);
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${isOverdraft
+                            ? 'opacity-40 cursor-not-allowed bg-slate-900 border-slate-800 text-slate-500'
+                            : regFundingSource === 'CASH_POOL'
+                              ? 'bg-emerald-600 text-white border-emerald-400 font-bold cursor-pointer shadow-xs'
+                              : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500 cursor-pointer'
+                          }`}
+                      >
+                        <span className="block font-bold text-xs">Pay from Liquid Cash</span>
+                        <span className="text-[10px] block opacity-85">
+                          {isOverdraft ? 'Blocked (Insufficient liquid cash)' : 'Auto-deduct from Left Money'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {regFundingSource === 'SUPPLIER_CREDIT' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                            Supplier / Creditor Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={regCreditorName}
+                            onChange={(e) => setRegCreditorName(e.target.value)}
+                            placeholder="e.g. Irvine's Hatcheries"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                            Payment Due Date *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={regCreditorDueDate}
+                            onChange={(e) => setRegCreditorDueDate(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Custom Recipe & Checkpoints Builder Launcher */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <span className="text-xs font-bold text-white block">
+                    Custom Lifecycle Recipe &amp; Checkpoints
+                  </span>
+                  <span className="text-[11px] text-amber-400 font-medium">
+                    {regCustomCheckpoints.length > 0
+                      ? `★ ${regCustomCheckpoints.length} custom checkpoints configured`
+                      : 'Using standard preset checkpoints'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRecipeBuilder(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs cursor-pointer shadow-xs transition-colors"
+                >
+                  {regCustomCheckpoints.length > 0 ? 'Edit Recipe Checkpoints' : 'Customize Recipe'}
+                </button>
+              </div>
+
               <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1353,22 +1659,32 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center p-4 rounded-2xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all">
-                    <Camera className="w-6 h-6 text-amber-400 mb-1" />
-                    <span className="text-xs text-slate-200 font-semibold">
-                      {isCompressingPhoto ? 'Optimizing photo...' : 'Snap or Upload Arrival Photo'}
-                    </span>
-                    <span className="text-[10px] text-slate-500 mt-0.5">
-                      JPG, PNG, WebP (Camera or Gallery)
-                    </span>
+                  <div>
                     <input
+                      ref={regFileInputRef}
                       type="file"
                       accept="image/*"
+                      style={{ display: 'none' }}
                       disabled={isCompressingPhoto}
-                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setRegImage)}
-                      className="hidden"
+                      onChange={(e) => {
+                        handlePhotoFileChange(e.target.files?.[0], setRegImage);
+                        e.target.value = '';
+                      }}
                     />
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => regFileInputRef.current?.click()}
+                      className="w-full flex flex-col items-center justify-center p-4 rounded-2xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all"
+                    >
+                      <Camera className="w-6 h-6 text-amber-400 mb-1" />
+                      <span className="text-xs text-slate-200 font-semibold">
+                        {isCompressingPhoto ? 'Optimizing photo...' : 'Snap or Upload Arrival Photo'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">
+                        JPG, PNG, WebP (Single tap triggers Camera or Gallery)
+                      </span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1411,7 +1727,11 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                   {activeActionModal.mode === 'WEIGHT_CHECK' &&
                     'Log Routine Weigh-In & Growth Check'}
                   {activeActionModal.mode === 'SALE_DISPATCH' &&
-                    'Log Livestock Sale & Distribute Syndicate Profit'}
+                    'Log Livestock Sale & Distribute Proceeds'}
+                  {activeActionModal.mode === 'SLAUGHTER_HARVEST' &&
+                    'Log Slaughter / Harvest (Dressed Meat)'}
+                  {activeActionModal.mode === 'FARM_CONSUMPTION' &&
+                    'Log Internal Farm / Staff Consumption'}
                   {activeActionModal.mode === 'HEADCOUNT_CONTRA_ADJUSTMENT' &&
                     'Post Headcount Contra-Adjustment (Reversal)'}
                 </h2>
@@ -1439,7 +1759,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
 
               {activeActionModal.mode === 'HEADCOUNT_CONTRA_ADJUSTMENT' && (
                 <div className="space-y-3 p-3 rounded-xl bg-amber-950/30 border border-amber-800/50">
-                  <p className="text-xs text-amber-200">
+                  <p className="text-xs text-white font-medium">
                     Strict Immutability Law: Past logs cannot be edited or deleted. Select the event to reference and post a positive or negative headcount adjustment.
                   </p>
                   <div>
@@ -1490,6 +1810,8 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     {activeActionModal.mode === 'MORTALITY_LOSS' && 'Number of Animals Lost *'}
                     {activeActionModal.mode === 'BIRTH_OFFSPRING' && 'Number of New Offspring Born *'}
                     {activeActionModal.mode === 'SALE_DISPATCH' && 'Number of Animals Sold *'}
+                    {activeActionModal.mode === 'SLAUGHTER_HARVEST' && 'Number of Animals Slaughtered / Harvested *'}
+                    {activeActionModal.mode === 'FARM_CONSUMPTION' && 'Number of Animals for Internal Use *'}
                     {activeActionModal.mode === 'HEADCOUNT_CONTRA_ADJUSTMENT' &&
                       'Headcount Delta Quantity *'}
                   </label>
@@ -1577,7 +1899,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                         Treasury Automated Revenue Reconciliation
                       </p>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        Sale proceeds will be credited into the syndicate accounts. Dividend distribution percentages and farm working capital allocations are calculated and disbursed directly by the Syndicate Treasurer.
+                        Sale proceeds will be credited into the organization accounts. Dividend distribution percentages and farm working capital allocations are calculated and disbursed directly by the Treasurer.
                       </p>
                     </div>
                   )}
@@ -1651,22 +1973,32 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center p-3.5 rounded-2xl border border-dashed border-slate-700 hover:border-emerald-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all">
-                    <Camera className="w-5 h-5 text-emerald-400 mb-1" />
-                    <span className="text-xs text-slate-200 font-semibold">
-                      {isCompressingPhoto ? 'Optimizing evidence photo...' : 'Attach Proof Photo (Camera / File)'}
-                    </span>
-                    <span className="text-[10px] text-slate-500 mt-0.5">
-                      Mortality autopsy, scale readout, vaccine vial, or loading truck
-                    </span>
+                  <div>
                     <input
+                      ref={evFileInputRef}
                       type="file"
                       accept="image/*"
+                      style={{ display: 'none' }}
                       disabled={isCompressingPhoto}
-                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setEvPhoto)}
-                      className="hidden"
+                      onChange={(e) => {
+                        handlePhotoFileChange(e.target.files?.[0], setEvPhoto);
+                        e.target.value = '';
+                      }}
                     />
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => evFileInputRef.current?.click()}
+                      className="w-full flex flex-col items-center justify-center p-3.5 rounded-2xl border border-dashed border-slate-700 hover:border-emerald-400/80 bg-slate-950/60 hover:bg-slate-900/50 cursor-pointer transition-all"
+                    >
+                      <Camera className="w-5 h-5 text-emerald-400 mb-1" />
+                      <span className="text-xs text-slate-200 font-semibold">
+                        {isCompressingPhoto ? 'Optimizing evidence photo...' : 'Attach Proof Photo (Camera / File)'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">
+                        Single tap to snap mortality autopsy, scale readout, vaccine vial, or loading truck
+                      </span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1760,21 +2092,31 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       onClick={handleAddNewGalleryPhoto}
                       className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-colors cursor-pointer"
                     >
-                      Commit Photo to Syndicate Gallery
+                      Commit Photo to Organization Gallery
                     </button>
                   </div>
                 ) : (
-                  <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-900/50 hover:bg-slate-900 text-xs text-slate-300 font-medium cursor-pointer transition-all">
-                    <Camera className="w-4 h-4 text-amber-400" />
-                    <span>{isCompressingPhoto ? 'Compressing photo...' : 'Snap or Select Field Photo'}</span>
+                  <div>
                     <input
+                      ref={galleryFileInputRef}
                       type="file"
                       accept="image/*"
+                      style={{ display: 'none' }}
                       disabled={isCompressingPhoto}
-                      onChange={(e) => handlePhotoFileChange(e.target.files?.[0], setNewGalleryPhoto)}
-                      className="hidden"
+                      onChange={(e) => {
+                        handlePhotoFileChange(e.target.files?.[0], setNewGalleryPhoto);
+                        e.target.value = '';
+                      }}
                     />
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => galleryFileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-slate-700 hover:border-amber-400/80 bg-slate-900/50 hover:bg-slate-900 text-xs text-slate-300 font-medium cursor-pointer transition-all"
+                    >
+                      <Camera className="w-4 h-4 text-amber-400" />
+                      <span>{isCompressingPhoto ? 'Compressing photo...' : 'Snap or Select Field Photo (Single Tap)'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1821,7 +2163,7 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                       <ImageIcon className="w-10 h-10 mx-auto text-slate-600" />
                       <p className="text-sm font-semibold text-slate-400">No Ground Photos Uploaded Yet</p>
                       <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                        Snap or select photos from your device to provide visual verification for remote syndicate investors.
+                        Snap or select photos from your device to provide visual verification for remote organization members and investors.
                       </p>
                     </div>
                   );
@@ -1902,6 +2244,496 @@ export const LivestockTab: React.FC<LivestockTabProps> = ({
                 className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-md"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM RECIPE & CHECKPOINTS BUILDER MODAL */}
+      {showRecipeBuilder && (
+        <RecipeBuilderModal
+          isOpen={showRecipeBuilder}
+          onClose={() => setShowRecipeBuilder(false)}
+          species={regSpecies === 'CUSTOM' ? (customSpeciesName || 'Custom Species') : regSpecies}
+          initialAgeDays={0}
+          targetDurationDays={Math.max(1, parseFloat(regTargetDurVal) || 42)}
+          targetWeightKg={parseFloat(regTargetWeight) || 2.2}
+          currentCheckpoints={regCustomCheckpoints}
+          customRecipes={customRecipes}
+          activeMember={activeMember}
+          entryDate={regMoveInDate}
+          onApplyCheckpoints={(cps) => {
+            setRegCustomCheckpoints(cps);
+          }}
+        />
+      )}
+
+      {/* ACTIVE BATCH CHECKPOINT CRUD MODAL */}
+      {activeCheckpointModal && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in select-none"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md bg-white border border-[#E8DFCE] rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-950 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800">
+                  <Calendar className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-950">
+                    {activeCheckpointModal.checkpointToEdit ? 'Edit Batch Checkpoint' : 'Add Checkpoint to Batch'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {activeCheckpointModal.batchName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveCheckpointModal(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {cpError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 font-semibold">
+                {cpError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveActiveCheckpoint} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Day Target *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    required
+                    value={cpDay}
+                    onChange={(e) => setCpDay(parseInt(e.target.value) || 1)}
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-bold text-slate-950 focus:outline-none focus:border-amber-500"
+                    placeholder="e.g. 7"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Calendar Date
+                  </label>
+                  <input
+                    type="date"
+                    value={cpDate}
+                    onChange={(e) => setCpDate(e.target.value)}
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Title &amp; Milestone Description *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={cpTitle}
+                  onChange={(e) => setCpTitle(e.target.value)}
+                  placeholder="e.g. Day 14 Newcastle Vaccine + Weigh-In"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-bold text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={cpCategory}
+                    onChange={(e) => setCpCategory(e.target.value as CheckpointCategory)}
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-2 text-xs font-bold text-slate-950 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="VACCINE">Vaccine</option>
+                    <option value="FEED_TRANSITION">Feed Transition</option>
+                    <option value="WEIGHT_CHECK">Weight Check</option>
+                    <option value="BIOSECURITY">Biosecurity</option>
+                    <option value="MEDICATION">Medication</option>
+                    <option value="GENERAL_TASK">General Task</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Target Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={cpWeight}
+                    onChange={(e) => setCpWeight(e.target.value)}
+                    placeholder="e.g. 0.450"
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-mono text-slate-950 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Feed Phase / Nutrition Rations
+                </label>
+                <input
+                  type="text"
+                  value={cpFeed}
+                  onChange={(e) => setCpFeed(e.target.value)}
+                  placeholder="e.g. Grower Pellets (20% CP)"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Ground Instructions / Protocols
+                </label>
+                <textarea
+                  rows={2}
+                  value={cpInstructions}
+                  onChange={(e) => setCpInstructions(e.target.value)}
+                  placeholder="Specific preparation steps, dosage, or administration notes..."
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F0EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setActiveCheckpointModal(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-colors shadow-xs cursor-pointer"
+                >
+                  {activeCheckpointModal.checkpointToEdit ? 'Save Changes' : 'Add to Batch'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED FULL CHECKPOINTS MODAL FOR SPECIFIC ANIMAL */}
+      {selectedCheckpointsStatus && (() => {
+        const liveStatus = livestockStatuses.find((s) => s.entry.id === selectedCheckpointsStatus.entry.id) || selectedCheckpointsStatus;
+        const completedProtocols = liveStatus.protocols.filter((p) => p.completed).length;
+
+        return (
+          <div
+            className="fixed inset-0 z-[9990] bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="w-full max-w-2xl bg-white border border-[#E8DFCE] rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-950 flex flex-col max-h-[92vh]">
+              <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
+                <div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="text-emerald-700 font-bold">{liveStatus.entry.species}</span>
+                    <span>·</span>
+                    <span>{liveStatus.entry.locationName}</span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-950 mt-0.5">
+                    {liveStatus.entry.nameOrTag} · Checkpoint Protocols
+                  </h2>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    Age: {liveStatus.formattedCurrentAge} · Cycle: {liveStatus.entry.targetDurationValue} {liveStatus.entry.targetDurationUnit.toLowerCase()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCheckpointsStatus(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between py-2 border-b border-[#F0EBE1] shrink-0">
+                <span className="text-xs font-bold text-slate-700">
+                  Checkpoints Progress: {completedProtocols} / {liveStatus.protocols.length} Completed
+                </span>
+                {canManageCustom && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddCheckpoint(liveStatus.entry)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Checkpoint</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto divide-y divide-[#F0EBE1] pr-1 mt-2">
+                {liveStatus.protocols.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <ClipboardList className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">No Checkpoints Configured</p>
+                    <p className="text-xs text-slate-500 mt-1">Click "Add Checkpoint" above to set vaccines or weigh-in schedules for this animal.</p>
+                  </div>
+                ) : (
+                  liveStatus.protocols.map((proto) => {
+                    const isBroadcastActive = broadcastSuccessId === `${liveStatus.entry.id}-${proto.dayTarget}`;
+                    return (
+                      <div
+                        key={proto.id}
+                        className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <CheckCircle2
+                            className={`w-5 h-5 shrink-0 mt-0.5 ${proto.completed ? 'text-emerald-600' : 'text-slate-300'
+                              }`}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={proto.completed ? 'text-slate-500 line-through font-medium' : 'text-slate-900 font-bold'}>
+                                {proto.title}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-100 text-slate-700 border border-slate-200">
+                                {proto.category.replace('_', ' ')}
+                              </span>
+                              {proto.targetWeightKg && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  Target: {proto.targetWeightKg} kg
+                                </span>
+                              )}
+                            </div>
+                            {proto.feedPhase && (
+                              <p className="text-[11px] text-amber-800 font-medium mt-0.5">
+                                Feed Phase: {proto.feedPhase}
+                              </p>
+                            )}
+                            {proto.description && (
+                              <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+                                {proto.description}
+                              </p>
+                            )}
+                            {proto.completedNote && (
+                              <p className="text-[11px] text-emerald-700 font-mono mt-0.5">
+                                ✓ {proto.completedNote}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          <div className="text-right">
+                            <span className="block font-mono text-[11px] text-slate-700 font-semibold">
+                              {proto.scheduledDate ? `${proto.scheduledDate} · ${proto.dispatchTime || '07:00 AM'}` : `Day ${proto.dayTarget}`}
+                            </span>
+                            <span
+                              className={`inline-block text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${proto.completed
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : proto.reminderStatus === 'DUE_TODAY'
+                                    ? 'bg-amber-100 text-amber-900 animate-pulse'
+                                    : proto.reminderStatus === 'OVERDUE'
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : 'bg-slate-100 text-slate-600'
+                                }`}
+                            >
+                              {proto.completed ? 'Done' : proto.reminderStatus === 'DUE_TODAY' ? 'Due Today' : `Due Day ${proto.dayTarget}`}
+                            </span>
+                          </div>
+
+                          {onBroadcastMilestone && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onBroadcastMilestone({
+                                  livestockId: liveStatus.entry.id,
+                                  dayTarget: proto.dayTarget,
+                                  milestoneTitle: proto.title,
+                                  customNote: proto.description,
+                                });
+                                setBroadcastSuccessId(`${liveStatus.entry.id}-${proto.dayTarget}`);
+                                setTimeout(() => setBroadcastSuccessId(null), 4000);
+                              }}
+                              title="Broadcast milestone update to all members"
+                              className={`p-1.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1 text-[11px] font-medium ${isBroadcastActive
+                                  ? 'bg-emerald-600 border-emerald-500 text-white'
+                                  : 'bg-white border-[#E8DFCE] hover:border-amber-500 text-slate-700 hover:text-slate-950'
+                                }`}
+                            >
+                              <Radio className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="hidden sm:inline">
+                                {isBroadcastActive ? 'Broadcasted' : 'Broadcast'}
+                              </span>
+                            </button>
+                          )}
+
+                          {canManageCustom && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditCheckpoint(liveStatus.entry, {
+                                  id: proto.id,
+                                  dayTarget: proto.dayTarget,
+                                  scheduledDate: proto.scheduledDate,
+                                  title: proto.title,
+                                  category: proto.category as CheckpointCategory,
+                                  targetWeightKg: proto.targetWeightKg,
+                                  feedPhase: proto.feedPhase,
+                                  description: proto.description,
+                                })}
+                                title="Edit checkpoint"
+                                aria-label="Edit checkpoint"
+                                className="p-1.5 rounded-xl border border-[#E8DFCE] bg-white hover:border-amber-500 text-slate-600 hover:text-slate-950 transition-all cursor-pointer"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteActiveCheckpoint(liveStatus.entry.id, proto.id)}
+                                title="Delete checkpoint"
+                                aria-label="Delete checkpoint"
+                                className="p-1.5 rounded-xl border border-[#E8DFCE] bg-white hover:border-rose-500 text-slate-600 hover:text-rose-600 transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-[#F0EBE1] shrink-0 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCheckpointsStatus(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* QUICK DIRECT FEED LOGGING MODAL */}
+      {feedModalStatus && (
+        <div
+          className="fixed inset-0 z-[9995] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md bg-white border border-[#E8DFCE] rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-950 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800">
+                  <Wheat className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-950">
+                    Log Feed Consumed
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {feedModalStatus.entry.nameOrTag} · {feedModalStatus.entry.species}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedModalStatus(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {feedError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 font-semibold">
+                {feedError}
+              </div>
+            )}
+            {feedSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 font-semibold">
+                {feedSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleDirectFeedSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Feed Quantity Consumed (KG) *
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  required
+                  autoFocus
+                  value={feedKg}
+                  onChange={(e) => setFeedKg(e.target.value)}
+                  placeholder="e.g. 50"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2.5 text-base font-mono font-bold text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Feed Type / Ration Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={feedType}
+                  onChange={(e) => setFeedType(e.target.value)}
+                  placeholder="e.g. Broiler Finisher, Starter Crumbs, Hay / Lucerne"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs font-medium text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Feeding Notes / Observations (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={feedNote}
+                  onChange={(e) => setFeedNote(e.target.value)}
+                  placeholder="e.g. Afternoon feeding, good appetite, all troughs cleaned"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F0EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setFeedModalStatus(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Wheat className="w-4 h-4" />
+                  <span>Confirm Feed Logged</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 {
   "appId": "com.basobaso.agroplanner",
-  "appName": "Agro Planner",
+  "appName": "CapitaSeed",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {

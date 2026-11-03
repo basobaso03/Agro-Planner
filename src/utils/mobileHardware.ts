@@ -74,7 +74,31 @@ function randomChallenge(length = 32): Uint8Array {
   return arr;
 }
 
+export const VIBRATION_PREF_KEY = 'agro_vibration_enabled';
+
+export function isVibrationEnabled(): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    const stored = localStorage.getItem(VIBRATION_PREF_KEY);
+    // Defaults to false so users are not annoyed by unexpected vibrations unless turned on
+    return stored === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setVibrationEnabled(enabled: boolean): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(VIBRATION_PREF_KEY, String(enabled));
+    }
+  } catch (err) {
+    console.warn('Failed to save vibration preference:', err);
+  }
+}
+
 export function triggerHapticFeedback(pattern: number | number[] = [40]): void {
+  if (!isVibrationEnabled()) return;
   try {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate(pattern);
@@ -392,7 +416,7 @@ export async function initializeNotificationChannels(): Promise<void> {
 
     await LocalNotifications.createChannel({
       id: 'financial_ledger',
-      name: 'Financial Ledger & Syndicate Vault',
+      name: 'Financial Ledger & Capital Vault',
       description: 'Capital pool contributions, sales revenues, and expense approvals',
       importance: 5,
       visibility: 1,
@@ -480,8 +504,8 @@ export async function initPushNotifications(onNotificationTapped?: () => void): 
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
         // When a push arrives while app is in foreground or waking up, mirror it to high-priority local notification
         void dispatchSystemNotification({
-          title: notification.title || 'Agro Planner Alert',
-          body: notification.body || 'New syndicate ledger activity recorded.',
+          title: notification.title || 'CapitaSeed Alert',
+          body: notification.body || 'New ledger activity recorded.',
           urgent: true,
           severity: 'URGENT_GROUND',
         });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ArrowRight,
   Clock,
@@ -27,10 +27,21 @@ import type {
   LivestockComputedStatus,
   NotificationSeverity,
   SiteComparisonSummary,
-  SyndicateMember,
+  OrgMember,
+  LivestockEntry,
 } from '../types/agro.ts';
+import type {
+  DebtLiabilityEvent,
+  LoanGivenEvent,
+  CreditSaleEvent,
+} from '../types/financials.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
+import { FinancialBreakdownCards } from './FinancialBreakdownCards.tsx';
+import { BankingHubGrid } from './BankingHubGrid.tsx';
+import { CreditSalesModal } from './CreditSalesModal.tsx';
+import { LoansDebtsModal } from './LoansDebtsModal.tsx';
+import { LivestockValuationModal } from './LivestockValuationModal.tsx';
 
 import type { ActiveTab } from '../App.tsx';
 
@@ -40,7 +51,7 @@ interface HomeTabProps {
   siteComparisons: SiteComparisonSummary[];
   latestBroadcast?: AuditNotificationEvent;
   selectedLocationName: string;
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
   locations: FarmLocation[];
   onNavigateTab: (tab: ActiveTab) => void;
   onSelectLocation: (locId: string) => void;
@@ -52,6 +63,26 @@ interface HomeTabProps {
     photoUrl?: string;
   }) => void;
   showNumbers?: boolean;
+  isAgroEnabled?: boolean;
+
+  // Modern Banking Redesign Extensions
+  debtLiabilities?: DebtLiabilityEvent[];
+  loansGiven?: LoanGivenEvent[];
+  creditSales?: CreditSaleEvent[];
+  livestockEntries?: LivestockEntry[];
+  pendingUsersCount?: number;
+  unreadBroadcastsCount?: number;
+  totalMembersCount?: number;
+  totalFixedAssetsCount?: number;
+  totalAuditCount?: number;
+  onRecordDebtLiability?: (params: any) => Promise<any> | any;
+  onRepayDebtLiability?: (params: any) => Promise<any> | any;
+  onRecordLoanGiven?: (params: any) => Promise<any> | any;
+  onRecoverLoanGiven?: (params: any) => Promise<any> | any;
+  onRecordCreditSale?: (params: any) => Promise<any> | any;
+  onExtendCreditSaleDueDate?: (params: any) => Promise<any> | any;
+  onRecordCreditSalePayment?: (params: any) => Promise<any> | any;
+  onSaveLivestockValuation?: (livestockId: string, configuredSalePricePerUnit: number) => Promise<any> | any;
 }
 
 export const HomeTab: React.FC<HomeTabProps> = ({
@@ -66,8 +97,31 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onSelectLocation,
   onPostBroadcast,
   showNumbers = true,
+  isAgroEnabled = true,
+
+  debtLiabilities = [],
+  loansGiven = [],
+  creditSales = [],
+  livestockEntries = [],
+  pendingUsersCount = 0,
+  unreadBroadcastsCount = 0,
+  totalMembersCount = 0,
+  totalFixedAssetsCount = 0,
+  totalAuditCount = 0,
+  onRecordDebtLiability,
+  onRepayDebtLiability,
+  onRecordLoanGiven,
+  onRecoverLoanGiven,
+  onRecordCreditSale,
+  onExtendCreditSaleDueDate,
+  onRecordCreditSalePayment,
+  onSaveLivestockValuation,
 }) => {
+  const homeFileInputRef = useRef<HTMLInputElement>(null);
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [showCreditSalesModal, setShowCreditSalesModal] = useState(false);
+  const [showLoansDebtsModal, setShowLoansDebtsModal] = useState(false);
+  const [showLivestockValuationModal, setShowLivestockValuationModal] = useState(false);
   const [bTitle, setBTitle] = useState('');
   const [bMsg, setBMsg] = useState('');
   const [bLocId, setBLocId] = useState(
@@ -99,6 +153,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       setBPhotoError(err instanceof Error ? err.message : 'Photo compression failed');
     } finally {
       setIsCompressingPhoto(false);
+      e.target.value = '';
     }
   };
 
@@ -132,7 +187,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     : 100;
 
   // Liquid percentage of capital pool (for executive/investor view)
-  const poolTotal = financials?.totalSyndicatePool || 0;
+  const poolTotal = financials?.totalPool || 0;
   const leftCash = financials?.leftMoney || 0;
   const liquidPct = poolTotal > 0
     ? Math.max(0, Math.min(100, Math.round((leftCash / poolTotal) * 100)))
@@ -146,7 +201,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             <span className="font-semibold text-slate-700 break-words">
-              {isGroundOperator ? 'Ground Station · ' : 'Syndicate Live Status · '}
+              {isGroundOperator ? 'Ground Station · ' : 'Live Operations Status · '}
               {selectedLocationName}
             </span>
           </div>
@@ -243,15 +298,17 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               onClick={() => onNavigateTab('EXPENSES')}
               className="px-3.5 sm:px-4 py-2.5 sm:py-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white text-xs font-bold shadow-xs transition-all text-center whitespace-nowrap cursor-pointer flex items-center justify-center min-h-[42px]"
             >
-              + Log Farm Expense
+              {isAgroEnabled ? '+ Log Farm Expense' : '+ Log Venture Expense'}
             </button>
-            <button
-              type="button"
-              onClick={() => onNavigateTab('LIVESTOCK')}
-              className="px-3.5 sm:px-4 py-2.5 sm:py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] active:scale-[0.98] border border-[#E0D7C6] text-slate-800 text-xs font-semibold transition-all text-center whitespace-nowrap cursor-pointer flex items-center justify-center min-h-[42px]"
-            >
-              {isGroundOperator ? 'Weigh-In / Health' : 'Livestock Batches'}
-            </button>
+            {isAgroEnabled && (
+              <button
+                type="button"
+                onClick={() => onNavigateTab('LIVESTOCK')}
+                className="px-3.5 sm:px-4 py-2.5 sm:py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] active:scale-[0.98] border border-[#E0D7C6] text-slate-800 text-xs font-semibold transition-all text-center whitespace-nowrap cursor-pointer flex items-center justify-center min-h-[42px]"
+              >
+                {isGroundOperator ? 'Weigh-In / Health' : 'Livestock Batches'}
+              </button>
+            )}
             {canViewPool && (
               <button
                 type="button"
@@ -281,7 +338,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <>
                 <Activity className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <span className="truncate">
-                  Total NAV: <strong className="font-mono text-slate-900">{!showNumbers ? '••••••' : `$${(financials?.totalSyndicateNav ?? 0).toLocaleString()}`}</strong>
+                  Total NAV: <strong className="font-mono text-slate-900">{!showNumbers ? '••••••' : `$${(financials?.totalNav ?? 0).toLocaleString()}`}</strong>
                 </span>
               </>
             )}
@@ -289,7 +346,32 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         </div>
       </section>
 
-      {/* 2. SOLORA DUAL KPI STRIP (Role-Tailored) */}
+      {/* 2. MODERN 9-PILLAR FINANCIAL BREAKDOWN CARDS */}
+      <FinancialBreakdownCards financials={financials} showNumbers={showNumbers} />
+
+      {/* 3. MODERN MOBILE BANKING HUB GRID (TRANSFERRED TABS & SPECIALIZED MODULES) */}
+      <BankingHubGrid
+        financials={financials}
+        memberCount={totalMembersCount}
+        pendingUsersCount={pendingUsersCount}
+        unreadBroadcastsCount={unreadBroadcastsCount}
+        assetCount={totalFixedAssetsCount}
+        auditCount={totalAuditCount}
+        creditSalesCount={(creditSales || []).filter((s) => s.status !== 'SETTLED').length}
+        totalCreditSalesDue={financials.totalCreditSalesOutstanding || 0}
+        totalDebtOutstanding={financials.totalBorrowedDebtOutstanding || 0}
+        totalLoansGivenOutstanding={financials.totalLoansGivenOutstanding || 0}
+        totalLivestockExpectedRevenue={financials.totalExpectedLivestockRevenue || 0}
+        canViewPool={canViewPool}
+        canManageMembers={PERMISSIONS.canManageMembers(activeMember?.role)}
+        onNavigateTab={onNavigateTab}
+        onOpenCreditSales={() => setShowCreditSalesModal(true)}
+        onOpenLoansDebts={() => setShowLoansDebtsModal(true)}
+        onOpenLivestockValuation={() => setShowLivestockValuationModal(true)}
+        showNumbers={showNumbers}
+      />
+
+      {/* 4. SOLORA DUAL KPI STRIP (Role-Tailored) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {isGroundOperator ? (
           <>
@@ -335,7 +417,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   <span className="truncate">Total Pool Contributed</span>
                 </div>
                 <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-slate-900 truncate">
-                  {!showNumbers ? '••••••••' : `$${(financials?.totalSyndicatePool ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                  {!showNumbers ? '••••••••' : `$${(financials?.totalPool ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
                 </div>
               </div>
               <span className="text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 whitespace-nowrap shrink-0">
@@ -367,7 +449,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Syndicate Timeline & Operations Frequency
+              Operational Timeline &amp; Activity Frequency
             </h3>
             <p className="text-xs text-slate-700 font-semibold mt-0.5">
               Live Production & Feed Cycle Range
@@ -478,138 +560,215 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         </div>
       </section>
 
-      {/* 5. ACTIVE LIVESTOCK SALE COUNTDOWNS */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Active Livestock Sale Countdowns</h2>
-            <p className="text-xs text-slate-500">
-              Real-time age progression & market readiness across {livestockStatuses.length} tracked groups
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigateTab('LIVESTOCK')}
-            className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer p-1"
-          >
-            Manage All
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {livestockStatuses.length === 0 ? (
-          <div className="solora-card p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-slate-900">
-                No Active Livestock Batches Registered Yet
-              </h3>
+      {/* 5. WORKSPACE SPECIFIC MODULE: LIVESTOCK (AGRO) vs CAPITAL & ASSETS (GENERAL VENTURE) */}
+      {isAgroEnabled ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Active Livestock Sale Countdowns</h2>
               <p className="text-xs text-slate-500">
-                Start your clean production ledger by registering a farm site and adding your first broiler batch, goat herd, or ear-tagged animal.
+                Real-time age progression &amp; market readiness across {livestockStatuses.length} tracked groups
               </p>
             </div>
             <button
               type="button"
               onClick={() => onNavigateTab('LIVESTOCK')}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+              className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer p-1"
             >
-              + Register First Livestock Batch
+              Manage All
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            {livestockStatuses.map((status) => {
-              const isUrgent = status.countdownUrgency === 'READY_FOR_SALE';
-              const isWarn = status.countdownUrgency === 'PREPARE_MARKET';
 
-              return (
-                <div
-                  key={status.entry.id}
-                  className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3.5"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-500 min-w-0">
-                      <span className="font-semibold text-slate-600 break-words min-w-0">
-                        {status.entry.species} · {status.entry.locationName}
-                      </span>
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap inline-flex items-center">
-                        {status.entry.trackingMode === 'INDIVIDUAL_TAG' ? 'Ear-Tag' : 'Batch'}
-                      </span>
+          {livestockStatuses.length === 0 ? (
+            <div className="solora-card p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900">
+                  No Active Livestock Batches Registered Yet
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Start your clean production ledger by registering a farm site and adding your first broiler batch, goat herd, or ear-tagged animal.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigateTab('LIVESTOCK')}
+                className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                + Register First Livestock Batch
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              {livestockStatuses.map((status) => {
+                const isUrgent = status.countdownUrgency === 'READY_FOR_SALE';
+                const isWarn = status.countdownUrgency === 'PREPARE_MARKET';
+
+                return (
+                  <div
+                    key={status.entry.id}
+                    className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3.5"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 text-xs text-slate-500 min-w-0">
+                        <span className="font-semibold text-slate-600 break-words min-w-0">
+                          {status.entry.species} · {status.entry.locationName}
+                        </span>
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0 whitespace-nowrap inline-flex items-center">
+                          {status.entry.trackingMode === 'INDIVIDUAL_TAG' ? 'Ear-Tag' : 'Batch'}
+                        </span>
+                      </div>
+
+                      <div className="mt-1.5 flex items-baseline justify-between gap-2 min-w-0">
+                        <h3 className="text-base font-bold text-slate-900 break-words whitespace-normal min-w-0">
+                          {status.entry.nameOrTag}
+                        </h3>
+                        <span className="text-sm font-extrabold font-mono tabular-nums text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0 whitespace-nowrap">
+                          {status.currentLiveHeadcount} Live
+                        </span>
+                      </div>
+
+                      {/* Age & Target Metadata */}
+                      <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 gap-2 min-w-0">
+                        <span className="break-words min-w-0">
+                          Current Age: <strong className="font-mono text-slate-900">{status.formattedCurrentAge}</strong>
+                        </span>
+                        <span className="font-mono text-slate-500 shrink-0 whitespace-nowrap">
+                          Target: {status.entry.targetDurationValue} {status.entry.targetDurationUnit.toLowerCase()}
+                        </span>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="mt-2.5 w-full h-2 rounded-full bg-[#EFE9DF] overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${isUrgent
+                            ? 'bg-rose-500'
+                            : isWarn
+                              ? 'bg-amber-500'
+                              : 'bg-emerald-500'
+                            }`}
+                          style={{ width: `${status.progressPercentage}%` }}
+                        />
+                      </div>
                     </div>
 
-                    <div className="mt-1.5 flex items-baseline justify-between gap-2 min-w-0">
-                      <h3 className="text-base font-bold text-slate-900 break-words whitespace-normal min-w-0">
-                        {status.entry.nameOrTag}
-                      </h3>
-                      <span className="text-sm font-extrabold font-mono tabular-nums text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shrink-0 whitespace-nowrap">
-                        {status.currentLiveHeadcount} Live
-                      </span>
-                    </div>
-
-                    {/* Age & Target Metadata */}
-                    <div className="mt-2.5 flex items-center justify-between text-xs text-slate-600 gap-2 min-w-0">
-                      <span className="break-words min-w-0">
-                        Current Age: <strong className="font-mono text-slate-900">{status.formattedCurrentAge}</strong>
-                      </span>
-                      <span className="font-mono text-slate-500 shrink-0 whitespace-nowrap">
-                        Target: {status.entry.targetDurationValue} {status.entry.targetDurationUnit.toLowerCase()}
-                      </span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="mt-2.5 w-full h-2 rounded-full bg-[#EFE9DF] overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${isUrgent
-                          ? 'bg-rose-500'
+                    {/* Countdown Footer */}
+                    <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between gap-2 min-w-0">
+                      <span
+                        className={`text-xs font-bold font-mono flex items-center gap-1.5 break-words min-w-0 ${isUrgent
+                          ? 'text-rose-600'
                           : isWarn
-                            ? 'bg-amber-500'
-                            : 'bg-emerald-500'
+                            ? 'text-amber-700'
+                            : 'text-emerald-700'
                           }`}
-                        style={{ width: `${status.progressPercentage}%` }}
-                      />
+                      >
+                        {isUrgent ? (
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        ) : isWarn ? (
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="break-words">{status.countdownBadgeText}</span>
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab('LIVESTOCK')}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer min-h-[36px] flex items-center"
+                      >
+                        Log Event
+                      </button>
                     </div>
                   </div>
-
-                  {/* Countdown Footer */}
-                  <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between gap-2 min-w-0">
-                    <span
-                      className={`text-xs font-bold font-mono flex items-center gap-1.5 break-words min-w-0 ${isUrgent
-                        ? 'text-rose-600'
-                        : isWarn
-                          ? 'text-amber-700'
-                          : 'text-emerald-700'
-                        }`}
-                    >
-                      {isUrgent ? (
-                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      ) : isWarn ? (
-                        <Clock className="w-3.5 h-3.5 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      )}
-                      <span className="break-words">{status.countdownBadgeText}</span>
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => onNavigateTab('LIVESTOCK')}
-                      className="text-xs font-semibold text-slate-600 hover:text-slate-900 underline whitespace-nowrap shrink-0 cursor-pointer min-h-[36px] flex items-center"
-                    >
-                      Log Event
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Venture Capital &amp; Operations</h2>
+              <p className="text-xs text-slate-500">
+                Shared capital pool liquidity, asset purchases, and multi-sig expense deductions
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('POOL')}
+              className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer p-1"
+            >
+              View Pool &amp; Equity
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-        )}
-      </section>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            {/* Venture Metric 1: Capital Liquidity & Left Money */}
+            <div className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3">
+              <div className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Net Liquid Capital Balance
+                </span>
+                <div className="text-2xl font-black font-mono text-emerald-800">
+                  {!showNumbers ? '••••••••' : `$${(financials?.leftMoney ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  Available working capital remaining in the shared pool after authorized deductions and reinvestments.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium">Total Pool: ${financials?.totalPool?.toLocaleString() || 0}</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('EXPENSES')}
+                  className="font-bold text-amber-700 hover:underline cursor-pointer"
+                >
+                  View Deductions →
+                </button>
+              </div>
+            </div>
+
+            {/* Venture Metric 2: Capital Assets Portfolio */}
+            <div className="solora-card-interactive p-4 sm:p-5 rounded-3xl flex flex-col justify-between gap-3">
+              <div className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Shared Asset Book Value
+                </span>
+                <div className="text-2xl font-black font-mono text-slate-900">
+                  {!showNumbers ? '••••••••' : `$${(financials?.totalFixedAssetsValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  Equipment, infrastructure, and tools purchased and owned collectively by organization participants.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-[#F0EBE1] flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-medium">Net Asset Value: ${financials?.totalNav?.toLocaleString() || 0}</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab('ASSETS')}
+                  className="font-bold text-emerald-700 hover:underline cursor-pointer"
+                >
+                  Inspect Assets →
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* 6. MULTI-LOCATION COMPARISON STRIP */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Multi-Location Syndicate Comparison</h2>
+          <h2 className="text-base font-bold text-slate-900">
+            {isAgroEnabled ? 'Multi-Location Performance Comparison' : 'Operating Sites & Branch Comparison'}
+          </h2>
           <p className="text-xs text-slate-500">
-            Cross-site headcount, approved site expenses, fixed assets, and mortality rates
+            {isAgroEnabled
+              ? 'Cross-site headcount, approved site expenses, fixed assets, and mortality rates'
+              : 'Cross-site deployed expenses, fixed capital assets, and operating stations'}
           </p>
         </div>
 
@@ -617,10 +776,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           <div className="solora-card p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-slate-900">
-                No Farm Locations Registered Yet
+                {isAgroEnabled ? 'No Farm Locations Registered Yet' : 'No Operating Sites Registered Yet'}
               </h3>
               <p className="text-xs text-slate-500">
-                Click &ldquo;+ Add Site&rdquo; in the top location bar to register your first syndicate farm plot or ranch.
+                Click &ldquo;Manage Sites&rdquo; in the top location bar to register your first operating site or branch location.
               </p>
             </div>
           </div>
@@ -642,9 +801,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
                   <div className="mt-3 grid grid-cols-2 gap-2.5 pt-3 border-t border-[#F0EBE1] text-xs">
                     <div>
-                      <p className="text-[11px] text-slate-500">Active Animals</p>
+                      <p className="text-[11px] text-slate-500">{isAgroEnabled ? 'Active Animals' : 'Active Units'}</p>
                       <p className="font-mono font-bold text-slate-900 mt-0.5 break-words">
-                        {site.activeAnimalHeadcount} hd ({site.activeBatchCount} grp)
+                        {isAgroEnabled
+                          ? `${site.activeAnimalHeadcount} hd (${site.activeBatchCount} grp)`
+                          : `${site.activeBatchCount} batches`}
                       </p>
                     </div>
                     <div>
@@ -660,9 +821,9 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                       </p>
                     </div>
                     <div>
-                      <p className="text-[11px] text-slate-500">Mortality</p>
+                      <p className="text-[11px] text-slate-500">{isAgroEnabled ? 'Mortality' : 'Site Status'}</p>
                       <p className="font-mono font-bold text-slate-800 mt-0.5 break-words">
-                        {(site.siteMortalityRatePercent ?? 0).toFixed(1)}%
+                        {isAgroEnabled ? `${(site.siteMortalityRatePercent ?? 0).toFixed(1)}%` : 'Operational'}
                       </p>
                     </div>
                   </div>
@@ -716,7 +877,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     onChange={(e) => setBLocId(e.target.value)}
                     className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="ALL">All Farm Locations (Syndicate-Wide)</option>
+                    <option value="ALL">All Farm Locations (Organization-Wide)</option>
                     {locations.map((loc) => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name}
@@ -795,19 +956,26 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <label className="flex items-center justify-center gap-2 p-3 border border-dashed border-[#CFC5B2] hover:border-amber-500 rounded-xl bg-[#FAF8F5] cursor-pointer transition-colors">
+                  <div>
                     <input
+                      ref={homeFileInputRef}
                       type="file"
                       accept="image/*"
                       onChange={handlePhotoUpload}
                       disabled={isCompressingPhoto}
-                      className="hidden"
+                      style={{ display: 'none' }}
                     />
-                    <Upload className="w-4 h-4 text-amber-600" />
-                    <span className="text-xs text-slate-700 font-semibold">
-                      {isCompressingPhoto ? 'Compressing photo...' : 'Attach Field Photo Evidence'}
-                    </span>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => homeFileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-[#CFC5B2] hover:border-amber-500 rounded-xl bg-[#FAF8F5] cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs text-slate-700 font-semibold">
+                        {isCompressingPhoto ? 'Compressing photo...' : 'Attach Field Photo Evidence (Single Tap)'}
+                      </span>
+                    </button>
+                  </div>
                 )}
                 {bPhotoError && <p className="text-xs text-rose-600 mt-1">{bPhotoError}</p>}
               </div>
@@ -824,7 +992,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                   type="submit"
                   className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm"
                 >
-                  Broadcast to Syndicate
+                  Broadcast to Organization
                 </button>
               </div>
             </form>
@@ -862,6 +1030,41 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modern Banking Hub Modals */}
+      {showCreditSalesModal && (
+        <CreditSalesModal
+          isOpen={showCreditSalesModal}
+          onClose={() => setShowCreditSalesModal(false)}
+          creditSales={creditSales}
+          locations={locations}
+          livestockStatuses={livestockStatuses}
+          activeMember={activeMember}
+          showNumbers={showNumbers}
+        />
+      )}
+
+      {showLoansDebtsModal && (
+        <LoansDebtsModal
+          isOpen={showLoansDebtsModal}
+          onClose={() => setShowLoansDebtsModal(false)}
+          debts={debtLiabilities}
+          loansGiven={loansGiven}
+          activeMember={activeMember}
+          leftMoney={financials?.leftMoney || 0}
+          showNumbers={showNumbers}
+        />
+      )}
+
+      {showLivestockValuationModal && (
+        <LivestockValuationModal
+          isOpen={showLivestockValuationModal}
+          onClose={() => setShowLivestockValuationModal(false)}
+          livestockStatuses={livestockStatuses}
+          activeMember={activeMember}
+          showNumbers={showNumbers}
+        />
       )}
     </div>
   );

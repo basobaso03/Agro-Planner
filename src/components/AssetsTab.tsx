@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Plus,
   RotateCcw,
@@ -17,7 +17,7 @@ import type {
   FixedAssetCategory,
   FixedAssetGroupSummary,
   FixedAssetLedgerEvent,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
@@ -26,7 +26,8 @@ interface AssetsTabProps {
   assetGroups: FixedAssetGroupSummary[];
   locations: FarmLocation[];
   selectedLocationId: string;
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
+  leftMoney?: number;
   onLogAssetEvent: (data: {
     assetGroupId?: string;
     assetName: string;
@@ -61,6 +62,7 @@ const ASSET_CATEGORIES: { value: FixedAssetCategory; label: string }[] = [
   { value: 'FEEDERS_EQUIPMENT', label: 'Feeders & Drinkers' },
   { value: 'FENCING_SECURITY', label: 'Fencing & Kraal Security' },
   { value: 'TOOLS_MACHINERY', label: 'Tools & Machinery' },
+  { value: 'CUSTOM', label: '+ Other / Custom Category...' },
 ];
 
 export const AssetsTab: React.FC<AssetsTabProps> = ({
@@ -68,16 +70,19 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
   locations,
   selectedLocationId,
   activeMember,
+  leftMoney = 0,
   onLogAssetEvent,
   onTransferAsset,
   showNumbers = true,
 }) => {
+  const astFileInputRef = useRef<HTMLInputElement>(null);
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
 
   // Register New Fixed Asset Modal
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
   const [astName, setAstName] = useState('');
   const [astCategory, setAstCategory] = useState<FixedAssetCategory>('HOUSING_INFRASTRUCTURE');
+  const [customCategory, setCustomCategory] = useState('');
   const [astLocId, setAstLocId] = useState(
     selectedLocationId !== 'ALL'
       ? selectedLocationId
@@ -86,7 +91,6 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
   const [astQty, setAstQty] = useState('1');
   const [astValue, setAstValue] = useState('350');
   const [astCondition, setAstCondition] = useState<AssetCondition>('EXCELLENT');
-  const [astDeductCash, setAstDeductCash] = useState(true);
   const [astNote, setAstNote] = useState('');
   const [astPhoto, setAstPhoto] = useState<string | null>(null);
   const [isCompressingAstPhoto, setIsCompressingAstPhoto] = useState(false);
@@ -130,6 +134,7 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
       setAstError(err instanceof Error ? err.message : 'Photo compression failed');
     } finally {
       setIsCompressingAstPhoto(false);
+      e.target.value = '';
     }
   };
 
@@ -147,20 +152,42 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
     const qty = Math.max(1, parseInt(astQty, 10) || 1);
     const val = Math.max(0, parseFloat(astValue) || 0);
 
+    if (val <= 0) {
+      setAstError('Please enter a valid purchase cost greater than $0.');
+      return;
+    }
+    if (leftMoney !== undefined) {
+      if (leftMoney <= 0) {
+        setAstError('Cannot purchase asset: No funds available in Left Money pool ($0.00).');
+        return;
+      }
+      if (val > leftMoney) {
+        setAstError(`Cannot purchase asset: Cost ($${val.toFixed(2)}) exceeds available Left Money balance ($${leftMoney.toFixed(2)}).`);
+        return;
+      }
+    }
+
+    const finalCategory = astCategory === 'CUSTOM' ? (customCategory.trim() || 'General Fixed Asset') : astCategory;
+    if (!finalCategory) {
+      setAstError('Please specify the asset category.');
+      return;
+    }
+
     try {
       onLogAssetEvent({
         assetName: astName.trim(),
-        category: astCategory,
+        category: finalCategory,
         locationId: targetLocId,
         direction: 'INITIAL',
         quantityDelta: qty,
         valueDelta: val,
         condition: astCondition,
         note: astNote.trim(),
-        deductFromLeftMoney: astDeductCash,
+        deductFromLeftMoney: true,
         photoUrl: astPhoto || undefined,
       });
       setAstName('');
+      setCustomCategory('');
       setAstNote('');
       setAstPhoto(null);
       setAstError('');
@@ -490,7 +517,7 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                 </div>
                 <div>
                   <label htmlFor="ast-cat" className="block text-xs font-medium text-slate-300 mb-1">
-                    Category
+                    Category *
                   </label>
                   <select
                     id="ast-cat"
@@ -506,6 +533,24 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                   </select>
                 </div>
               </div>
+
+              {astCategory === 'CUSTOM' && (
+                <div>
+                  <label htmlFor="ast-custom-cat" className="block text-xs font-semibold text-emerald-400 mb-1">
+                    Enter Custom Category Name *
+                  </label>
+                  <input
+                    id="ast-custom-cat"
+                    type="text"
+                    required
+                    placeholder="e.g. Irrigation Pipes, Incubator, Backup Generator"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-emerald-500/70 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    autoFocus
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2.5">
                 <div>
@@ -552,20 +597,6 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                 </div>
               </div>
 
-              {!isGroundOperator && (
-                <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={astDeductCash}
-                    onChange={(e) => setAstDeductCash(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-500 rounded"
-                  />
-                  <span className="text-xs text-slate-200">
-                    Deduct purchase cost (${astValue || '0'}) from Syndicate Left Money
-                  </span>
-                </label>
-              )}
-
               {/* Photo Evidence Upload */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -593,20 +624,27 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center p-3.5 border border-dashed border-slate-700 rounded-xl hover:border-emerald-500 bg-slate-950/50 cursor-pointer transition-colors">
+                  <div>
                     <input
+                      ref={astFileInputRef}
                       type="file"
                       accept="image/*"
+                      style={{ display: 'none' }}
                       onChange={handlePhotoUpload}
                       disabled={isCompressingAstPhoto}
-                      className="hidden"
                     />
-                    <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                    <span className="text-xs text-slate-300 font-medium">
-                      {isCompressingAstPhoto ? 'Compressing photo...' : 'Upload Asset / Machinery Photo'}
-                    </span>
-                    <span className="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WebP · Auto-compressed</span>
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => astFileInputRef.current?.click()}
+                      className="w-full flex flex-col items-center justify-center p-3.5 border border-dashed border-slate-700 rounded-xl hover:border-emerald-500 bg-slate-950/50 cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-5 h-5 text-slate-400 mb-1" />
+                      <span className="text-xs text-slate-300 font-medium">
+                        {isCompressingAstPhoto ? 'Compressing photo...' : 'Upload Asset / Machinery Photo (Single Tap)'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WebP · Auto-compressed</span>
+                    </button>
+                  </div>
                 )}
               </div>
 

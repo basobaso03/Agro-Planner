@@ -1,4 +1,15 @@
-export type Role = 'SYNDICATE_ADMIN' | 'REMOTE_INVESTOR' | 'GROUND_OPERATOR' | 'TREASURER';
+import type { Organization } from './organization.ts';
+export * from './financials.ts';
+import type { DebtLiabilityEvent, LoanGivenEvent, CreditSaleEvent } from './financials.ts';
+
+export type Role =
+  | 'ORG_ADMIN'
+  | 'MEMBER'
+  | 'TREASURER'
+  | 'GROUND_OPERATOR'
+  // Legacy aliases for seamless data migration:
+  | 'SYNDICATE_ADMIN'
+  | 'REMOTE_INVESTOR';
 
 export type MemberApprovalStatus = 'APPROVED' | 'PENDING_APPROVAL' | 'SUSPENDED';
 
@@ -16,16 +27,19 @@ export type LedgerEntryDirection =
 
 export interface FarmLocation {
   id: string;
+  orgId?: string;
   name: string;
   region: string;
   gpsCoordinates: string;
   primaryOperatorName: string;
   createdAt: string;
   createdBy: string;
+  updatedAt?: string;
 }
 
-export interface SyndicateMember {
+export interface OrgMember {
   id: string;
+  orgId?: string;
   uid?: string;
   email?: string;
   fullName: string;
@@ -40,15 +54,25 @@ export interface SyndicateMember {
   hasPasswordSetup?: boolean;
   passwordVerifierHash?: string;
   assignedLocationId?: string;
+
+  // Capital Target Commitment Configuration
+  targetContributionUsd?: number;
+  contributionPace?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+  monthlyAgreedAmountUsd?: number;
+
   joinedAt: string;
   updatedAt?: string;
   lastLoginAt?: string;
   active: boolean;
 }
 
+// Backward-compatible alias for legacy references
+export type SyndicateMember = OrgMember;
+
 // 1. CAPITAL POOL LEDGER (Append-Only)
 export interface CapitalContributionEvent {
   id: string;
+  orgId?: string;
   memberId: string;
   memberName: string;
   direction: 'INITIAL' | 'ADDITION' | 'CONTRA_REVERSAL';
@@ -78,6 +102,7 @@ export type ApprovalStatus = 'APPROVED' | 'PENDING_MULTISIG' | 'REJECTED_BY_CONT
 
 export interface ExpenseLedgerEvent {
   id: string;
+  orgId?: string;
   locationId: string;
   locationName: string;
   batchOrAnimalId?: string; // Optional link to specific animal group
@@ -102,12 +127,15 @@ export type FixedAssetCategory =
   | 'WATER_SOLAR'
   | 'FEEDERS_EQUIPMENT'
   | 'FENCING_SECURITY'
-  | 'TOOLS_MACHINERY';
+  | 'TOOLS_MACHINERY'
+  | 'CUSTOM'
+  | (string & {});
 
 export type AssetCondition = 'EXCELLENT' | 'GOOD' | 'FAIR' | 'DAMAGED';
 
 export interface FixedAssetLedgerEvent {
   id: string;
+  orgId?: string;
   assetGroupId: string; // Groups initial purchase + subsequent valuation adjustments/transfers
   assetName: string;
   category: FixedAssetCategory;
@@ -125,11 +153,48 @@ export interface FixedAssetLedgerEvent {
 }
 
 // 4. LIVESTOCK GROUPS / ANIMALS & LIFECYCLE LEDGER (Append-Only)
+export type CheckpointCategory =
+  | 'VACCINE'
+  | 'FEED_TRANSITION'
+  | 'WEIGHT_CHECK'
+  | 'BIOSECURITY'
+  | 'MEDICATION'
+  | 'GENERAL_TASK';
+
+export interface AnimalCheckpoint {
+  id: string;
+  dayTarget: number; // e.g. 1, 7, 14, 28, 42
+  scheduledDate?: string; // Exact calendar date via DatePicker (YYYY-MM-DD)
+  title: string;
+  category: CheckpointCategory;
+  targetWeightKg?: number;
+  feedPhase?: string;
+  instructions?: string;
+  completed: boolean;
+  completedAt?: string;
+  completedNote?: string;
+  reminderStatus: 'SCHEDULED' | 'DUE_TODAY' | 'OVERDUE' | 'COMPLETED';
+}
+
+export interface FarmRecipeTemplate {
+  id: string;
+  orgId: string;
+  name: string; // e.g., 'Commercial 42-Day Broiler Standard', 'Hardy Boer Goat 8-Month'
+  species: string;
+  recommendedDurationDays: number;
+  targetSaleWeightKg: number;
+  checkpoints: Omit<AnimalCheckpoint, 'id' | 'completed' | 'completedAt' | 'reminderStatus'>[];
+  isCustomOrgRecipe: boolean;
+  createdAt: string;
+  notes?: string;
+}
+
 export interface LivestockEntry {
   id: string;
+  orgId?: string;
   locationId: string;
   locationName: string;
-  species: string; // e.g. 'Broilers', 'Boer Goats', 'Indigenous Goats', 'Layers', 'Cattle', 'Pigs', 'Sheep'
+  species: string; // e.g. 'Broilers', 'Boer Goats', 'Layers', 'Cattle', 'Pigs', 'Sheep' or custom
   nameOrTag: string; // e.g. 'Broiler Batch #04' or 'Buck #GOAT-ZW-19'
   trackingMode: TrackingMode; // 'BATCH' or 'INDIVIDUAL_TAG'
   entryDate: string; // ISO timestamp when tracking started
@@ -146,6 +211,14 @@ export interface LivestockEntry {
   imageUrl?: string;
   gallery?: string[];
   createdAt: string;
+  // Flexible custom recipe and checkpoints CRUD
+  customCheckpoints?: AnimalCheckpoint[];
+  recipeTemplateId?: string;
+  // Configurable selling prices & funding tracking
+  configuredSalePricePerUnit?: number;
+  configuredSalePricePerKg?: number;
+  fundingSource?: 'CASH_POOL' | 'SUPPLIER_CREDIT' | 'DIRECTOR_LOAN';
+  fundingDebtId?: string;
 }
 
 export type LivestockEventType =
@@ -153,6 +226,8 @@ export type LivestockEventType =
   | 'MORTALITY_LOSS'
   | 'BIRTH_OFFSPRING'
   | 'SALE_DISPATCH'
+  | 'SLAUGHTER_HARVEST'
+  | 'FARM_CONSUMPTION'
   | 'HEADCOUNT_CONTRA_ADJUSTMENT'
   | 'VACCINATION_HEALTH'
   | 'WEIGHT_CHECK'
@@ -162,6 +237,7 @@ export type LivestockEventType =
 
 export interface LivestockLifecycleEvent {
   id: string;
+  orgId?: string;
   livestockId: string;
   livestockName: string;
   locationId: string;
@@ -181,6 +257,7 @@ export interface LivestockLifecycleEvent {
 // 5. FEED INVENTORY LEDGER (Append-Only)
 export interface FeedLedgerEvent {
   id: string;
+  orgId?: string;
   locationId: string;
   feedType: string; // e.g. 'Broiler Starter Crumbles', 'Broiler Finisher Mash', 'Goat Supplement'
   direction: 'STOCK_IN' | 'DAILY_CONSUMPTION' | 'CONTRA_REVERSAL';
@@ -189,6 +266,7 @@ export interface FeedLedgerEvent {
   linkedLivestockId?: string;
   referenceTransactionId?: string;
   note: string;
+  loggedByMemberId?: string;
   loggedByName: string;
   createdAt: string;
   auditHash: string;
@@ -203,6 +281,13 @@ export type NotificationSeverity =
   | 'MILESTONE';
 
 export type AuditEventType =
+  | 'ORGANIZATION_CREATED'
+  | 'INVITE_CODE_REFRESHED'
+  | 'SITE_REGISTERED'
+  | 'SITE_UPDATED'
+  | 'SITE_REMOVED'
+  | 'RECIPE_TEMPLATE_SAVED'
+  | 'CHECKPOINT_CUSTOMIZED'
   | 'MEMBER_ADDED'
   | 'MEMBER_APPROVED'
   | 'MEMBER_ROLE_CHANGED'
@@ -224,10 +309,14 @@ export type AuditEventType =
   | 'LIVESTOCK_SALE'
   | 'LIVESTOCK_CONTRA'
   | 'FEED_LOGGED'
-  | 'GROUND_BROADCAST';
+  | 'GROUND_BROADCAST'
+  | 'FINANCIAL_TRANSACTION'
+  | 'CREDIT_SALE'
+  | 'LIVESTOCK_UPDATED';
 
 export interface AuditNotificationEvent {
   id: string;
+  orgId?: string;
   sequenceNumber: number;
   timestamp: string;
   actorId: string;
@@ -250,17 +339,24 @@ export interface AuditNotificationEvent {
 
 // DERIVED COMPUTED INTERFACES FOR REAL-TIME DASHBOARD
 export interface MemberEquitySummary {
-  member: SyndicateMember;
+  member: OrgMember;
   grossContributed: number;
   contraAdjustments: number;
   netContribution: number;
   profitSharePercentage: number;
   impliedNavEquityUsd: number;
   eventCount: number;
+  // Target Capital Progress
+  targetContributionUsd: number;
+  progressPercentage: number;
+  remainingToTargetUsd: number;
+  isGoalMet: boolean;
+  contributionPace: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
 }
 
 export interface FinancialSummary {
-  totalSyndicatePool: number;
+  totalPool: number;
+  totalSyndicatePool: number; // Backward-compatible alias
   approvedExpenses: number;
   pendingMultiSigExpenses: number;
   totalSalesRevenue: number;
@@ -269,7 +365,17 @@ export interface FinancialSummary {
   leftMoney: number;
   totalFixedAssetsValue: number;
   estimatedActiveLivestockValue: number;
-  totalSyndicateNav: number;
+  totalNav: number;
+  totalSyndicateNav: number; // Backward-compatible alias
+  // 9-Pillar Expanded Financial Balances
+  totalBorrowedDebtOutstanding?: number;
+  totalLoansGivenOutstanding?: number;
+  totalCreditSalesOutstanding?: number;
+  totalCustomerDepositsCollected?: number;
+  totalExpectedLivestockRevenue?: number;
+  totalDebtRepaid?: number;
+  totalLoansRecovered?: number;
+  netFinancialPosition?: number;
 }
 
 export type CountdownUrgency = 'NORMAL' | 'PREPARE_MARKET' | 'READY_FOR_SALE';
@@ -307,13 +413,21 @@ export interface LivestockComputedStatus {
   totalMortalities: number;
   totalBirths: number;
   totalSold: number;
+  totalSlaughteredOrConsumed?: number;
   totalContraDelta: number;
   mortalityRatePercent: number;
   totalFeedConsumedKg: number;
   latestWeightAvgKg?: number;
   estimatedCurrentValueUsd: number;
+  // Configured pricing & income projections
+  configuredSalePricePerUnit?: number;
+  configuredSalePricePerKg?: number;
+  expectedRevenuePerAnimalUsd?: number;
+  totalExpectedRevenueUsd?: number;
+  totalProjectedMarginUsd?: number;
   lifecycleEvents: LivestockLifecycleEvent[];
   protocols: ProtocolMilestone[];
+  customCheckpoints?: AnimalCheckpoint[];
 }
 
 export interface FixedAssetGroupSummary {
@@ -355,8 +469,10 @@ export interface SiteComparisonSummary {
 }
 
 export interface AgroStateSnapshot {
+  organizations?: Organization[];
+  activeOrgId?: string;
   locations: FarmLocation[];
-  members: SyndicateMember[];
+  members: OrgMember[];
   capitalContributions: CapitalContributionEvent[];
   expenses: ExpenseLedgerEvent[];
   fixedAssets: FixedAssetLedgerEvent[];
@@ -364,4 +480,10 @@ export interface AgroStateSnapshot {
   livestockEvents: LivestockLifecycleEvent[];
   feedLedger: FeedLedgerEvent[];
   auditNotifications: AuditNotificationEvent[];
+  customRecipes?: FarmRecipeTemplate[];
+  debtLiabilities?: DebtLiabilityEvent[];
+  loansGiven?: LoanGivenEvent[];
+  creditSales?: CreditSaleEvent[];
 }
+
+export type CapitaSeedStateSnapshot = AgroStateSnapshot;

@@ -7,7 +7,7 @@ import type {
   FixedAssetCategory,
   FixedAssetLedgerEvent,
   Role,
-  SyndicateMember,
+  OrgMember,
 } from './types/agro.ts';
 import {
   dataService,
@@ -30,10 +30,14 @@ import { ExpensesFeedTab } from './components/ExpensesFeedTab.tsx';
 import { PoolEquityTab } from './components/PoolEquityTab.tsx';
 import { AssetsTab } from './components/AssetsTab.tsx';
 import { AuditAlertsTab } from './components/AuditAlertsTab.tsx';
+import { BroadcastCenterTab } from './components/BroadcastCenterTab.tsx';
 import { UserManagementTab } from './components/UserManagementTab.tsx';
 import { UserSettingsTab } from './components/UserSettingsTab.tsx';
+import { ShieldAlert, LogOut, ArrowLeft } from 'lucide-react';
 import { AuthGatePage } from './components/AuthGatePage.tsx';
-import { PendingApprovalLobby } from './components/PendingApprovalLobby.tsx';
+import { OrgOnboardingModal } from './components/OrgOnboardingModal.tsx';
+import { SiteManagerModal } from './components/SiteManagerModal.tsx';
+import { FirstLoginBiometricPrompt } from './components/FirstLoginBiometricPrompt.tsx';
 import { FarmTerrainBackground } from './components/FarmTerrainBackground.tsx';
 import { FloatingNavbar } from './components/FloatingNavbar.tsx';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal.tsx';
@@ -63,6 +67,7 @@ export type ActiveTab =
   | 'EXPENSES'
   | 'POOL'
   | 'ASSETS'
+  | 'BROADCASTS'
   | 'AUDIT'
   | 'USERS'
   | 'SETTINGS';
@@ -230,8 +235,8 @@ export default function App() {
     };
   }, []);
 
-  // Resolve the authenticated user's SyndicateMember profile strictly from activeSession
-  const activeMember: SyndicateMember | null = useMemo(() => {
+  // Resolve the authenticated user's OrgMember profile strictly from activeSession
+  const activeMember: OrgMember | null = useMemo(() => {
     if (!activeSession) return null;
     const normEmail = activeSession.email.trim().toLowerCase();
     const isPrimaryAdmin = normEmail === PRIMARY_ADMIN_EMAIL;
@@ -249,10 +254,10 @@ export default function App() {
       matches.find((m) => m.approvalStatus === 'APPROVED' || m.active) || matches[0];
 
     if (found) {
-      if (isPrimaryAdmin && (found.role !== 'SYNDICATE_ADMIN' || found.approvalStatus !== 'APPROVED')) {
+      if (isPrimaryAdmin && (found.role !== 'ORG_ADMIN' || found.approvalStatus !== 'APPROVED')) {
         return {
           ...found,
-          role: 'SYNDICATE_ADMIN',
+          role: 'ORG_ADMIN',
           approvalStatus: 'APPROVED',
           active: true,
         };
@@ -265,31 +270,77 @@ export default function App() {
       id: activeSession.uid,
       uid: activeSession.uid,
       email: normEmail,
-      fullName: activeSession.displayName || normEmail.split('@')[0] || 'Syndicate User',
+      fullName: activeSession.displayName || normEmail.split('@')[0] || 'Member',
       phoneOrEmail: normEmail,
-      role: isPrimaryAdmin ? 'SYNDICATE_ADMIN' : 'REMOTE_INVESTOR',
-      approvalStatus: isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL',
+      role: isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER',
+      approvalStatus: 'APPROVED',
       authProviders: activeSession.providers,
       hasPasswordSetup: activeSession.providers.includes('password'),
       joinedAt: new Date().toISOString(),
-      active: isPrimaryAdmin,
+      active: true,
     };
   }, [activeSession, state.members]);
+
+  // Resolve Active Organization
+  const activeOrg = useMemo(() => {
+    if (!activeMember?.orgId) return null;
+    return (
+      (state.organizations || []).find((o) => o.id === activeMember.orgId) ||
+      dataService.getActiveOrganization(activeMember.orgId)
+    );
+  }, [activeMember?.orgId, state.organizations]);
+
+  const isAgroEnabled = useMemo(() => {
+    if (!activeOrg) return true;
+    return activeOrg.type === 'AGRO_FARMING' || Boolean(activeOrg.features?.livestockModule);
+  }, [activeOrg]);
+
+  // Site Manager Full CRUD Modal State
+  const [showSiteManagerModal, setShowSiteManagerModal] = useState(false);
+
+  // First-Login Biometric Fingerprint Enrollment Prompt State
+  const [showFirstLoginBioPrompt, setShowFirstLoginBioPrompt] = useState(false);
+  useEffect(() => {
+    if (!activeMember) return;
+    const promptKey = `first_login_bio_prompt_seen_${activeMember.id}`;
+    if (typeof window !== 'undefined' && !localStorage.getItem(promptKey)) {
+      void isBiometricHardwareSupported().then((supported) => {
+        const alreadyEnrolled = Boolean(getEnrolledBiometricRecord());
+        if (supported && !alreadyEnrolled) {
+          setShowFirstLoginBioPrompt(true);
+        }
+      });
+    }
+  }, [activeMember?.id]);
 
   // Dynamic list of tabs accessible to the active user's role
   const accessibleTabs = useMemo<ActiveTab[]>(() => {
     if (!activeMember) return ['HOME'];
-    const tabs: ActiveTab[] = ['HOME', 'LIVESTOCK', 'EXPENSES'];
+    const tabs: ActiveTab[] = ['HOME'];
+    if (isAgroEnabled) {
+      tabs.push('LIVESTOCK');
+    }
+    tabs.push('EXPENSES');
     if (PERMISSIONS.canViewCapitalPoolTab(activeMember.role)) {
       tabs.push('POOL');
     }
-    tabs.push('ASSETS', 'AUDIT');
+    tabs.push('ASSETS', 'BROADCASTS', 'AUDIT');
     if (PERMISSIONS.canManageMembers(activeMember.role)) {
       tabs.push('USERS');
     }
     tabs.push('SETTINGS');
     return tabs;
-  }, [activeMember]);
+  }, [activeMember, isAgroEnabled]);
+
+  // Strict role & workspace enforcement: bounce unauthorized tabs to HOME
+  useEffect(() => {
+    if (activeMember && activeTab === 'USERS' && !PERMISSIONS.canManageMembers(activeMember.role)) {
+      setActiveTab('HOME');
+    }
+    if (!isAgroEnabled && activeTab === 'LIVESTOCK') {
+      setActiveTab('HOME');
+    }
+  }, [activeMember, activeTab, isAgroEnabled]);
 
   // Touch gesture listener for horizontal swiping right or left to switch between tabs
   const touchStartRef = useRef<{ x: number; y: number; time: number; target: HTMLElement | null } | null>(null);
@@ -421,25 +472,83 @@ export default function App() {
     setShowPrivacyModal(true);
   };
 
+  const currentOrgId = activeMember?.orgId;
+
+  // Strict Tenant-Scoped Collections (Zero Cross-Tenant Money Leaks)
+  const orgCapitalContributions = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.capitalContributions.filter((c) => c.orgId === currentOrgId);
+  }, [state.capitalContributions, currentOrgId]);
+
+  const orgExpenses = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.expenses.filter((e) => e.orgId === currentOrgId);
+  }, [state.expenses, currentOrgId]);
+
+  const orgFixedAssets = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.fixedAssets.filter((a) => a.orgId === currentOrgId);
+  }, [state.fixedAssets, currentOrgId]);
+
+  const orgLocations = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.locations.filter((l) => l.orgId === currentOrgId);
+  }, [state.locations, currentOrgId]);
+
+  const orgLivestockEntries = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.livestockEntries.filter((l) => l.orgId === currentOrgId);
+  }, [state.livestockEntries, currentOrgId]);
+
+  const orgLivestockEvents = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.livestockEvents.filter((e) => e.orgId === currentOrgId);
+  }, [state.livestockEvents, currentOrgId]);
+
+  const orgFeedLedger = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.feedLedger.filter((f) => f.orgId === currentOrgId);
+  }, [state.feedLedger, currentOrgId]);
+
+  const orgMembers = useMemo(() => {
+    if (!currentOrgId) return [];
+    return state.members.filter((m) => m.orgId === currentOrgId);
+  }, [state.members, currentOrgId]);
+
+  const orgDebtLiabilities = useMemo(() => {
+    if (!currentOrgId) return [];
+    return (state.debtLiabilities || []).filter((d) => d.orgId === currentOrgId);
+  }, [state.debtLiabilities, currentOrgId]);
+
+  const orgLoansGiven = useMemo(() => {
+    if (!currentOrgId) return [];
+    return (state.loansGiven || []).filter((l) => l.orgId === currentOrgId);
+  }, [state.loansGiven, currentOrgId]);
+
+  const orgCreditSales = useMemo(() => {
+    if (!currentOrgId) return [];
+    return (state.creditSales || []).filter((s) => s.orgId === currentOrgId);
+  }, [state.creditSales, currentOrgId]);
+
   const pendingUsersCount = useMemo(() => {
-    return state.members.filter(
+    return orgMembers.filter(
       (m) => m.approvalStatus === 'PENDING_APPROVAL' || (!m.approvalStatus && !m.active)
     ).length;
-  }, [state.members]);
+  }, [orgMembers]);
 
   const selectedLocationName = useMemo(() => {
-    if (selectedLocationId === 'ALL') return 'All Locations (Master Syndicate)';
+    if (selectedLocationId === 'ALL') return 'All Locations (Organization-Wide)';
     return (
-      state.locations.find((l) => l.id === selectedLocationId)?.name || 'Selected Site'
+      orgLocations.find((l) => l.id === selectedLocationId)?.name || 'Selected Site'
     );
-  }, [state.locations, selectedLocationId]);
+  }, [orgLocations, selectedLocationId]);
 
   // All Livestock Computed Statuses
   const allLivestockStatuses = useMemo(() => {
-    return state.livestockEntries.map((entry) =>
-      computeLivestockStatus(entry, state.livestockEvents, state.feedLedger)
+    return orgLivestockEntries.map((entry) =>
+      computeLivestockStatus(entry, orgLivestockEvents, orgFeedLedger)
     );
-  }, [state.livestockEntries, state.livestockEvents, state.feedLedger]);
+  }, [orgLivestockEntries, orgLivestockEvents, orgFeedLedger]);
 
   // Filtered by selectedLocationId
   const visibleLivestockStatuses = useMemo(() => {
@@ -450,66 +559,72 @@ export default function App() {
   }, [allLivestockStatuses, selectedLocationId]);
 
   const visibleExpenses = useMemo(() => {
-    if (selectedLocationId === 'ALL') return state.expenses;
-    return state.expenses.filter((e) => e.locationId === selectedLocationId);
-  }, [state.expenses, selectedLocationId]);
+    if (selectedLocationId === 'ALL') return orgExpenses;
+    return orgExpenses.filter((e) => e.locationId === selectedLocationId);
+  }, [orgExpenses, selectedLocationId]);
 
   const financials = useMemo(() => {
     return computeFinancialSummary({
-      capitalContributions: state.capitalContributions,
-      expenses: state.expenses,
-      fixedAssets: state.fixedAssets,
+      capitalContributions: orgCapitalContributions,
+      expenses: orgExpenses,
+      fixedAssets: orgFixedAssets,
       livestockStatuses: allLivestockStatuses,
-      livestockEvents: state.livestockEvents,
+      livestockEvents: orgLivestockEvents,
+      debtLiabilities: orgDebtLiabilities,
+      loansGiven: orgLoansGiven,
+      creditSales: orgCreditSales,
       filterLocationId: selectedLocationId,
     });
   }, [
-    state.capitalContributions,
-    state.expenses,
-    state.fixedAssets,
+    orgCapitalContributions,
+    orgExpenses,
+    orgFixedAssets,
     allLivestockStatuses,
-    state.livestockEvents,
+    orgLivestockEvents,
+    orgDebtLiabilities,
+    orgLoansGiven,
+    orgCreditSales,
     selectedLocationId,
   ]);
 
   const memberEquities = useMemo(() => {
     return computeMemberEquities(
-      state.members,
-      state.capitalContributions,
-      financials.totalSyndicateNav
+      orgMembers,
+      orgCapitalContributions,
+      financials.totalNav
     );
-  }, [state.members, state.capitalContributions, financials.totalSyndicateNav]);
+  }, [orgMembers, orgCapitalContributions, financials.totalNav]);
 
   const fixedAssetGroups = useMemo(() => {
     return computeFixedAssetGroups(
-      state.fixedAssets,
-      state.locations,
+      orgFixedAssets,
+      orgLocations,
       selectedLocationId
     );
-  }, [state.fixedAssets, state.locations, selectedLocationId]);
+  }, [orgFixedAssets, orgLocations, selectedLocationId]);
 
   const feedSummaries = useMemo(() => {
     return computeFeedInventories(
-      state.feedLedger,
-      state.locations,
+      orgFeedLedger,
+      orgLocations,
       selectedLocationId
     );
-  }, [state.feedLedger, state.locations, selectedLocationId]);
+  }, [orgFeedLedger, orgLocations, selectedLocationId]);
 
   const siteComparisons = useMemo(() => {
     return computeSiteComparisons({
-      locations: state.locations,
-      expenses: state.expenses,
-      fixedAssets: state.fixedAssets,
+      locations: orgLocations,
+      expenses: orgExpenses,
+      fixedAssets: orgFixedAssets,
       livestockStatuses: allLivestockStatuses,
-      livestockEvents: state.livestockEvents,
+      livestockEvents: orgLivestockEvents,
     });
   }, [
-    state.locations,
+    orgLocations,
     allLivestockStatuses,
-    state.expenses,
-    state.fixedAssets,
-    state.livestockEvents,
+    orgExpenses,
+    orgFixedAssets,
+    orgLivestockEvents,
   ]);
 
   const visibleNotifications = useMemo(() => {
@@ -581,10 +696,35 @@ export default function App() {
     );
   }
 
-  // GATE 2: Zero-Trust Clearance Check (Pending Approval or Suspended users stay in the lobby)
-  const effectiveApproval =
-    activeMember.approvalStatus || (activeMember.active ? 'APPROVED' : 'PENDING_APPROVAL');
-  if (effectiveApproval !== 'APPROVED') {
+  // GATE 2: Organization Onboarding Check
+  // If the authenticated user is not attached to any organization yet, present the onboarding modal (Create Org or Join with 24-hr Code)
+  if (!activeMember.orgId) {
+    return (
+      <>
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+        {previewSplash && (
+          <SplashScreen
+            isManualPreview
+            duration={5000}
+            onFinish={() => setPreviewSplash(false)}
+          />
+        )}
+        <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
+          <FarmTerrainBackground intensity={bgIntensity} />
+          <OrgOnboardingModal
+            activeMember={activeMember}
+            onOrganizationSelected={() => {
+              // State updates automatically via reactive dataService subscription
+            }}
+            onSignOut={handleSignOut}
+          />
+        </div>
+      </>
+    );
+  }
+
+  // GATE 3: Zero-Trust Clearance Check (Suspended users are blocked)
+  if (activeMember.approvalStatus === 'SUSPENDED' || !activeMember.active) {
     return (
       <>
         {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
@@ -608,18 +748,40 @@ export default function App() {
             }}
           />
         )}
-        <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
+        <div className={`min-h-screen relative flex items-center justify-center p-4 ${activeFontCss}`}>
           <FarmTerrainBackground intensity={bgIntensity} />
-          <PendingApprovalLobby
-            member={activeMember}
-            onSignOut={handleSignOut}
-          />
+          <div className="w-full max-w-md bg-white border border-[#E8DFCE] rounded-3xl p-6 sm:p-7 shadow-2xl text-slate-950 space-y-4 relative z-10 text-center animate-fade-in">
+            <div className="w-14 h-14 rounded-2xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 mx-auto">
+              <ShieldAlert className="w-8 h-8 text-rose-600" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-black text-slate-950">
+                Account Suspended
+              </h2>
+              <p className="text-xs text-slate-600 font-medium">
+                Your membership in <strong>{activeOrg?.name || 'the organization'}</strong> has been temporarily suspended by an administrator.
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-950 text-left font-medium leading-relaxed">
+              Access to organization ledgers, operational sites, and assets is restricted while suspended. Please contact your organization administrator or founder to restore active status.
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-black transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out of Account</span>
+              </button>
+            </div>
+          </div>
         </div>
       </>
     );
   }
 
-  // GATE 3: Approved & Active Syndicate Member Workspace
+  // GATE 4: Approved & Active Organization Member Workspace
   return (
     <>
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
@@ -654,7 +816,7 @@ export default function App() {
 
         {/* Top App Bar & Location Switcher (Persona Switcher Removed) */}
         <Header
-          locations={state.locations}
+          locations={orgLocations}
           selectedLocationId={selectedLocationId}
           onSelectLocation={setSelectedLocationId}
           activeMember={activeMember}
@@ -663,9 +825,9 @@ export default function App() {
           onOpenNotifications={() => setDrawerOpen(true)}
           onNavigateTab={handleNavigateTab}
           onSignOut={handleSignOut}
-          onAddLocation={(data) =>
-            dataService.addLocation({ ...data, actor: activeMember })
-          }
+          onOpenSiteManager={() => setShowSiteManagerModal(true)}
+          organizationName={activeOrg?.name}
+          workspaceMode={activeOrg?.type}
           mobileFrameMode={mobileFrameMode}
           onToggleMobileFrame={() => setMobileFrameMode(!mobileFrameMode)}
           isCloudConnected={Boolean(cloudUserEmail || activeSession.isCloudAuth)}
@@ -681,6 +843,23 @@ export default function App() {
           className={`flex-1 px-4 pt-4 pb-28 select-none-touch ${mobileFrameMode ? 'w-full' : 'max-w-6xl w-full mx-auto'
             }`}
         >
+          {/* Back to Overview Hub banner when navigating subpages from the Banking Hub */}
+          {activeTab !== 'HOME' && activeTab !== 'LIVESTOCK' && activeTab !== 'EXPENSES' && (
+            <div className="mb-4 flex items-center justify-between bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-2xl backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={() => handleNavigateTab('HOME')}
+                className="inline-flex items-center gap-2 text-xs font-bold text-amber-900 hover:text-amber-950 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>← Back to Overview Hub</span>
+              </button>
+              <span className="text-[11px] font-mono font-bold text-amber-800">
+                Hub Subpage · {activeTab}
+              </span>
+            </div>
+          )}
+
           {activeTab === 'HOME' && (
             <HomeTab
               financials={financials}
@@ -689,23 +868,34 @@ export default function App() {
               latestBroadcast={latestBroadcast}
               selectedLocationName={selectedLocationName}
               activeMember={activeMember}
-              locations={state.locations}
+              locations={orgLocations}
               onNavigateTab={handleNavigateTab}
               onSelectLocation={setSelectedLocationId}
               onPostBroadcast={(data) =>
                 dataService.postGroundBroadcast({ ...data, actor: activeMember })
               }
               showNumbers={showNumbers}
+              isAgroEnabled={isAgroEnabled}
+              debtLiabilities={orgDebtLiabilities}
+              loansGiven={orgLoansGiven}
+              creditSales={orgCreditSales}
+              livestockEntries={orgLivestockEntries}
+              pendingUsersCount={pendingUsersCount}
+              unreadBroadcastsCount={unreadCount}
+              totalMembersCount={orgMembers.length}
+              totalFixedAssetsCount={orgFixedAssets.length}
+              totalAuditCount={state.auditNotifications?.length || 0}
             />
           )}
 
-          {activeTab === 'LIVESTOCK' && (
+          {activeTab === 'LIVESTOCK' && isAgroEnabled && (
             <LivestockTab
               livestockStatuses={visibleLivestockStatuses}
-              locations={state.locations}
+              locations={orgLocations}
               selectedLocationId={selectedLocationId}
               activeMember={activeMember}
               memberEquities={memberEquities}
+              leftMoney={financials.leftMoney}
               onRegisterLivestock={(data) =>
                 dataService.registerLivestock({ ...data, actor: activeMember })
               }
@@ -738,7 +928,7 @@ export default function App() {
               expenses={visibleExpenses}
               feedSummaries={feedSummaries}
               financials={financials}
-              locations={state.locations}
+              locations={orgLocations}
               livestockStatuses={allLivestockStatuses}
               selectedLocationId={selectedLocationId}
               activeMember={activeMember}
@@ -778,8 +968,8 @@ export default function App() {
             <PoolEquityTab
               financials={financials}
               memberEquities={memberEquities}
-              capitalContributions={state.capitalContributions}
-              locations={state.locations}
+              capitalContributions={orgCapitalContributions}
+              locations={orgLocations}
               activeMember={activeMember}
               onAddMember={(data: {
                 fullName: string;
@@ -807,9 +997,10 @@ export default function App() {
           {activeTab === 'ASSETS' && (
             <AssetsTab
               assetGroups={fixedAssetGroups}
-              locations={state.locations}
+              locations={orgLocations}
               selectedLocationId={selectedLocationId}
               activeMember={activeMember}
+              leftMoney={financials.leftMoney}
               onLogAssetEvent={(data: {
                 assetGroupId?: string;
                 assetName: string;
@@ -846,10 +1037,22 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'BROADCASTS' && (
+            <BroadcastCenterTab
+              notifications={visibleNotifications}
+              locations={orgLocations}
+              activeMember={activeMember}
+              onPostBroadcast={(data) =>
+                dataService.postGroundBroadcast({ ...data, actor: activeMember })
+              }
+              showNumbers={showNumbers}
+            />
+          )}
+
           {activeTab === 'AUDIT' && (
             <AuditAlertsTab
               auditNotifications={visibleNotifications}
-              locations={state.locations}
+              locations={orgLocations}
               activeMember={activeMember}
               cloudUserEmail={cloudUserEmail}
               onPostBroadcast={(data) =>
@@ -864,11 +1067,12 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'USERS' && (
+          {activeTab === 'USERS' && PERMISSIONS.canManageMembers(activeMember.role) && (
             <UserManagementTab
-              members={state.members}
-              locations={state.locations}
+              members={orgMembers}
+              locations={orgLocations}
               activeMember={activeMember}
+              activeOrg={activeOrg}
               showNumbers={showNumbers}
             />
           )}
@@ -877,7 +1081,8 @@ export default function App() {
             <UserSettingsTab
               activeMember={activeMember}
               session={activeSession}
-              locations={state.locations}
+              locations={orgLocations}
+              activeOrg={activeOrg}
               activeFontId={activeFontId}
               onSelectFont={handleSelectFont}
               backgroundIntensity={bgIntensity}
@@ -890,13 +1095,15 @@ export default function App() {
           )}
         </main>
 
-        {/* Signature Solora Floating Navigation Bar */}
+        {/* Signature CapitaSeed Floating Navigation Bar */}
         <FloatingNavbar
           activeTab={activeTab}
           onNavigateTab={handleNavigateTab}
           mobileFrameMode={mobileFrameMode}
           activeRole={activeMember.role}
           pendingUsersCount={pendingUsersCount}
+          unreadBroadcastsCount={unreadCount}
+          isAgroEnabled={isAgroEnabled}
         />
 
         {/* Typography & Theme Studio Modal */}
@@ -915,7 +1122,7 @@ export default function App() {
           onClose={() => setDrawerOpen(false)}
           notifications={visibleNotifications}
           activeMember={activeMember}
-          locations={state.locations}
+          locations={orgLocations}
           onMarkAllRead={() => dataService.markAllNotificationsRead(activeMember.id)}
           onPostBroadcast={(data) =>
             dataService.postGroundBroadcast({ ...data, actor: activeMember })
@@ -939,6 +1146,30 @@ export default function App() {
             setPrivacyModalError(null);
           }}
         />
+
+        {/* Full CRUD Site Manager Modal */}
+        <SiteManagerModal
+          isOpen={showSiteManagerModal}
+          onClose={() => setShowSiteManagerModal(false)}
+          locations={orgLocations}
+          activeMember={activeMember}
+          onSiteSelected={(id) => setSelectedLocationId(id)}
+        />
+
+        {/* First-Login Fingerprint Biometric Prompt */}
+        {showFirstLoginBioPrompt && (
+          <FirstLoginBiometricPrompt
+            memberId={activeMember.id}
+            memberEmail={activeMember.email || activeMember.phoneOrEmail}
+            memberName={activeMember.fullName}
+            onDone={() => {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(`first_login_bio_prompt_seen_${activeMember.id}`, 'true');
+              }
+              setShowFirstLoginBioPrompt(false);
+            }}
+          />
+        )}
       </div>
     </>
   );

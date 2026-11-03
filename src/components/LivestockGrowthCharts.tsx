@@ -147,8 +147,8 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
             type="button"
             onClick={() => setChartMode('GROWTH')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'GROWTH'
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
           >
             Growth & Weight
@@ -157,8 +157,8 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
             type="button"
             onClick={() => setChartMode('FCR')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'FCR'
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
           >
             Feed Conversion (FCR)
@@ -167,8 +167,8 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
             type="button"
             onClick={() => setChartMode('HERD_BIOMASS')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${chartMode === 'HERD_BIOMASS'
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+              ? 'bg-amber-500 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white'
               }`}
           >
             Herd Biomass
@@ -190,8 +190,8 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                 type="button"
                 onClick={() => setSelectedBatchId(st.entry.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer border ${isSelected
-                    ? 'bg-emerald-50 text-emerald-900 border-emerald-500 shadow-xs'
-                    : 'bg-[#FAF8F5] text-slate-600 border-[#E8DFCE] hover:bg-white'
+                  ? 'bg-emerald-50 text-emerald-900 border-emerald-500 shadow-xs'
+                  : 'bg-[#FAF8F5] text-slate-600 border-[#E8DFCE] hover:bg-white'
                   }`}
               >
                 {st.entry.nameOrTag}
@@ -451,7 +451,7 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
         </div>
       )}
 
-      {/* MODE 3: HERD BIOMASS & SYNDICATE VALUATION */}
+      {/* MODE 3: HERD BIOMASS & PORTFOLIO VALUATION */}
       {chartMode === 'HERD_BIOMASS' && (
         <div className="space-y-3">
           <p className="text-xs text-slate-500">
@@ -556,16 +556,16 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                   }
                 }}
                 className={`p-3.5 rounded-2xl border flex flex-col justify-between gap-2.5 text-xs transition-all cursor-pointer hover:border-amber-400 hover:shadow-xs active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-amber-500 ${isCompleted
-                    ? 'bg-emerald-50/40 border-emerald-300/80'
-                    : 'bg-[#FAF8F5] border-[#E8DFCE]'
+                  ? 'bg-emerald-50/40 border-emerald-300/80'
+                  : 'bg-[#FAF8F5] border-[#E8DFCE]'
                   }`}
               >
                 <div>
                   <div className="flex items-start gap-2.5">
                     <div
                       className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center mt-0.5 ${isCompleted
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-amber-100 text-amber-800'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-amber-100 text-amber-800'
                         }`}
                     >
                       {isCompleted ? (
@@ -641,8 +641,8 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
                   className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center ${typeof selectedMilestonePoint.actualWeightKg === 'number'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-amber-100 text-amber-800'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-amber-100 text-amber-800'
                     }`}
                 >
                   {typeof selectedMilestonePoint.actualWeightKg === 'number' ? (
@@ -699,15 +699,14 @@ export const LivestockGrowthCharts: React.FC<LivestockGrowthChartsProps> = ({
                   Organisation Reminder & Dispatch
                 </span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
-                    selectedMilestonePoint.actualWeightKg != null
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${selectedMilestonePoint.actualWeightKg != null
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : selectedMilestonePoint.reminderStatus === 'DUE_TODAY'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                      : selectedMilestonePoint.reminderStatus === 'OVERDUE'
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      : 'bg-slate-800 text-slate-300'
-                  }`}
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+                        : selectedMilestonePoint.reminderStatus === 'OVERDUE'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          : 'bg-slate-800 text-slate-300'
+                    }`}
                 >
                   {selectedMilestonePoint.actualWeightKg != null
                     ? 'COMPLETED'

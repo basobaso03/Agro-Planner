@@ -24,7 +24,7 @@ import {
 } from './DeveloperBrandInfo.tsx';
 import { getEnrolledBiometricRecord } from '../utils/mobileHardware.ts';
 
-interface AuthGatePageProps {}
+interface AuthGatePageProps { }
 
 export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
@@ -141,10 +141,10 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
           </div>
           <div>
             <span className="text-lg font-extrabold tracking-tight text-slate-900 block leading-none">
-              Agro Planner
+              CapitaSeed
             </span>
             <span className="text-[11px] font-medium text-slate-500">
-              Syndicate Operations &amp; Livestock Portal
+              Operations &amp; Capital Platform
             </span>
           </div>
         </div>
@@ -161,11 +161,10 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 setMode('LOGIN');
                 setErrorMsg('');
               }}
-              className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${
-                mode === 'LOGIN'
+              className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${mode === 'LOGIN'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               Sign In
             </button>
@@ -175,11 +174,10 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 setMode('REGISTER');
                 setErrorMsg('');
               }}
-              className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${
-                mode === 'REGISTER'
+              className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${mode === 'REGISTER'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
-              }`}
+                }`}
             >
               Register Account
             </button>
@@ -188,8 +186,8 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
           <div className="mb-5">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900">
               {mode === 'LOGIN'
-                ? 'Welcome Back to Agro Planner'
-                : 'Create Your Syndicate Account'}
+                ? 'Welcome Back to CapitaSeed'
+                : 'Create Your CapitaSeed Account'}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
               {mode === 'LOGIN'
@@ -311,7 +309,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                       htmlFor="auth-title"
                       className="block text-xs font-semibold text-slate-700 mb-1"
                     >
-                      Syndicate Position / Note
+                      Member Position / Note
                     </label>
                     <div className="relative flex items-center">
                       <Briefcase className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -388,13 +386,12 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                     {[1, 2, 3, 4].map((step) => (
                       <div
                         key={step}
-                        className={`rounded-full transition-colors ${
-                          passwordStrength.score >= step
+                        className={`rounded-full transition-colors ${passwordStrength.score >= step
                             ? passwordStrength.score >= 3
                               ? 'bg-emerald-500'
                               : 'bg-amber-500'
                             : 'bg-[#E8DFCE]'
-                        }`}
+                          }`}
                       />
                     ))}
                   </div>
@@ -434,8 +431,8 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 {loading
                   ? 'Verifying Credentials...'
                   : mode === 'LOGIN'
-                  ? 'Sign In to Syndicate Portal'
-                  : 'Create Verified Account'}
+                    ? 'Sign In to CapitaSeed Portal'
+                    : 'Create Verified Account'}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>

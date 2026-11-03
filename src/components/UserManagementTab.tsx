@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Users,
   ShieldCheck,
-  UserPlus,
   CheckCircle2,
   Clock,
   Ban,
@@ -12,20 +11,24 @@ import {
   KeyRound,
   Loader2,
   X,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type {
   FarmLocation,
   MemberApprovalStatus,
   Role,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
+import type { Organization } from '../types/organization.ts';
 import { dataService, PRIMARY_ADMIN_EMAIL } from '../services/dataService.ts';
 import { PERMISSIONS, getRoleMeta } from '../utils/permissions.ts';
 
 interface UserManagementTabProps {
-  members: SyndicateMember[];
+  members: OrgMember[];
   locations: FarmLocation[];
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
+  activeOrg?: Organization | null;
   showNumbers?: boolean;
 }
 
@@ -33,32 +36,28 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   members,
   locations,
   activeMember,
+  activeOrg,
   showNumbers = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | Role | 'PENDING'>('ALL');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const org = activeOrg || dataService.getActiveOrganization(activeMember.orgId);
 
   // Pending User Approval Draft State (memberId -> { role, siteId })
   const [pendingDrafts, setPendingDrafts] = useState<
     Record<string, { role: Role; assignedLocationId: string }>
   >({});
 
-  // Pre-Invite / Add Member Modal State
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteName, setInviteName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<Role>('REMOTE_INVESTOR');
-  const [inviteSiteId, setInviteSiteId] = useState<string>('ALL');
-  const [inviteContribution, setInviteContribution] = useState('');
-
   // Wipe Demo Data / Reset Ledger Confirmation Modal
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [wipeLoading, setWipeLoading] = useState(false);
 
   // Permanent Member Deletion Modal State
-  const [memberToDelete, setMemberToDelete] = useState<SyndicateMember | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<OrgMember | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
@@ -66,6 +65,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   const isPrimaryFounder =
     (activeMember.email || activeMember.phoneOrEmail || '').trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
   const canManage = PERMISSIONS.canManageMembers(activeMember.role);
+  const isAuthorizedAdmin = isPrimaryFounder || canManage;
 
   if (!canManage) {
     return (
@@ -87,7 +87,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
     (m) => m.role === 'GROUND_OPERATOR' && m.active
   ).length;
   const privilegedSignersCount = members.filter(
-    (m) => (m.role === 'SYNDICATE_ADMIN' || m.role === 'TREASURER') && m.active
+    (m) => (m.role === 'ORG_ADMIN' || m.role === 'TREASURER') && m.active
   ).length;
 
   const filteredMembers = members.filter((m) => {
@@ -108,7 +108,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
   });
 
   const handleRoleOrSiteChange = async (
-    target: SyndicateMember,
+    target: OrgMember,
     newRole: Role,
     newStatus: MemberApprovalStatus,
     newSiteId?: string,
@@ -133,33 +133,6 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
       setErrorMsg(err instanceof Error ? err.message : 'Could not update member access on Cloud Firestore.');
     } finally {
       setUpdatingMemberId(null);
-    }
-  };
-
-  const handlePreInviteSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setStatusMessage('');
-    try {
-      const cap = inviteContribution ? Number(inviteContribution) : 0;
-      const created = dataService.addMember({
-        fullName: inviteName,
-        phoneOrEmail: inviteEmail,
-        role: inviteRole,
-        assignedLocationId: inviteSiteId === 'ALL' ? undefined : inviteSiteId,
-        initialContributionUsd: cap > 0 ? cap : undefined,
-        contributionNote: cap > 0 ? `Initial capital deposit upon Admin pre-authorization` : undefined,
-        actor: activeMember,
-      });
-      setInviteName('');
-      setInviteEmail('');
-      setInviteContribution('');
-      setShowInviteModal(false);
-      setStatusMessage(
-        `Pre-authorized ${created.fullName} (${created.phoneOrEmail}) as ${getRoleMeta(created.role).label}. When they sign in, their role is automatically active.`
-      );
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Could not pre-authorize member.');
     }
   };
 
@@ -234,15 +207,23 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
             </button>
           )}
 
-          {isPrimaryFounder ? (
-            <button
-              type="button"
-              onClick={() => setShowInviteModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              + Pre-Authorize Member
-            </button>
+          {isAuthorizedAdmin ? (
+            <div className="flex items-center gap-2 p-1.5 px-3 rounded-xl bg-amber-50 border border-amber-300">
+              <span className="text-[10px] uppercase font-black text-amber-800">Invite Code:</span>
+              <span className="font-mono font-black text-xs text-amber-950">{org.currentInviteCode}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(org.currentInviteCode);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2500);
+                }}
+                className="p-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
           ) : (
             <div className="px-3.5 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold flex items-center gap-1.5 select-none">
               <ShieldCheck className="w-4 h-4 text-slate-500" />
@@ -251,15 +232,6 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
           )}
         </div>
       </section>
-
-      {!isPrimaryFounder && (
-        <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2.5 shadow-2xs">
-          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-          <span>
-            <strong>Primary Founder Governance:</strong> Member creation, role changes, clearance approvals, suspensions, and account deletions are strictly restricted to the Primary Founder ({PRIMARY_ADMIN_EMAIL}).
-          </span>
-        </div>
-      )}
 
       {statusMessage && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between gap-3">
@@ -335,7 +307,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                 <span>Pending Security Clearance Queue ({!showNumbers ? '••' : pendingMembers.length})</span>
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Assign an initial system role and farm site to grant these newly registered accounts access to the syndicate portal.
+                Assign an initial system role and farm site to grant these newly registered accounts access to the organization portal.
               </p>
             </div>
           </div>
@@ -390,10 +362,10 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                       }
                       className="bg-white border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500"
                     >
-                      <option value="REMOTE_INVESTOR">Remote Investor</option>
+                      <option value="REMOTE_INVESTOR">Member</option>
                       <option value="GROUND_OPERATOR">Ground Operator</option>
-                      <option value="TREASURER">Syndicate Treasurer</option>
-                      <option value="SYNDICATE_ADMIN">Syndicate Admin</option>
+                      <option value="TREASURER">Treasurer</option>
+                      <option value="ORG_ADMIN">Organization Admin</option>
                     </select>
 
                     <select
@@ -426,7 +398,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                           draft.role,
                           'APPROVED',
                           draft.assignedLocationId,
-                          'Initial registration approved by Syndicate Admin'
+                          'Initial registration approved by Organization Admin'
                         )
                       }
                       className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
@@ -464,10 +436,10 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Users className="w-4 h-4 text-amber-600" />
-              <span>Syndicate User Directory &amp; Role Switcher</span>
+              <span>Member Directory &amp; Role Management</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Easily switch any member between Syndicate Admin, Treasurer, Remote Investor, or Ground Operator roles, or update their farm site assignment in real time.
+              Easily manage roles (Organization Admin, Treasurer, Member, Ground Operator) and site assignments in real time.
             </p>
           </div>
 
@@ -492,9 +464,9 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
             >
               <option value="ALL">All Roles ({members.length})</option>
               <option value="PENDING">Pending Approval ({pendingMembers.length})</option>
-              <option value="SYNDICATE_ADMIN">Syndicate Admins</option>
+              <option value="ORG_ADMIN">Organization Admins</option>
               <option value="TREASURER">Treasurers</option>
-              <option value="REMOTE_INVESTOR">Remote Investors</option>
+              <option value="REMOTE_INVESTOR">Members</option>
               <option value="GROUND_OPERATOR">Ground Operators</option>
             </select>
           </div>
@@ -556,7 +528,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                     <td className="py-3.5 px-3">
                       <select
                         aria-label={`Change role for ${mem.fullName}`}
-                        disabled={isFounder || !isPrimaryFounder}
+                        disabled={isFounder || !isAuthorizedAdmin}
                         value={mem.role}
                         onChange={(e) =>
                           handleRoleOrSiteChange(
@@ -564,14 +536,14 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                             e.target.value as Role,
                             currentStatus,
                             mem.assignedLocationId || 'ALL',
-                            `Role switched from ${getRoleMeta(mem.role).label} to ${getRoleMeta(e.target.value as Role).label}`
+                            `Role switched to ${getRoleMeta(e.target.value as Role).label}`
                           )
                         }
                         className="bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:border-amber-500 disabled:opacity-70 cursor-pointer"
                       >
-                        <option value="SYNDICATE_ADMIN">Syndicate Admin</option>
-                        <option value="TREASURER">Syndicate Treasurer</option>
-                        <option value="REMOTE_INVESTOR">Remote Investor</option>
+                        <option value="ORG_ADMIN">Organization Admin</option>
+                        <option value="TREASURER">Treasurer</option>
+                        <option value="REMOTE_INVESTOR">Member</option>
                         <option value="GROUND_OPERATOR">Ground Operator</option>
                       </select>
                     </td>
@@ -579,7 +551,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                     <td className="py-3.5 px-3">
                       <select
                         aria-label={`Assign site for ${mem.fullName}`}
-                        disabled={!isPrimaryFounder}
+                        disabled={!isAuthorizedAdmin}
                         value={mem.assignedLocationId || 'ALL'}
                         onChange={(e) =>
                           handleRoleOrSiteChange(
@@ -616,7 +588,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                         <span className="text-[11px] font-mono text-slate-400">
                           Primary Founder
                         </span>
-                      ) : !isPrimaryFounder ? (
+                      ) : !isAuthorizedAdmin ? (
                         <span className="text-[11px] font-mono text-slate-400">
                           View Only
                         </span>
@@ -691,126 +663,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
         </div>
       </section>
 
-      {/* Modal 1: Pre-Authorize / Invite New Member */}
-      {showInviteModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="modal-overlay-responsive"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <h2 className="text-base font-bold text-slate-900">
-                Pre-Authorize Syndicate Member
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowInviteModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handlePreInviteSubmit} className="modal-body-scroll mt-4 space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Full Legal Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Farai Moyo"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address or Phone *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="farai@domain.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm text-slate-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Assigned Role *
-                  </label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as Role)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-bold text-slate-900"
-                  >
-                    <option value="REMOTE_INVESTOR">Remote Investor</option>
-                    <option value="GROUND_OPERATOR">Ground Operator</option>
-                    <option value="TREASURER">Treasurer</option>
-                    <option value="SYNDICATE_ADMIN">Syndicate Admin</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Assigned Farm Site
-                  </label>
-                  <select
-                    value={inviteSiteId}
-                    onChange={(e) => setInviteSiteId(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs font-medium text-slate-900"
-                  >
-                    <option value="ALL">All Sites</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Optional Initial Capital Contribution (USD)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={inviteContribution}
-                  onChange={(e) => setInviteContribution(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm font-mono text-slate-900"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowInviteModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold"
-                >
-                  Pre-Authorize Member
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {showWipeModal && (
         <div
@@ -902,9 +755,9 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                 <p>
                   You are about to permanently delete <strong>{memberToDelete.fullName}</strong> ({memberToDelete.email || memberToDelete.phoneOrEmail}) from local storage and the Google Firestore Cloud database.
                 </p>
-                {memberToDelete.role === 'SYNDICATE_ADMIN' && (
+                {memberToDelete.role === 'ORG_ADMIN' && (
                   <p className="font-semibold text-rose-700">
-                    Notice: This account has <strong>Syndicate Admin</strong> privileges. Deleting will permanently revoke all administrative access.
+                    Notice: This account has <strong>Organization Admin</strong> privileges. Deleting will permanently revoke all administrative access.
                   </p>
                 )}
               </div>
@@ -917,7 +770,7 @@ export const UserManagementTab: React.FC<UserManagementTabProps> = ({
                   type="text"
                   value={deleteReason}
                   onChange={(e) => setDeleteReason(e.target.value)}
-                  placeholder="e.g. Member left syndicate / Contract ended"
+                  placeholder="e.g. Member left organization / Contract ended"
                   className="w-full px-3 py-2 text-xs rounded-xl border border-[#E0D7C6] bg-white focus:outline-none focus:border-rose-500"
                 />
               </div>

@@ -11,7 +11,7 @@ import type {
   LivestockLifecycleEvent,
   NotificationSeverity,
   Role,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
 import {
   computeAuditEventHash,
@@ -79,6 +79,9 @@ export function createEmptyProductionSnapshot(): AgroStateSnapshot {
     livestockEvents: [],
     feedLedger: [],
     auditNotifications: [],
+    debtLiabilities: [],
+    loansGiven: [],
+    creditSales: [],
   };
 }
 
@@ -118,13 +121,13 @@ export function createInitialSeedSnapshot(referenceNow: Date = new Date()): Agro
     },
   ];
 
-  // 2. 4 Syndicate Members (Total Pool: $5,000)
-  const members: SyndicateMember[] = [
+  // 2. 4 Organization Members (Total Pool: $5,000)
+  const members: OrgMember[] = [
     {
       id: 'mem-chipo',
       fullName: 'Chipo K.',
-      phoneOrEmail: 'chipo.k@agrosyndicate.co.zw',
-      role: 'SYNDICATE_ADMIN',
+      phoneOrEmail: 'chipo.k@capitaseed.co.zw',
+      role: 'ORG_ADMIN',
       joinedAt: daysAgoIso(180),
       active: true,
     },
@@ -140,7 +143,7 @@ export function createInitialSeedSnapshot(referenceNow: Date = new Date()): Agro
     {
       id: 'mem-kudzi',
       fullName: 'Kudzi N.',
-      phoneOrEmail: 'kudzi.treasury@agrosyndicate.co.zw',
+      phoneOrEmail: 'kudzi.treasury@capitaseed.co.zw',
       role: 'TREASURER',
       joinedAt: daysAgoIso(179),
       active: true,
@@ -164,7 +167,7 @@ export function createInitialSeedSnapshot(referenceNow: Date = new Date()): Agro
       memberName: 'Chipo K.',
       direction: 'INITIAL',
       amount: 2000,
-      note: 'Initial syndicate seed tranche via Stanbic USD Nostro transfer',
+      note: 'Initial organization seed tranche via Stanbic USD Nostro transfer',
       createdAt: daysAgoIso(178, 1),
       createdByMemberId: 'mem-chipo',
     },
@@ -763,12 +766,12 @@ export function createInitialSeedSnapshot(referenceNow: Date = new Date()): Agro
         timestamp: daysAgoIso(178, 1),
         actorId: 'mem-chipo',
         actorName: 'Chipo K.',
-        actorRole: 'SYNDICATE_ADMIN',
+        actorRole: 'ORG_ADMIN',
         locationId: 'ALL',
-        locationName: 'All Locations (Master Syndicate)',
+        locationName: 'All Locations (Master Organization)',
         eventType: 'CAPITAL_CONTRIBUTION',
         severity: 'FINANCIAL',
-        title: 'Syndicate Pool Initialized ($5,000.00)',
+        title: 'Organization Pool Initialized ($5,000.00)',
         message:
           '4 members contributed $5,000.00 total seed capital: Chipo K. ($2,000 / 40%), Tendai M. ($1,200 / 24%), Kudzi N. ($1,000 / 20%), Tafadzwa R. ($800 / 16%).',
         deltaFinancial: 5000,

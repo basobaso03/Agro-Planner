@@ -65,7 +65,9 @@ export async function compressImage(
 
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (typeof dataUrl === 'string' && (dataUrl.startsWith('http://') || dataUrl.startsWith('https://'))) {
+      img.crossOrigin = 'anonymous';
+    }
 
     img.onload = () => {
       try {

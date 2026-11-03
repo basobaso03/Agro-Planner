@@ -22,7 +22,7 @@ test('Universal Duration Conversion converts DAYS, WEEKS, MONTHS, YEARS accurate
   assert.equal(convertToDays(2, 'YEARS'), 730.5);
 });
 
-test('Seeded Syndicate Pool & Member Equity Shares sum to $5,000 and 100%', () => {
+test('Seeded Organization Pool & Member Equity Shares sum to $5,000 and 100%', () => {
   const seed = createInitialSeedSnapshot(new Date('2026-10-17T12:00:00Z'));
   const livestockStatuses = seed.livestockEntries.map((entry) =>
     computeLivestockStatus(entry, seed.livestockEvents, seed.feedLedger, '2026-10-17T12:00:00Z')
@@ -35,7 +35,7 @@ test('Seeded Syndicate Pool & Member Equity Shares sum to $5,000 and 100%', () =
     livestockEvents: seed.livestockEvents,
   });
 
-  assert.equal(financials.totalSyndicatePool, 5000);
+  assert.equal(financials.totalPool, 5000);
   // Approved expenses: 850 + 320 + 270 + 640 + 45 + 450 - 300 (contra) + 140 = 2415
   assert.equal(financials.approvedExpenses, 2415);
   // Pending multi-sig expense: 280
@@ -48,7 +48,7 @@ test('Seeded Syndicate Pool & Member Equity Shares sum to $5,000 and 100%', () =
   const equities = computeMemberEquities(
     seed.members,
     seed.capitalContributions,
-    financials.totalSyndicateNav
+    financials.totalNav
   );
 
   const chipo = equities.find((e) => e.member.id === 'mem-chipo')!;
@@ -271,3 +271,65 @@ test('Move-in Date & strict days left accurately calculates animal age and count
   assert.equal(loggedDay7.completed, true);
   assert.equal(loggedDay7.reminderStatus, 'COMPLETED');
 });
+
+test('Member Target Capital Contribution: calculates progress percentage, remaining balance, and goal met status', () => {
+  const memberA: any = {
+    id: 'mem-progress-a',
+    fullName: 'Investor Alice',
+    phoneOrEmail: 'alice@test.com',
+    role: 'MEMBER',
+    targetContributionUsd: 1000,
+    contributionPace: 'MONTHLY',
+    active: true,
+    joinedAt: '2026-10-01T00:00:00Z',
+  };
+
+  const memberB: any = {
+    id: 'mem-progress-b',
+    fullName: 'Investor Bob',
+    phoneOrEmail: 'bob@test.com',
+    role: 'MEMBER',
+    targetContributionUsd: 1500,
+    contributionPace: 'MILESTONE',
+    active: true,
+    joinedAt: '2026-10-01T00:00:00Z',
+  };
+
+  const contributions: any[] = [
+    // Alice deposited $600 of $1,000 target -> 60% progress, $400 remaining
+    {
+      id: 'c-1',
+      memberId: 'mem-progress-a',
+      amount: 600,
+      direction: 'INITIAL',
+      createdAt: '2026-10-01T00:00:00Z',
+    },
+    // Bob deposited $1,500 of $1,500 target -> 100% progress, $0 remaining, goal met
+    {
+      id: 'c-2',
+      memberId: 'mem-progress-b',
+      amount: 1500,
+      direction: 'INITIAL',
+      createdAt: '2026-10-01T00:00:00Z',
+    },
+  ];
+
+  const equities = computeMemberEquities([memberA, memberB], contributions, 2100);
+
+  const alice = equities.find((e) => e.member.id === 'mem-progress-a')!;
+  assert.equal(alice.netContribution, 600);
+  assert.equal(alice.targetContributionUsd, 1000);
+  assert.equal(alice.progressPercentage, 60);
+  assert.equal(alice.remainingToTargetUsd, 400);
+  assert.equal(alice.isGoalMet, false);
+  assert.equal(alice.contributionPace, 'MONTHLY');
+
+  const bob = equities.find((e) => e.member.id === 'mem-progress-b')!;
+  assert.equal(bob.netContribution, 1500);
+  assert.equal(bob.targetContributionUsd, 1500);
+  assert.equal(bob.progressPercentage, 100);
+  assert.equal(bob.remainingToTargetUsd, 0);
+  assert.equal(bob.isGoalMet, true);
+  assert.equal(bob.contributionPace, 'MILESTONE');
+});
+

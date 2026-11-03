@@ -4,14 +4,14 @@ import type {
   AuditNotificationEvent,
   FarmLocation,
   NotificationSeverity,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
 
 interface NotificationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   notifications: AuditNotificationEvent[];
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
   locations: FarmLocation[];
   onMarkAllRead: () => void;
   onPostBroadcast: (data: {
@@ -78,7 +78,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               <h2 id="drawer-notifications-title" className="text-sm font-bold text-slate-900 tracking-tight truncate">
                 Ground Stream & Notifications
               </h2>
-              <p className="text-[11px] text-slate-500">Live Syndicate Activity Log</p>
+              <p className="text-[11px] text-slate-500">Live Organization Activity Log</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">

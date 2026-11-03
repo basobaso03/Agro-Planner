@@ -13,13 +13,13 @@ import {
   MessageCircle,
   RefreshCw,
 } from 'lucide-react';
-import type { SyndicateMember } from '../types/agro.ts';
+import type { OrgMember } from '../types/agro.ts';
 import { dataService } from '../services/dataService.ts';
 import { LogoSvg } from './BrandLogos.tsx';
 import { DEVELOPER_INFO } from './DeveloperBrandInfo.tsx';
 
 interface PendingApprovalLobbyProps {
-  member: SyndicateMember;
+  member: OrgMember;
   onSignOut: () => void;
 }
 
@@ -31,7 +31,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
 
   // WhatsApp pre-filled notification to Admin
   const whatsappMsg = encodeURIComponent(
-    `Hello Admin, I have registered on Agro Planner.\n\nName: ${member.fullName}\nEmail: ${member.email || member.phoneOrEmail}\nPhone: ${member.phone || 'N/A'}\n\nPlease approve my account so I can access the farm platform.`
+    `Hello Admin, I have registered on CapitaSeed.\n\nName: ${member.fullName}\nEmail: ${member.email || member.phoneOrEmail}\nPhone: ${member.phone || 'N/A'}\n\nPlease approve my account so I can access the operations platform.`
   );
   const whatsappUrl = `https://wa.me/${DEVELOPER_INFO.whatsappIntl}?text=${whatsappMsg}`;
 
@@ -149,7 +149,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
           <div className="w-9 h-9 rounded-xl bg-white border border-[#E0D7C6] flex items-center justify-center">
             <LogoSvg size={34} />
           </div>
-          <span className="text-base font-bold text-slate-900">Agro Planner</span>
+          <span className="text-base font-bold text-slate-900">CapitaSeed</span>
         </div>
 
         <button
@@ -218,10 +218,10 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
               {statusFeedback && (
                 <div
                   className={`p-3 rounded-2xl text-xs font-medium border flex items-center gap-2 transition-all ${statusFeedback.type === 'APPROVED'
-                      ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                      : statusFeedback.type === 'ERROR'
-                        ? 'bg-rose-50 text-rose-900 border-rose-300'
-                        : 'bg-amber-50/80 text-amber-900 border-amber-200'
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : statusFeedback.type === 'ERROR'
+                      ? 'bg-rose-50 text-rose-900 border-rose-300'
+                      : 'bg-amber-50/80 text-amber-900 border-amber-200'
                     }`}
                 >
                   {statusFeedback.type === 'APPROVED' ? (
@@ -266,7 +266,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
           >
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                1. Complete Your Syndicate Profile Details
+                1. Complete Your Member Profile Details
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Verify your contact information and position note so the Admin can assign you to the right role and farm site.
@@ -345,7 +345,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Bio / Note for Syndicate Admin
+                  Bio / Note for Organization Admin
                 </label>
                 <textarea
                   rows={2}

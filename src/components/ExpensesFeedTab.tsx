@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Plus,
   RotateCcw,
@@ -29,7 +29,7 @@ import type {
   FeedLedgerEvent,
   FinancialSummary,
   LivestockComputedStatus,
-  SyndicateMember,
+  OrgMember,
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
@@ -41,7 +41,7 @@ interface ExpensesFeedTabProps {
   locations: FarmLocation[];
   livestockStatuses: LivestockComputedStatus[];
   selectedLocationId: string;
-  activeMember: SyndicateMember;
+  activeMember: OrgMember;
   onLogExpense: (data: {
     locationId: string;
     batchOrAnimalId?: string;
@@ -95,6 +95,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
   const [subTab, setSubTab] = useState<'LEDGER' | 'MULTISIG' | 'FEED'>('LEDGER');
 
   // Log New Expense Modal State
+  const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expLocationId, setExpLocationId] = useState(
     selectedLocationId !== 'ALL'
@@ -356,7 +357,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
 
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono font-bold text-slate-700 bg-[#FAF8F5] border border-[#E8DFCE] px-3 py-1 rounded-xl">
-              ROI Factor: <strong className="text-emerald-700">{!showNumbers ? '••••' : `${(financials.totalSyndicateNav / Math.max(1, financials.totalSyndicatePool)).toFixed(2)}x NAV`}</strong>
+              ROI Factor: <strong className="text-emerald-700">{!showNumbers ? '••••' : `${(financials.totalNav / Math.max(1, financials.totalPool)).toFixed(2)}x NAV`}</strong>
             </span>
           </div>
         </div>
@@ -420,7 +421,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
             </span>
             <span className="flex items-center gap-1 text-emerald-800">
               <span className="w-2.5 h-1 rounded-full bg-emerald-500" />
-              Projected NAV Harvest ({!showNumbers ? '••••••••' : `$${financials.totalSyndicateNav.toFixed(0)}`})
+              Projected NAV Harvest ({!showNumbers ? '••••••••' : `$${financials.totalNav.toFixed(0)}`})
             </span>
           </div>
         </div>
@@ -433,7 +434,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
               Capital Payback & Liquidity Recovery
             </span>
             <span className="text-slate-900 font-mono font-bold">
-              {!showNumbers ? '••%' : `${Math.min(100, Math.round((financials.leftMoney / Math.max(1, financials.totalSyndicatePool)) * 100))}%`} Unspent Reserve
+              {!showNumbers ? '••%' : `${Math.min(100, Math.round((financials.leftMoney / Math.max(1, financials.totalPool)) * 100))}%`} Unspent Reserve
             </span>
           </div>
 
@@ -441,14 +442,14 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
             <div
               className="h-full rounded-full bg-gradient-to-r from-amber-500 via-amber-400 to-emerald-500 transition-all duration-500 shadow-xs"
               style={{
-                width: `${Math.min(100, Math.round((financials.leftMoney / Math.max(1, financials.totalSyndicatePool)) * 100))}%`,
+                width: `${Math.min(100, Math.round((financials.leftMoney / Math.max(1, financials.totalPool)) * 100))}%`,
               }}
             />
           </div>
 
           <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-0.5">
             <span>{!showNumbers ? '••••' : '$0 Deployed'}</span>
-            <span className="text-emerald-700 font-bold">Target Harvest Return: {!showNumbers ? '••••••••' : `$${(financials.totalSyndicatePool * 1.35).toFixed(0)}`}</span>
+            <span className="text-emerald-700 font-bold">Target Harvest Return: {!showNumbers ? '••••••••' : `$${(financials.totalPool * 1.35).toFixed(0)}`}</span>
           </div>
         </div>
 
@@ -618,7 +619,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       {subTab === 'MULTISIG' && (
         <div className="space-y-3">
           <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-900 leading-relaxed font-medium">
-            <strong>Maker-Checker Governance Rule:</strong> Expenses &le; $150 deduct immediately from Left Money. Expenses &gt; $150 require single-tap approval by a Treasurer or Syndicate Admin.
+            <strong>Maker-Checker Governance Rule:</strong> Expenses &le; $150 deduct immediately from Left Money. Expenses &gt; $150 require single-tap approval by a Treasurer or Organization Admin.
           </div>
 
           {pendingExpenses.length === 0 ? (
@@ -1066,17 +1067,27 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#E0D7C6] hover:border-amber-500 bg-[#FAF8F5] hover:bg-[#F0EBE1] text-xs font-semibold text-slate-700 cursor-pointer transition-all">
-                    <Camera className="w-4 h-4 text-amber-600" />
-                    <span>{isCompressingReceipt ? 'Compressing receipt...' : 'Attach Receipt Photo (Camera / File)'}</span>
+                  <div>
                     <input
+                      ref={receiptFileInputRef}
                       type="file"
                       accept="image/*"
+                      style={{ display: 'none' }}
                       disabled={isCompressingReceipt}
-                      onChange={(e) => handleReceiptUpload(e.target.files?.[0])}
-                      className="hidden"
+                      onChange={(e) => {
+                        handleReceiptUpload(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
                     />
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => receiptFileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#E0D7C6] hover:border-amber-500 bg-[#FAF8F5] hover:bg-[#F0EBE1] text-xs font-semibold text-slate-700 cursor-pointer transition-all"
+                    >
+                      <Camera className="w-4 h-4 text-amber-600" />
+                      <span>{isCompressingReceipt ? 'Compressing receipt...' : 'Attach Receipt Photo (Single Tap)'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 

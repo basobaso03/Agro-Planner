@@ -1,6 +1,8 @@
 {
-  "name": "Agro Planner",
-  "description": "Multi-Location Livestock & Syndicate ERP Mobile Application with an immutable append-only cryptographic ledger, real-time livestock lifecycle countdowns, and automated equity profit-sharing.",
+  "name": "CapitaSeed",
+  "description": "Multi-Tenant Enterprise Operations & Capital Platform with an immutable append-only cryptographic ledger, biometric security, and flexible lifecycle tracking.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
