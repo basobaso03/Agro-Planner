@@ -38,7 +38,8 @@ export function computeLineCost(line: RunwayLine): number {
 
 export function computePlanTotals(
   plan: Pick<RunwayPlan, 'contingencyMode' | 'contingencyPercent' | 'contingencyFixedAmount'>,
-  lines: RunwayLine[]
+  lines: RunwayLine[],
+  livestockExpectedRevenue: number = 0
 ): RunwayPlanTotals {
   let costTotal = 0;
   let eligibleForContingency = 0;
@@ -59,6 +60,10 @@ export function computePlanTotals(
         eligibleForContingency = round2(eligibleForContingency + lineCost);
       }
     }
+  }
+
+  if (livestockExpectedRevenue > 0) {
+    expectedIncome = round2(expectedIncome + livestockExpectedRevenue);
   }
 
   let contingencyReserve = 0;

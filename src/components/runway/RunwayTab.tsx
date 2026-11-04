@@ -10,6 +10,7 @@ import {
   Users,
   Receipt,
   TrendingDown,
+  TrendingUp,
   Calendar,
   FileText,
   AlertCircle,
@@ -33,6 +34,8 @@ import { PayInPanel } from './PayInPanel';
 import { SpendPanel } from './SpendPanel';
 import { TimelineChart } from './TimelineChart';
 import { RunwayReport } from './RunwayReport';
+import { RunwayRevenuePanel } from './RunwayRevenuePanel';
+import { RegisterBatchSheet } from '../../sheets/livestock/RegisterBatchSheet.tsx';
 import { RunwayWizard } from './RunwayWizard';
 import { AmendmentSheet } from './AmendmentSheet';
 import { SpendGateDialog } from './SpendGateDialog';
@@ -41,7 +44,7 @@ import { MoneyFlowLayer } from './MoneyFlowLayer';
 interface RunwayTabProps {
   currentMember: OrgMember;
   locations?: FarmLocation[];
-  initialSubTab?: 'PLAN' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT';
+  initialSubTab?: 'PLAN' | 'REVENUE' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT';
   onOpenExpenseModal?: () => void;
 }
 
@@ -64,6 +67,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
     pledges,
     claims,
     fundingLayers,
+    totals,
     runwayMonths,
     isFullyFunded,
     isFullyPledged,
@@ -71,13 +75,14 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   } = useRunway(selectedPlanId || undefined, orgId);
 
   const [activeSubTab, setActiveSubTab] = useState<
-    'PLAN' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT'
+    'PLAN' | 'REVENUE' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT'
   >(initialSubTab);
 
   // Modals
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [isAmendmentOpen, setIsAmendmentOpen] = useState<boolean>(false);
   const [showCelebration, setShowCelebration] = useState<boolean>(false);
+  const [showRegisterBatchModal, setShowRegisterBatchModal] = useState<boolean>(false);
 
   // Set selected plan on initial load or plan change
   useEffect(() => {
@@ -196,6 +201,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
 
   const subTabs = [
     { id: 'PLAN', label: 'Budget Plan', icon: Layers },
+    { id: 'REVENUE', label: 'Expected Revenue', icon: TrendingUp },
     { id: 'PLEDGES', label: 'Pledges', icon: Users, badge: planPledges.length },
     { id: 'PAYIN', label: 'Pay-in', icon: Receipt },
     { id: 'SPEND', label: 'Execution', icon: TrendingDown },
@@ -367,6 +373,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
                 })
               }
               onLockPlan={handleLockPlan}
+              onNavigateToRevenue={() => setActiveSubTab('REVENUE')}
               onSaveAsTemplate={(name) =>
                 dataService.saveRunwayTemplate({
                   name,
@@ -378,6 +385,25 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
                   actor: currentMember,
                 })
               }
+            />
+          )}
+
+          {activeSubTab === 'REVENUE' && (
+            <RunwayRevenuePanel
+              plan={currentPlan}
+              currentMember={currentMember}
+              totals={totals}
+              onUpdatePricing={(livestockId, price, pricingUnit, avgWeight) =>
+                dataService.updateRunwayRevenuePricing({
+                  planId: currentPlan.id,
+                  livestockId,
+                  sellingPricePerUnit: price,
+                  pricingUnit,
+                  averageWeightKg: avgWeight,
+                  actor: currentMember,
+                })
+              }
+              onOpenRegisterBatch={() => setShowRegisterBatchModal(true)}
             />
           )}
 
@@ -506,6 +532,20 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           }
         />
       )}
+
+      {/* Register Batch Modal invoked from Revenue Panel */}
+      <RegisterBatchSheet
+        isOpen={showRegisterBatchModal}
+        onClose={() => setShowRegisterBatchModal(false)}
+        activeMember={currentMember}
+        onBatchRegistered={() => {
+          setShowRegisterBatchModal(false);
+          showToast({
+            type: 'success',
+            message: 'Livestock batch registered successfully! Live revenue updated.',
+          });
+        }}
+      />
     </div>
   );
 };

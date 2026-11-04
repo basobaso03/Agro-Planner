@@ -5956,6 +5956,46 @@ class AgroDataService {
     return updatedPlan;
   }
 
+  public updateRunwayRevenuePricing(params: {
+    planId: string;
+    livestockId: string;
+    sellingPricePerUnit: number;
+    pricingUnit?: 'HEAD' | 'KG';
+    averageWeightKg?: number;
+    actor: OrgMember;
+  }): RunwayPlan {
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+
+    const now = new Date().toISOString();
+    const currentPricings = plan.livestockRevenuePricings || {};
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      livestockRevenuePricings: {
+        ...currentPricings,
+        [params.livestockId]: {
+          sellingPricePerUnit: Math.max(0, Number(params.sellingPricePerUnit) || 0),
+          pricingUnit: params.pricingUnit || 'HEAD',
+          averageWeightKg: params.averageWeightKg,
+          updatedAt: now,
+        },
+      },
+      updatedAt: now,
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    return updatedPlan;
+  }
+
   public lockRunwayPlan(params: {
     planId: string;
     enforcement?: RunwayEnforcement;

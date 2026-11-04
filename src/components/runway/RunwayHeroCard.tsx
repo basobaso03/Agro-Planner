@@ -18,7 +18,7 @@ interface RunwayHeroCardProps {
   layers: RunwayFundingLayers;
   runwayMonths: number;
   currentMember: OrgMember;
-  onNavigateTab: (subTab?: 'PLAN' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'REPORT') => void;
+  onNavigateTab: (subTab?: 'PLAN' | 'REVENUE' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'REPORT') => void;
   onOpenPledgeModal?: () => void;
   onOpenPayInModal?: () => void;
   className?: string;

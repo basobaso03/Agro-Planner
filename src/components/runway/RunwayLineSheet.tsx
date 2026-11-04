@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Trash2, Check, Calculator } from 'lucide-react';
+import { X, Sparkles, Trash2, Check, Calculator, Building2 } from 'lucide-react';
 import type {
   RunwayLine,
-  RunwayLineKind,
   RunwayLinePriority,
 } from '../../types/runway';
 import type { ExpenseLedgerEvent } from '../../types/agro';
@@ -33,7 +32,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   pastExpenses = [],
 }) => {
   const [title, setTitle] = useState('');
-  const [kind, setKind] = useState<RunwayLineKind>('COST');
   const [category, setCategory] = useState<string>('FEED');
   const [qtyStr, setQtyStr] = useState<string>('');
   const [totalPriceStr, setTotalPriceStr] = useState<string>('');
@@ -41,7 +39,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   const [priority, setPriority] = useState<RunwayLinePriority>('ESSENTIAL');
   const [excludeFromContingency, setExcludeFromContingency] = useState<boolean>(false);
   const [plannedDate, setPlannedDate] = useState<string>('');
-  const [confidencePct, setConfidencePct] = useState<number>(100);
 
   // Recurrence
   const [isRecurring, setIsRecurring] = useState<boolean>(false);
@@ -61,7 +58,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   useEffect(() => {
     if (existingLine) {
       setTitle(existingLine.title);
-      setKind(existingLine.kind || 'COST');
       setCategory(existingLine.category || 'FEED');
       const q = existingLine.qty || 1;
       const u = existingLine.unitCost || 0;
@@ -71,7 +67,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       setPriority(existingLine.priority || 'ESSENTIAL');
       setExcludeFromContingency(Boolean(existingLine.excludeFromContingency));
       setPlannedDate(existingLine.plannedDate || '');
-      setConfidencePct(existingLine.confidencePct ?? 100);
       if (existingLine.recurrence) {
         setIsRecurring(true);
         setEveryDays(existingLine.recurrence.everyDays);
@@ -81,7 +76,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       }
     } else {
       setTitle('');
-      setKind('COST');
       setCategory('FEED');
       setQtyStr('');
       setTotalPriceStr('');
@@ -89,7 +83,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       setPriority('ESSENTIAL');
       setExcludeFromContingency(false);
       setPlannedDate(new Date().toISOString().slice(0, 10));
-      setConfidencePct(100);
       setIsRecurring(false);
     }
   }, [existingLine, isOpen]);
@@ -112,7 +105,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
     onSave({
       id: existingLine?.id,
       title: title.trim(),
-      kind,
+      kind: 'COST',
       category,
       qty: Number(validQty),
       unitCost: Number((validTotal / validQty).toFixed(4)),
@@ -120,12 +113,11 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       priority,
       excludeFromContingency,
       plannedDate: plannedDate || undefined,
-      confidencePct: kind === 'INCOME' ? Number(confidencePct) : undefined,
       recurrence: isRecurring
         ? {
-          everyDays: Number(everyDays) || 30,
-          occurrences: Number(occurrences) || 1,
-        }
+            everyDays: Number(everyDays) || 30,
+            occurrences: Number(occurrences) || 1,
+          }
         : undefined,
     });
 
@@ -141,7 +133,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
     'UTILITIES',
     'TRANSPORT',
     'MAINTENANCE',
-    'SALES_INCOME',
+    'SUPPLIES',
     'OTHER',
   ];
 
@@ -150,13 +142,18 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[88dvh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="text-base font-bold text-gray-900 dark:text-white">
-            {existingLine ? 'Edit Budget Line' : 'Add Plan Budget Line'}
-          </h3>
+          <div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              {existingLine ? 'Edit Budget Cost Line' : 'Add Planned Cost Line'}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Input items bought and total price — unit cost is calculated automatically.
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -164,41 +161,17 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3.5">
-          {/* Kind Segmented Control */}
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800">
-            <button
-              type="button"
-              onClick={() => setKind('COST')}
-              className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${kind === 'COST'
-                  ? 'bg-white dark:bg-gray-700 text-rose-600 dark:text-rose-300 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-            >
-              Cost Outflow
-            </button>
-            <button
-              type="button"
-              onClick={() => setKind('INCOME')}
-              className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${kind === 'INCOME'
-                  ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-300 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-            >
-              Expected Revenue Inflow
-            </button>
-          </div>
-
           {/* Title */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Line Title *
+              Line Item Title *
             </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. 500x Broiler Day-Old Chicks"
+              placeholder="e.g. Starter Feed Bags, Broiler Chicks, or Laptop for Inventory"
               className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
             />
           </div>
@@ -211,7 +184,13 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCategory(val);
+                  if (val === 'EQUIPMENT') {
+                    setExcludeFromContingency(true);
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500"
               >
                 {categories.map((c) => (
@@ -242,7 +221,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
           <div className="grid grid-cols-3 gap-2.5">
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Items (Qty) *
+                Items Bought *
               </label>
               <input
                 type="number"
@@ -284,7 +263,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
                 type="text"
                 value={unitLabel}
                 onChange={(e) => setUnitLabel(e.target.value)}
-                placeholder="chick, bag, kg"
+                placeholder="chick, bag, unit"
                 className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
               />
             </div>
@@ -313,35 +292,37 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
           )}
 
           {/* Planned Date */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Planned Date
-              </label>
-              <input
-                type="date"
-                value={plannedDate}
-                onChange={(e) => setPlannedDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Planned Disbursement Date
+            </label>
+            <input
+              type="date"
+              value={plannedDate}
+              onChange={(e) => setPlannedDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+            />
+          </div>
 
-            {kind === 'INCOME' && (
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Confidence ({confidencePct}%)
-                </label>
-                <input
-                  type="range"
-                  min="20"
-                  max="100"
-                  step="5"
-                  value={confidencePct}
-                  onChange={(e) => setConfidencePct(parseInt(e.target.value))}
-                  className="w-full mt-2"
-                />
+          {/* Fixed Capital Asset / Equipment Indicator */}
+          <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60">
+            <label className="flex items-start space-x-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={excludeFromContingency}
+                onChange={(e) => setExcludeFromContingency(e.target.checked)}
+                className="mt-0.5 rounded-md border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <div className="text-xs">
+                <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+                  Fixed Capital Asset (CAPEX)
+                </span>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  Check if this is permanent equipment (e.g. laptop, weighing scale, water pump). It does not produce harvest yield and can be excluded from variable emergency contingency buffers.
+                </p>
               </div>
-            )}
+            </label>
           </div>
 
           {/* Recurrence Toggle */}
@@ -383,21 +364,6 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
               </div>
             )}
           </div>
-
-          {/* Contingency exclusion */}
-          {kind === 'COST' && (
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={excludeFromContingency}
-                onChange={(e) => setExcludeFromContingency(e.target.checked)}
-                className="rounded-md border-gray-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="text-xs text-gray-600 dark:text-gray-400">
-                Exclude from contingency reserve calculation (e.g. fixed capital asset)
-              </span>
-            </label>
-          )}
 
           {/* Auto-calculated Unit Cost & Subtotal preview banner */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40">

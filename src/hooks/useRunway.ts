@@ -108,12 +108,32 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     return (state.debtLiabilities || []).filter((d) => d.runwayPlanId === plan.id);
   }, [state.debtLiabilities, plan]);
 
+  const livestockStatuses = useMemo(() => {
+    return dataService.computeLivestockStatuses();
+  }, [state.livestockEntries, state.livestockEvents]);
+
+  const livestockRevenue = useMemo(() => {
+    if (!plan) return 0;
+    const pricings = plan.livestockRevenuePricings || {};
+    let total = 0;
+    for (const st of livestockStatuses) {
+      if (plan.locationId && plan.locationId !== 'ALL' && st.entry.locationId !== plan.locationId) {
+        continue;
+      }
+      const cfg = pricings[st.entry.id];
+      if (cfg && cfg.sellingPricePerUnit > 0) {
+        total += st.currentLiveHeadcount * cfg.sellingPricePerUnit;
+      }
+    }
+    return round2(total);
+  }, [plan, livestockStatuses]);
+
   const totals: RunwayPlanTotals = useMemo(() => {
     if (!plan) {
       return { costTotal: 0, contingencyReserve: 0, totalRequirement: 0, expectedIncome: 0 };
     }
-    return computePlanTotals(plan, lines);
-  }, [lines, plan]);
+    return computePlanTotals(plan, lines, livestockRevenue);
+  }, [lines, plan, livestockRevenue]);
 
   const layers: RunwayFundingLayers = useMemo(() => {
     if (!plan) {
@@ -219,6 +239,8 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     isFullyFunded: layers.isFullyFunded,
     isFullyPledged: layers.isFullyPledged,
     currentOrg,
+    livestockRevenue,
+    livestockStatuses,
     runwayMonths,
     timeline,
     lineStatuses,

@@ -38,6 +38,7 @@ interface RunwayBudgetBuilderProps {
   onUpdateReserve: (mode: ContingencyMode, value: number) => void;
   onLockPlan?: () => void;
   onSaveAsTemplate?: (templateName: string) => void;
+  onNavigateToRevenue?: () => void;
   readOnly?: boolean;
 }
 
@@ -52,6 +53,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   onUpdateReserve,
   onLockPlan,
   onSaveAsTemplate,
+  onNavigateToRevenue,
   readOnly = false,
 }) => {
   const [editingLine, setEditingLine] = useState<RunwayLine | null>(null);
@@ -106,9 +108,14 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
           </div>
         </div>
 
-        <div className="min-w-0">
-          <span className="text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 block truncate">
-            Expected Revenue
+        <div
+          onClick={onNavigateToRevenue}
+          className={`min-w-0 ${onNavigateToRevenue ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+          title={onNavigateToRevenue ? 'Open Live Livestock Revenue & Yield Tab' : undefined}
+        >
+          <span className="text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 block truncate flex items-center justify-between">
+            <span>Expected Revenue</span>
+            {onNavigateToRevenue && <span className="text-[9px] underline font-normal">Live Yield →</span>}
           </span>
           <div className="text-base sm:text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 truncate">
             <CountUp value={totals.expectedIncome} decimals={2} />

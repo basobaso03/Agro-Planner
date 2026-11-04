@@ -28,6 +28,14 @@ export type RunwayMilestoneKey =
   | 'COLLECTED_100'
   | 'BREAK_EVEN';
 
+export interface LivestockPricingConfig {
+  sellingPricePerUnit: number;
+  pricingUnit?: 'HEAD' | 'KG';
+  averageWeightKg?: number;
+  notes?: string;
+  updatedAt?: string;
+}
+
 export interface RunwayPlannedFinancing {
   id: string;
   lenderName: string;
@@ -58,6 +66,7 @@ export interface RunwayPlan {
   targetBasis: RunwayTargetBasis;
   activationThresholdPct: number; // default 100
   openingCashAdopted: number; // O, frozen at lock
+  livestockRevenuePricings?: Record<string, LivestockPricingConfig>;
   plannedFinancing: RunwayPlannedFinancing[];
   phases: RunwayPhase[];
   showMemberPledges: boolean;
