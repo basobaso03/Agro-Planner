@@ -35,6 +35,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
   const [orgType, setOrgType] = useState<OrganizationType>('AGRO_FARMING');
   const [targetContribution, setTargetContribution] = useState('1000');
   const [pace, setPace] = useState<'MONTHLY' | 'MILESTONE' | 'FLEXIBLE'>('MONTHLY');
+  const [enableRunway, setEnableRunway] = useState(false);
 
   // Join Form State
   const [inviteCode, setInviteCode] = useState('');
@@ -58,7 +59,19 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
         defaultTargetContributionUsd: Number(targetContribution) || 1000,
         contributionPaceDefault: pace,
       });
-      onOrganizationSelected(newOrg);
+      let finalOrg = newOrg;
+      if (enableRunway) {
+        finalOrg = dataService.setRunwayModuleEnabled({
+          orgId: newOrg.id,
+          enabled: true,
+          actor: {
+            ...activeMember,
+            orgId: newOrg.id,
+            role: 'ORG_ADMIN',
+          },
+        });
+      }
+      onOrganizationSelected(finalOrg);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to create organization.');
     } finally {
@@ -287,6 +300,21 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
                   <option value="FLEXIBLE">Flexible / Self-Paced</option>
                 </select>
               </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-indigo-950">
+                <input
+                  type="checkbox"
+                  checked={enableRunway}
+                  onChange={(e) => setEnableRunway(e.target.checked)}
+                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <span>Enable Runway Capital Planning Module</span>
+              </label>
+              <p className="text-[11px] text-indigo-700 pl-6 mt-0.5">
+                Target budgeting, pledges, pay-ins &amp; strict spend gates for capital discipline.
+              </p>
             </div>
 
             <button

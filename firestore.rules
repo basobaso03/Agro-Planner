@@ -180,6 +180,66 @@ service cloud.firestore {
       allow delete: if isOrgAdmin(resource.data.orgId);
     }
 
+    match /debt_liabilities/{id} {
+      allow read: if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isTreasurerOfOrg(request.resource.data.orgId) && isValidId(id) && request.resource.data.principalAmount > 0;
+      allow update: if isTreasurerOfOrg(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if isOrgAdmin(resource.data.orgId);
+    }
+
+    match /loans_given/{id} {
+      allow read: if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isTreasurerOfOrg(request.resource.data.orgId) && isValidId(id) && request.resource.data.principalAmount > 0;
+      allow update: if isTreasurerOfOrg(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if isOrgAdmin(resource.data.orgId);
+    }
+
+    match /credit_sales/{id} {
+      allow read: if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isApprovedMemberOfOrg(request.resource.data.orgId)
+                    && isValidId(id)
+                    && (request.resource.data.get('totalSaleAmount', request.resource.data.get('totalAmount', 0)) > 0);
+      allow update: if isApprovedMemberOfOrg(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if isOrgAdmin(resource.data.orgId);
+    }
+
+    match /runway_plans/{id} {
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isOrgAdmin(request.resource.data.orgId) && isValidId(id);
+      allow update: if isTreasurerOfOrg(resource.data.orgId)
+                    && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if false;
+    }
+
+    match /runway_lines/{id} {
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isTreasurerOfOrg(request.resource.data.orgId) && isValidId(id)
+                    && request.resource.data.unitCost >= 0 && request.resource.data.qty >= 0;
+      allow update: if isTreasurerOfOrg(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId;
+      allow delete: if isOrgAdmin(resource.data.orgId);
+    }
+
+    match /runway_pledges/{id} {
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId) && getMemberData().role != 'GROUND_OPERATOR';
+      allow create, update: if isApprovedMemberOfOrg(request.resource.data.orgId)
+                    && (request.resource.data.memberId == request.auth.uid || isTreasurerOfOrg(request.resource.data.orgId));
+      allow delete: if false;
+    }
+
+    match /runway_claims/{id} {
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create: if isApprovedMemberOfOrg(request.resource.data.orgId) && request.resource.data.status == 'PENDING';
+      allow update: if isTreasurerOfOrg(resource.data.orgId)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','resolvedByMemberId','resolutionNote','contributionId','resolvedAt']);
+      allow delete: if false;
+    }
+
+    match /runway_templates/{id} {
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId);
+      allow create, update: if isTreasurerOfOrg(request.resource.data.orgId);
+      allow delete: if isOrgAdmin(resource.data.orgId);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

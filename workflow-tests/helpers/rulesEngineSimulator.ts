@@ -435,6 +435,163 @@ export class RulesEngineSimulator {
       if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
     }
 
+    // 14. /debt_liabilities/{id}
+    if (collection === 'debt_liabilities') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          this.isValidId(docId) &&
+          (context.request.resource?.data?.principalAmount > 0);
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          params.incomingData?.orgId === params.existingData?.orgId;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
+    }
+
+    // 15. /loans_given/{id}
+    if (collection === 'loans_given') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          this.isValidId(docId) &&
+          (context.request.resource?.data?.principalAmount > 0);
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          params.incomingData?.orgId === params.existingData?.orgId;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
+    }
+
+    // 16. /credit_sales/{id}
+    if (collection === 'credit_sales') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const total =
+          context.request.resource?.data?.totalSaleAmount ??
+          context.request.resource?.data?.totalAmount ??
+          0;
+        const ok =
+          this.isApprovedMemberOfOrg(context, targetOrgId) &&
+          this.isValidId(docId) &&
+          total > 0;
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isApprovedMemberOfOrg(context, targetOrgId) &&
+          params.incomingData?.orgId === params.existingData?.orgId;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
+    }
+
+    // 17. /runway_plans/{id}
+    if (collection === 'runway_plans') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const ok = this.isOrgAdmin(context, targetOrgId) && this.isValidId(docId);
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          params.incomingData?.orgId === params.existingData?.orgId;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: false };
+    }
+
+    // 18. /runway_lines/{id}
+    if (collection === 'runway_lines') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const incoming = context.request.resource?.data || {};
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          this.isValidId(docId) &&
+          incoming.unitCost >= 0 &&
+          incoming.qty >= 0;
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isTreasurerOfOrg(context, targetOrgId) &&
+          params.incomingData?.orgId === params.existingData?.orgId;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
+    }
+
+    // 19. /runway_pledges/{id}
+    if (collection === 'runway_pledges') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') {
+        const member = this.getMemberData(context.request.auth?.uid);
+        return {
+          allowed:
+            this.isApprovedMemberOfOrg(context, targetOrgId) &&
+            member?.role !== 'GROUND_OPERATOR',
+        };
+      }
+      if (operation === 'create' || operation === 'update') {
+        const incoming = context.request.resource?.data || {};
+        const isSelf = incoming.memberId === context.request.auth?.uid;
+        const isTreas = this.isTreasurerOfOrg(context, targetOrgId);
+        const ok = this.isApprovedMemberOfOrg(context, targetOrgId) && (isSelf || isTreas);
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: false };
+    }
+
+    // 20. /runway_claims/{id}
+    if (collection === 'runway_claims') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create') {
+        const incoming = context.request.resource?.data || {};
+        const ok =
+          this.isApprovedMemberOfOrg(context, targetOrgId) &&
+          incoming.status === 'PENDING';
+        return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const existing = context.resource?.data || {};
+        const incoming = context.request.resource?.data || {};
+        const affectedKeys = Object.keys(incoming).filter((k) => incoming[k] !== existing[k]);
+        const allowedKeys = ['status', 'resolvedByMemberId', 'resolutionNote', 'contributionId', 'resolvedAt'];
+        const onlyAllowed = affectedKeys.every((k) => allowedKeys.includes(k));
+        const ok = this.isTreasurerOfOrg(context, targetOrgId) && onlyAllowed;
+        return { allowed: ok };
+      }
+      if (operation === 'delete') return { allowed: false };
+    }
+
+    // 21. /runway_templates/{id}
+    if (collection === 'runway_templates') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      if (operation === 'read') return { allowed: this.isApprovedMemberOfOrg(context, targetOrgId) };
+      if (operation === 'create' || operation === 'update') {
+        return { allowed: this.isTreasurerOfOrg(context, targetOrgId) };
+      }
+      if (operation === 'delete') return { allowed: this.isOrgAdmin(context, targetOrgId) };
+    }
+
     // Catch-all default deny
     return { allowed: false, reason: 'Catch-all default deny rule' };
   }

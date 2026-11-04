@@ -33,6 +33,7 @@ export interface DebtLiabilityEvent {
   status: DebtStatus;
   linkedBatchId?: string; // Optional link to livestock batch acquired
   linkedAssetId?: string;
+  runwayPlanId?: string;
   referenceEntityId?: string;
   repayments: DebtRepaymentLog[];
   loggedByMemberId: string;

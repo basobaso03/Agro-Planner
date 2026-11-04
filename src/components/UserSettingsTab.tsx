@@ -27,7 +27,13 @@ import {
   ArrowLeft,
   Smartphone,
   Info,
+  Compass,
 } from 'lucide-react';
+import {
+  getCelebrationMode,
+  setCelebrationMode,
+  type CelebrationMode,
+} from '../utils/celebrations.ts';
 import type { FarmLocation, OrgMember } from '../types/agro.ts';
 import type { Organization, OrganizationType } from '../types/organization.ts';
 import {
@@ -69,10 +75,10 @@ interface UserSettingsTabProps {
   session: AuthenticatedSession | null;
   locations: FarmLocation[];
   activeOrg?: Organization | null;
-  activeFontId: FontStyleId;
-  onSelectFont: (fontId: FontStyleId) => void;
-  backgroundIntensity: 'subtle' | 'standard' | 'expressive';
-  onSelectBackgroundIntensity: (intensity: 'subtle' | 'standard' | 'expressive') => void;
+  activeFontId?: FontStyleId;
+  onSelectFont?: (fontId: FontStyleId) => void;
+  backgroundIntensity?: 'subtle' | 'standard' | 'expressive';
+  onSelectBackgroundIntensity?: (intensity: 'subtle' | 'standard' | 'expressive') => void;
   onPreviewSplash?: () => void;
   onCheckUpdates?: () => void;
   onSignOut: () => void;
@@ -93,10 +99,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   session,
   locations,
   activeOrg,
-  activeFontId,
-  onSelectFont,
-  backgroundIntensity,
-  onSelectBackgroundIntensity,
+  activeFontId = 'font-sans',
+  onSelectFont = () => {},
+  backgroundIntensity = 'standard',
+  onSelectBackgroundIntensity = () => {},
   onPreviewSplash,
   onCheckUpdates,
   onSignOut,
@@ -162,6 +168,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   );
   const [notifStatusMsg, setNotifStatusMsg] = useState('');
   const [vibrationOn, setVibrationOn] = useState<boolean>(() => isVibrationEnabled());
+  const [celebrationModeState, setCelebrationModeState] = useState<CelebrationMode>(() => getCelebrationMode());
   const [privacyPref, setPrivacyPref] = useState<PrivacyUnlockMethod>(() =>
     getPrivacyUnlockPreference()
   );
@@ -732,6 +739,39 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   </div>
                 </form>
               )}
+
+              {/* Runway Capital Planning Feature Toggle (Admin Only) */}
+              {isAdmin && activeOrg && (
+                <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-black text-slate-950 flex items-center gap-1.5">
+                        <Compass className="w-4 h-4 text-indigo-600" />
+                        <span>Runway Capital Planning &amp; Spend Gate Module</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Enable multi-layer capital budgeting, member pledges, and spend gate validation for this organization.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(activeOrg.features?.runwayModule)}
+                        onChange={(e) => {
+                          dataService.setRunwayModuleEnabled({
+                            orgId: activeOrg.id,
+                            enabled: e.target.checked,
+                            actor: activeMember,
+                          });
+                          setOrgBanner(`Runway Module ${e.target.checked ? 'enabled' : 'disabled'} successfully.`);
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1124,6 +1164,32 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 >
                   {vibrationOn ? 'Vibration: ON' : 'Vibration: OFF'}
                 </button>
+              </div>
+
+              {/* Celebration FX & Haptics Mode */}
+              <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-black text-slate-950 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Milestone Celebration FX &amp; Particles</span>
+                  </span>
+                  <span className="text-[11px] text-slate-600 font-medium">
+                    Animated coin flow particles and vibration upon recording pay-ins or reaching funding milestones.
+                  </span>
+                </div>
+                <select
+                  value={celebrationModeState}
+                  onChange={(e) => {
+                    const mode = e.target.value as CelebrationMode;
+                    setCelebrationMode(mode);
+                    setCelebrationModeState(mode);
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white cursor-pointer"
+                >
+                  <option value="FULL">Full Celebrations (Particles + Haptics)</option>
+                  <option value="REDUCED">Reduced Motion (Fewer Particles)</option>
+                  <option value="OFF">Turn Off FX (Static Numbers)</option>
+                </select>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] flex flex-col sm:flex-row sm:items-center justify-between gap-3">

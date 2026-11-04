@@ -33,6 +33,14 @@ import type {
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
+import { useRunway } from '../hooks/useRunway.ts';
+import { SpendGateDialog } from './runway/SpendGateDialog.tsx';
+import type { RunwayAllocation } from '../types/runway.ts';
+import { RunwayError } from '../types/runway.ts';
+import { ContraExpenseSheet } from '../sheets/expenses/ContraExpenseSheet.tsx';
+import { LogExpenseSheet } from '../sheets/expenses/LogExpenseSheet.tsx';
+import { FeedEventSheet } from '../sheets/expenses/FeedEventSheet.tsx';
+import { ImageViewerSheet } from './ui/ImageViewerSheet.tsx';
 
 interface ExpensesFeedTabProps {
   expenses: ExpenseLedgerEvent[];
@@ -52,6 +60,7 @@ interface ExpensesFeedTabProps {
     note: string;
     gpsStamp?: string;
     receiptPhotoDataUrl?: string;
+    runwayAllocation?: RunwayAllocation;
   }) => void;
   onApproveMultiSig: (expenseId: string) => void;
   onLogFeedEvent: (data: {
@@ -94,6 +103,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
 }) => {
   const [subTab, setSubTab] = useState<'LEDGER' | 'MULTISIG' | 'FEED'>('LEDGER');
 
+  const runway = useRunway();
+  const activePlan = runway.isEnabled && runway.plan?.status === 'ACTIVE' ? runway.plan : null;
+  const costLines = runway.lines.filter((l) => l.kind === 'COST' && !l.skipped);
+
   // Log New Expense Modal State
   const receiptFileInputRef = useRef<HTMLInputElement>(null);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -106,10 +119,23 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
   const [expAmount, setExpAmount] = useState('');
   const [expBatchId, setExpBatchId] = useState('');
   const [expNote, setExpNote] = useState('');
+  const [expLineId, setExpLineId] = useState('');
   const [expReceiptDataUrl, setExpReceiptDataUrl] = useState<string | null>(null);
   const [isCompressingReceipt, setIsCompressingReceipt] = useState(false);
   const [receiptLightbox, setReceiptLightbox] = useState<{ url: string; title: string } | null>(null);
   const [expError, setExpError] = useState('');
+
+  // Spend Gate Modal State
+  const [spendGateOpen, setSpendGateOpen] = useState(false);
+  const [pendingGateData, setPendingGateData] = useState<{
+    amount: number;
+    category: string;
+    locId: string;
+    batchId?: string;
+    note: string;
+    gpsStamp?: string;
+    receiptUrl?: string;
+  } | null>(null);
 
   // Contra-Entry Reversal Modal State
   const [contraTargetExpense, setContraTargetExpense] = useState<ExpenseLedgerEvent | null>(null);
@@ -140,7 +166,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
     if (!file) return;
     const validation = validateImageFile(file);
     if (!validation.valid) {
-      alert(validation.error || 'Invalid receipt image.');
+      setExpError(validation.error || 'Invalid receipt image.');
       return;
     }
     setIsCompressingReceipt(true);
@@ -170,6 +196,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       setExpError('Please register a farm site location first before logging expenses.');
       return;
     }
+    const alloc: RunwayAllocation | undefined = expLineId
+      ? { mode: 'LINE', lineId: expLineId }
+      : undefined;
+
     try {
       onLogExpense({
         locationId: loc.id,
@@ -180,14 +210,62 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
         note: expNote.trim(),
         gpsStamp: loc.gpsCoordinates,
         receiptPhotoDataUrl: expReceiptDataUrl || undefined,
+        runwayAllocation: alloc,
       });
       setExpAmount('');
       setExpNote('');
+      setExpLineId('');
       setExpReceiptDataUrl(null);
       setExpError('');
       setShowExpenseModal(false);
-    } catch (err) {
-      setExpError(err instanceof Error ? err.message : 'Failed to log expense.');
+    } catch (err: unknown) {
+      const isRunwayGateError =
+        err instanceof RunwayError ||
+        (err as { code?: string })?.code === 'RUNWAY_ALLOCATION_REQUIRED' ||
+        (err as { code?: string })?.code === 'RUNWAY_LINE_OVERRUN' ||
+        (err instanceof Error && err.message.toLowerCase().includes('runway spend gate blocked'));
+
+      if (isRunwayGateError) {
+        setPendingGateData({
+          amount: amt,
+          category: expCategory,
+          locId: loc.id,
+          batchId: expBatchId || undefined,
+          note: expNote.trim(),
+          gpsStamp: loc.gpsCoordinates,
+          receiptUrl: expReceiptDataUrl || undefined,
+        });
+        setSpendGateOpen(true);
+      } else {
+        setExpError(err instanceof Error ? err.message : 'Failed to log expense.');
+      }
+    }
+  };
+
+  const handleSpendGateAllocate = (allocation: RunwayAllocation) => {
+    if (!pendingGateData) return;
+    try {
+      onLogExpense({
+        locationId: pendingGateData.locId,
+        batchOrAnimalId: pendingGateData.batchId,
+        category: pendingGateData.category as ExpenseCategory,
+        direction: 'DEDUCTION',
+        amount: pendingGateData.amount,
+        note: pendingGateData.note,
+        gpsStamp: pendingGateData.gpsStamp,
+        receiptPhotoDataUrl: pendingGateData.receiptUrl,
+        runwayAllocation: allocation,
+      });
+      setSpendGateOpen(false);
+      setPendingGateData(null);
+      setExpAmount('');
+      setExpNote('');
+      setExpLineId('');
+      setExpReceiptDataUrl(null);
+      setExpError('');
+      setShowExpenseModal(false);
+    } catch (err: unknown) {
+      setExpError(err instanceof Error ? err.message : 'Spend allocation rejected.');
     }
   };
 
@@ -904,517 +982,54 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
         </div>
       )}
 
-      {/* LOG FARM EXPENSE MODAL */}
-      {showExpenseModal && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="log-expense-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <h2 id="log-expense-title" className="text-base font-bold text-slate-900">
-                Log Immutable Farm Expense
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowExpenseModal(false)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* LOG FARM EXPENSE BOTTOM SHEET */}
+      <LogExpenseSheet
+        isOpen={showExpenseModal}
+        onClose={() => setShowExpenseModal(false)}
+        activeMember={activeMember}
+      />
 
-            <form onSubmit={handleCreateExpense} className="modal-body-scroll mt-4 space-y-3.5">
-              {expError && (
-                <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 font-medium">
-                  {expError}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="exp-loc" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Farm Site *
-                  </label>
-                  <select
-                    id="exp-loc"
-                    value={expLocationId}
-                    onChange={(e) => setExpLocationId(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium"
-                  >
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="exp-cat" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Expense Category *
-                  </label>
-                  <select
-                    id="exp-cat"
-                    value={expCategory}
-                    onChange={(e) => setExpCategory(e.target.value as ExpenseCategory)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium"
-                  >
-                    {EXPENSE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="exp-amt" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Amount (USD $) *
-                  </label>
-                  <input
-                    id="exp-amt"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    required
-                    placeholder="e.g. 65.00"
-                    value={expAmount}
-                    onChange={(e) => setExpAmount(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm font-mono text-slate-900 font-bold"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="exp-batch" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Linked Animal Batch
-                  </label>
-                  <select
-                    id="exp-batch"
-                    value={expBatchId}
-                    onChange={(e) => setExpBatchId(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium"
-                  >
-                    <option value="">General Site Expense</option>
-                    {livestockStatuses.map((s) => (
-                      <option key={s.entry.id} value={s.entry.id}>
-                        {s.entry.nameOrTag}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {parseFloat(expAmount) > 150 && (
-                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-                  <span>
-                    Amount exceeds $150 threshold — will enter <strong>PENDING_MULTISIG</strong> status for Treasurer/Admin approval.
-                  </span>
-                </div>
-              )}
-
-              <div>
-                <label htmlFor="exp-note" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mandatory Detailed Note (What was bought, supplier, invoice #) *
-                </label>
-                <textarea
-                  id="exp-note"
-                  rows={3}
-                  required
-                  placeholder="Describe exact items purchased and purpose (cannot be edited once logged)..."
-                  value={expNote}
-                  onChange={(e) => setExpNote(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-900"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs text-slate-600">
-                  <span className="flex items-center gap-1 font-mono">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                    GPS Stamp Auto-Attached
-                  </span>
-                  {expReceiptDataUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setExpReceiptDataUrl(null)}
-                      className="text-[11px] text-rose-600 hover:text-rose-700 underline cursor-pointer"
-                    >
-                      Remove Receipt
-                    </button>
-                  )}
-                </div>
-
-                {expReceiptDataUrl ? (
-                  <div className="rounded-xl border border-emerald-300 bg-emerald-50/60 p-2.5 flex items-center gap-3">
-                    <img
-                      src={expReceiptDataUrl}
-                      alt="Receipt preview"
-                      className="w-14 h-14 rounded-lg object-cover border border-emerald-200 shadow-2xs"
-                    />
-                    <div className="text-xs text-slate-700 min-w-0">
-                      <p className="font-bold text-emerald-900 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Receipt Photo Attached
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Compressed for instant sync &amp; multi-sig verification.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      ref={receiptFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      disabled={isCompressingReceipt}
-                      onChange={(e) => {
-                        handleReceiptUpload(e.target.files?.[0]);
-                        e.target.value = '';
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => receiptFileInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#E0D7C6] hover:border-amber-500 bg-[#FAF8F5] hover:bg-[#F0EBE1] text-xs font-semibold text-slate-700 cursor-pointer transition-all"
-                    >
-                      <Camera className="w-4 h-4 text-amber-600" />
-                      <span>{isCompressingReceipt ? 'Compressing receipt...' : 'Attach Receipt Photo (Single Tap)'}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowExpenseModal(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-900 border border-slate-300 text-xs sm:text-sm font-bold shadow-2xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center"
-                >
-                  Commit Expense to Ledger
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* CONTRA-ENTRY REVERSAL MODAL */}
+      {/* CONTRA-ENTRY REVERSAL SHEET */}
       {contraTargetExpense && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="contra-expense-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <div>
-                <h2 id="contra-expense-title" className="text-base font-bold text-slate-900">
-                  Post Contra-Entry Reversal / Adjustment
-                </h2>
-                <p className="text-xs font-mono font-semibold text-amber-800">
-                  Referencing Original TX: {contraTargetExpense.id} (${contraTargetExpense.amount.toFixed(2)})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setContraTargetExpense(null)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateContraExpense} className="modal-body-scroll mt-4 space-y-3.5">
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 font-medium">
-                Original entry <strong>{contraTargetExpense.id}</strong> remains permanently in the ledger. This contra-entry appends a linked correction record.
-              </div>
-
-              {contraError && (
-                <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 font-medium">
-                  {contraError}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setContraMode('REDUCE_EXPENSE')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${contraMode === 'REDUCE_EXPENSE'
-                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
-                    : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
-                    }`}
-                >
-                  Reverse / Restore Cash (+Left Money)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setContraMode('INCREASE_EXPENSE')}
-                  className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${contraMode === 'INCREASE_EXPENSE'
-                    ? 'bg-amber-500 border-amber-500 text-white shadow-xs'
-                    : 'bg-[#FAF8F5] border-[#E0D7C6] text-slate-700'
-                    }`}
-                >
-                  Add Understated Cost (-Left Money)
-                </button>
-              </div>
-
-              <div>
-                <label htmlFor="contra-amt" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Adjustment Delta Amount ($) *
-                </label>
-                <input
-                  id="contra-amt"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  required
-                  value={contraDeltaAmount}
-                  onChange={(e) => setContraDeltaAmount(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="contra-note" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mandatory Audit Reason for Correction *
-                </label>
-                <textarea
-                  id="contra-note"
-                  rows={3}
-                  required
-                  placeholder="Explain why the original transaction is being adjusted or reversed..."
-                  value={contraNote}
-                  onChange={(e) => setContraNote(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-900"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setContraTargetExpense(null)}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-900 border border-slate-300 text-xs sm:text-sm font-bold shadow-2xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center"
-                >
-                  Post Contra-Entry
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ContraExpenseSheet
+          isOpen={Boolean(contraTargetExpense)}
+          onClose={() => setContraTargetExpense(null)}
+          expense={contraTargetExpense}
+          activeMember={activeMember}
+          onContraCompleted={() => setContraTargetExpense(null)}
+        />
       )}
 
-      {/* FEED STOCK-IN / CONSUMPTION / CONTRA MODAL */}
+      {/* FEED CONSUMPTION BOTTOM SHEET */}
       {showFeedModal && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="feed-modal-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <h2 id="feed-modal-title" className="text-base font-bold text-slate-900">
-                {showFeedModal.direction === 'STOCK_IN' && 'Log Feed Stock In (Store Receipt)'}
-                {showFeedModal.direction === 'DAILY_CONSUMPTION' && 'Log Daily Feed Rations Used'}
-                {showFeedModal.direction === 'CONTRA_REVERSAL' && 'Post Feed Inventory Contra-Adjustment'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowFeedModal(null)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFeedEvent} className="modal-body-scroll mt-4 space-y-3.5">
-              {feedError && (
-                <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 font-medium">
-                  {feedError}
-                </p>
-              )}
-
-              <div>
-                <label htmlFor="fd-loc" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Farm Site
-                </label>
-                <select
-                  id="fd-loc"
-                  value={feedLocId}
-                  onChange={(e) => setFeedLocId(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium"
-                >
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="fd-type" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Feed Type / Ration Name *
-                </label>
-                <input
-                  id="fd-type"
-                  type="text"
-                  required
-                  value={feedType}
-                  onChange={(e) => setFeedType(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm text-slate-900 font-medium"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="fd-bags" className="block text-xs font-semibold text-slate-700 mb-1">
-                    {showFeedModal.direction === 'CONTRA_REVERSAL'
-                      ? 'Bags Delta (+ or -) *'
-                      : 'Number of Bags *'}
-                  </label>
-                  <input
-                    id="fd-bags"
-                    type="number"
-                    step="0.25"
-                    required
-                    value={feedBags}
-                    onChange={(e) => setFeedBags(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="fd-kg" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Kg per Bag
-                  </label>
-                  <input
-                    id="fd-kg"
-                    type="number"
-                    min="1"
-                    value={feedKgPerBag}
-                    onChange={(e) => setFeedKgPerBag(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="fd-batch" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Linked Livestock Batch (for FCR tracking)
-                </label>
-                <select
-                  id="fd-batch"
-                  value={feedLivestockId}
-                  onChange={(e) => setFeedLivestockId(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2.5 text-xs text-slate-900 font-medium"
-                >
-                  <option value="">General Store Stock</option>
-                  {livestockStatuses.map((s) => (
-                    <option key={s.entry.id} value={s.entry.id}>
-                      {s.entry.nameOrTag}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="fd-note" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Mandatory Note *
-                </label>
-                <textarea
-                  id="fd-note"
-                  rows={2}
-                  required
-                  placeholder="Describe feed receipt or daily ration issued..."
-                  value={feedNote}
-                  onChange={(e) => setFeedNote(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-900"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowFeedModal(null)}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-900 border border-slate-300 text-xs sm:text-sm font-bold shadow-2xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className={`flex-1 py-2.5 px-4 rounded-xl text-white text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer min-h-[42px] flex items-center justify-center ${showFeedModal.direction === 'DAILY_CONSUMPTION'
-                    ? 'bg-amber-500 hover:bg-amber-600'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
-                    }`}
-                >
-                  {showFeedModal.direction === 'DAILY_CONSUMPTION'
-                    ? 'Log Daily Feed Ration'
-                    : showFeedModal.direction === 'CONTRA_REVERSAL'
-                      ? 'Post Feed Contra-Entry'
-                      : 'Append Feed Event'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <FeedEventSheet
+          isOpen={Boolean(showFeedModal)}
+          onClose={() => setShowFeedModal(null)}
+          activeMember={activeMember}
+        />
       )}
-      {/* RECEIPT HIGH-RES LIGHTBOX MODAL */}
+
+      {/* RECEIPT HIGH-RES LIGHTBOX SHEET */}
       {receiptLightbox && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setReceiptLightbox(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md cursor-pointer"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative max-w-3xl max-h-[90vh] bg-white border border-[#E8DFCE] rounded-3xl overflow-hidden shadow-2xl flex flex-col"
-          >
-            <div className="flex items-center justify-between p-3.5 border-b border-[#F0EBE1] bg-[#FAF8F5]">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 truncate">
-                <Camera className="w-4 h-4 text-amber-600" />
-                {receiptLightbox.title}
-              </span>
-              <button
-                type="button"
-                onClick={() => setReceiptLightbox(null)}
-                aria-label="Close receipt preview"
-                className="p-1 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-2 sm:p-4 overflow-auto flex items-center justify-center bg-slate-100/60">
-              <img
-                src={receiptLightbox.url}
-                alt="High resolution receipt"
-                className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-md"
-              />
-            </div>
-          </div>
-        </div>
+        <ImageViewerSheet
+          isOpen={Boolean(receiptLightbox)}
+          onClose={() => setReceiptLightbox(null)}
+          imageUrl={receiptLightbox.url}
+          title={receiptLightbox.title}
+        />
+      )}
+
+      {/* SPEND GATE MODAL */}
+      {pendingGateData && (
+        <SpendGateDialog
+          isOpen={spendGateOpen}
+          onClose={() => setSpendGateOpen(false)}
+          amount={pendingGateData.amount}
+          category={pendingGateData.category}
+          lines={runway.lines}
+          reserveLeft={runway.layers.reserveLeft}
+          onAllocate={handleSpendGateAllocate}
+        />
       )}
     </div>
   );

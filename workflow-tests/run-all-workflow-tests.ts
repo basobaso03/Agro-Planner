@@ -42,6 +42,26 @@ const suites = [
     name: 'Suite 8: Financial Redesign, 9-Pillar Wealth & Modern Banking Hub (Liabilities, Loans, Credit Sales & Valuation)',
     file: 'workflow-tests/08-financial-redesign-banking-hub.test.ts',
   },
+  {
+    name: 'Suite 9: Runway Capital Planning Module & Spend Gate (Plans, Pledges, Claims, Spend & Verification)',
+    file: 'workflow-tests/09-runway-capital-planning.test.ts',
+  },
+  {
+    name: 'Suite 10: Firestore Security Rules Payload Contract (All Forms, Validation & Invariants)',
+    file: 'workflow-tests/10-rules-payload-contract.test.ts',
+  },
+  {
+    name: 'Suite 11: Persistent Outbox & Snapshot Reconciler (Atomic Writes, Retry & Offline Resilience)',
+    file: 'workflow-tests/11-atomic-writes-and-outbox.test.ts',
+  },
+  {
+    name: 'Suite 12: UI Bottom Sheets, Keyboard & Inline Error Banner Validation',
+    file: 'workflow-tests/12-ui-forms-and-sheets.test.ts',
+  },
+  {
+    name: 'Suite 13: Navigation Back-Stack, Recents & Viewport Matrix Contracts',
+    file: 'workflow-tests/13-navigation-and-viewport.test.ts',
+  },
 ];
 
 console.log('\n========================================================================');
@@ -92,7 +112,7 @@ const totalDuration = results.reduce((acc, r) => acc + r.durationMs, 0);
 console.log('------------------------------------------------------------------------');
 console.log(`Total Suites: ${results.length} | Passed: ${results.filter((r) => r.passed).length} | Failed: ${results.filter((r) => !r.passed).length}`);
 console.log(`Total Execution Time: ${(totalDuration / 1000).toFixed(2)}s`);
-console.log(`Firestore Security Rules Compliancy: ${results[3].passed && results[5].passed ? '100% (VERIFIED)' : 'FAILED'}`);
+console.log(`Firestore Security Rules Compliancy: ${results[3].passed && results[5].passed && results[9].passed ? '100% (VERIFIED)' : 'FAILED'}`);
 console.log('========================================================================\n');
 
 if (!allPassed) {

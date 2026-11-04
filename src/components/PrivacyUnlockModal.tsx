@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { OrgMember } from '../types/agro.ts';
 import { dataService, hasPasswordConfigured } from '../services/dataService.ts';
+import { BottomSheet } from './ui/BottomSheet.tsx';
 import {
   verifyDeviceBiometric,
   getEnrolledBiometricRecord,
@@ -114,40 +115,14 @@ export const PrivacyUnlockModal: React.FC<PrivacyUnlockModalProps> = ({
   };
 
   return (
-    <div
-      className="modal-overlay-responsive animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="privacy-unlock-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Security Privacy Shield"
+      subtitle="Verify your identity to unmask financial numbers"
+      size="auto"
     >
-      <div className="modal-dialog-responsive max-w-md p-5 sm:p-6 space-y-4 bg-white border border-[#E8DFCE] rounded-3xl shadow-2xl">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-700 shrink-0">
-              <Lock className="w-5 h-5 text-amber-700" />
-            </div>
-            <div>
-              <h2 id="privacy-unlock-title" className="text-base font-black text-slate-950">
-                Security Privacy Shield
-              </h2>
-              <p className="text-xs text-slate-700 font-medium">
-                Verify your identity to unmask financial numbers
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close unlock modal"
-            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
+      <div className="space-y-4 p-1">
         {errorMsg && (
           <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -237,6 +212,6 @@ export const PrivacyUnlockModal: React.FC<PrivacyUnlockModalProps> = ({
           </div>
         ) : null}
       </div>
-    </div>
+    </BottomSheet>
   );
 };

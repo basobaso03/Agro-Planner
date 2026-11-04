@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "./design/tokens.css";
+@import "./design/animations.css";
 
 @layer base {
   :root {
@@ -16,7 +18,7 @@
     background-color: #FAF7F2;
     color: #0F172A;
     overscroll-behavior-y: none;
-    min-height: 100vh;
+    min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -129,44 +131,18 @@ a.bg-slate-800:hover {
   color: #FFFFFF !important;
 }
 
-.bg-slate-950 {
-  background-color: #FAF8F5 !important;
-  border-color: #E8DFCE !important;
+/* Solora Semantic Utility Classes (Replacing legacy !important overrides) */
+.bg-surface {
+  background-color: var(--color-surface-card);
 }
 
-.bg-slate-950\/95,
-.bg-slate-950\/90,
-.bg-slate-950\/80,
-.bg-slate-950\/70,
-.bg-slate-950\/60 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
-  border-color: #E8DFCE !important;
+.border-token {
+  border-color: var(--color-border-default);
 }
 
-.bg-slate-900\/90,
-.bg-slate-900\/80,
-.bg-slate-900\/60,
-.bg-slate-900\/50,
-.bg-slate-900\/40 {
-  background-color: rgba(255, 255, 255, 0.92) !important;
-  border-color: #E8DFCE !important;
-}
-
-.border-slate-800,
-.border-slate-800\/80,
-.border-slate-800\/90,
-.border-slate-800\/60 {
-  border-color: #E8DFCE !important;
-}
-
-.border-slate-700,
-.border-slate-700\/80,
-.border-slate-700\/50 {
-  border-color: #E0D7C6 !important;
-}
-
-.text-white {
-  color: #0F172A !important;
+/* Clean semantic text color */
+.text-ink {
+  color: var(--color-ink-primary);
 }
 
 button.text-white,
@@ -394,52 +370,28 @@ textarea.bg-slate-900 {
   animation: spinSlow 20s linear infinite;
 }
 
-/* =========================================================================
-   KEYBOARD-SAFE MOBILE MODAL & FORM ADAPTATION
-   Prevents virtual keyboard from pushing modals too high or off the screen
-========================================================================= */
-.modal-overlay-responsive {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0.5rem;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  background-color: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(4px);
-}
 
-@media (min-width: 640px) {
-  .modal-overlay-responsive {
-    justify-content: center;
-    padding: 1rem;
+
+@keyframes coinArc {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(var(--tx), var(--ty)) scale(1.1);
+    opacity: 0;
   }
 }
 
-.modal-dialog-responsive {
-  width: 100%;
-  margin-top: auto;
-  margin-bottom: auto;
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100dvh - 1rem);
-  max-height: calc(100vh - 1rem);
-  overflow: hidden;
-  background-color: #FFFFFF;
-  border: 1px solid #E8DFCE;
-  border-radius: 1.5rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-}
-
-.modal-body-scroll {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  flex: 1 1 auto;
-  padding-right: 0.25rem;
+.animate-coin-arc {
+  animation: coinArc 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }

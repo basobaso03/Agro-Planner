@@ -24,8 +24,13 @@
       ]
     },
     "Keyboard": {
-      "resize": "body",
-      "resizeOnFullScreen": true
+      "resize": "none",
+      "style": "light",
+      "resizeOnFullScreen": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#FAF8F5"
     }
   }
 }

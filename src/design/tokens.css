@@ -1,0 +1,46 @@
+/* Solora Warm Financial Design System Tokens */
+:root {
+  /* Surfaces */
+  --color-surface-canvas: #FAF8F5;
+  --color-surface-card: #FFFFFF;
+  --color-surface-subtle: #F3EFEA;
+  --color-surface-overlay: rgba(15, 23, 42, 0.65);
+
+  /* Borders & Dividers */
+  --color-border-subtle: #F0EBE1;
+  --color-border-default: #E8DFCE;
+  --color-border-focus: #059669;
+
+  /* Ink & Typography */
+  --color-ink-primary: #0F172A;
+  --color-ink-secondary: #475569;
+  --color-ink-muted: #94A3B8;
+  --color-ink-inverse: #FFFFFF;
+
+  /* Semantic Brand & Banking */
+  --color-brand-emerald: #059669;
+  --color-brand-emerald-subtle: #ECFDF5;
+  --color-brand-emerald-dark: #047857;
+  --color-accent-amber: #D97706;
+  --color-accent-amber-subtle: #FFFBEB;
+  --color-danger-rose: #E11D48;
+  --color-danger-rose-subtle: #FFF1F2;
+  --color-info-blue: #2563EB;
+  --color-info-blue-subtle: #EFF6FF;
+
+  /* Geometry & Radii */
+  --radius-sheet-top: 28px;
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --radius-chip: 9999px;
+
+  /* Touch & Inset Metrics */
+  --touch-target-min: 48px;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --kb: 0px;
+  --vvh: 100vh;
+}
+

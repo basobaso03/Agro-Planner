@@ -1,0 +1,104 @@
+/* Hardware-Accelerated Mobile App Keyframes & Utility Classes */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutToBottom {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+}
+
+@keyframes errorShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-6px);
+  }
+  40%, 80% {
+    transform: translateX(6px);
+  }
+}
+
+@keyframes skeletonShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Compatibility utility classes for existing components */
+.animate-fade-in,
+.animate-in {
+  animation: fadeIn 220ms cubic-bezier(0.05, 0.7, 0.1, 1.0) forwards;
+}
+
+.fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+.slide-in-from-bottom {
+  animation: slideInFromBottom 280ms cubic-bezier(0.05, 0.7, 0.1, 1.0) forwards;
+}
+
+.slide-out-to-bottom {
+  animation: slideOutToBottom 200ms cubic-bezier(0.3, 0.0, 0.8, 0.15) forwards;
+}
+
+.animate-error-shake {
+  animation: errorShake 240ms ease-in-out;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #F3EFEA 25%, #EFE9E0 50%, #F3EFEA 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-in,
+  .fade-in,
+  .slide-in-from-bottom,
+  .slide-out-to-bottom,
+  .animate-error-shake {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

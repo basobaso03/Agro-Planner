@@ -70,6 +70,11 @@ import type {
   CreditSaleEvent,
   CreditSalePaymentLog,
   CreditSaleDateExtensionLog,
+  LivestockComputedStatus,
+  FixedAssetGroupSummary,
+  FeedInventorySummary,
+  MemberEquitySummary,
+  FinancialSummary,
 } from '../types/agro.ts';
 import type { Organization, OrganizationType } from '../types/organization.ts';
 import { createEmptyProductionSnapshot, LEGACY_SEED_IDS } from '../data/seedData.ts';
@@ -79,13 +84,52 @@ import {
   sha256Hex,
   GENESIS_SHORT,
 } from '../utils/cryptoHash.ts';
-import { computeTargetSaleDate, computeLivestockStatus, generateVaccinationProtocols, computeFinancialSummary } from '../utils/calculations.ts';
+import {
+  computeTargetSaleDate,
+  computeLivestockStatus,
+  generateVaccinationProtocols,
+  computeFinancialSummary,
+  computeFixedAssetGroups,
+  computeFeedInventories,
+  computeMemberEquities,
+} from '../utils/calculations.ts';
 import {
   areSystemNotificationsEnabled,
   dispatchSystemNotification,
   verifyDeviceBiometric,
 } from '../utils/mobileHardware.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
+import type {
+  RunwayPlan,
+  RunwayLine,
+  RunwayPledge,
+  RunwayPaymentClaim,
+  RunwayTemplate,
+  RunwayAllocation,
+  RunwayMilestoneKey,
+  RunwayPlanStatus,
+  RunwayEnforcement,
+  RunwayMode,
+  RunwayTargetBasis,
+  ContingencyMode,
+  RunwayLinePriority,
+  RunwayPhase,
+} from '../types/runway.ts';
+import { RunwayError } from '../types/runway.ts';
+import {
+  evaluateSpend,
+  computeAvailableCash,
+  computePlanTotals,
+  computeFundingLayers,
+  detectMilestones,
+  deriveLineStatuses,
+  round2,
+  computeRecovery,
+  computeRunwayMonths,
+} from '../utils/runway.ts';
+import { outboxService } from './outbox.ts';
+import { appStorage } from './storage.ts';
+import { nativeReminders } from '../native/reminders.ts';
 
 export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
 
@@ -130,6 +174,7 @@ export interface AuthenticatedSession {
   emailVerified: boolean;
   providers: string[];
   isCloudAuth: boolean;
+  activeOrgId?: string;
   signedInAt?: number; // Epoch timestamp in ms
   expiresAt?: number;  // Epoch timestamp in ms (default: 3 days after login)
   freshlyAuthenticated?: boolean; // True only during active login turn; false when loaded from storage
@@ -199,7 +244,7 @@ function computePasswordVerifier(email: string, password: string): string {
 }
 
 function isLegacySeedId(collectionKey: keyof typeof LEGACY_SEED_IDS, id: string): boolean {
-  const list = LEGACY_SEED_IDS[collectionKey];
+  const list = LEGACY_SEED_IDS[collectionKey] as readonly string[];
   return Array.isArray(list) && list.includes(id);
 }
 
@@ -228,6 +273,11 @@ function sanitizeSnapshotOfLegacySeed(snapshot: AgroStateSnapshot): AgroStateSna
     debtLiabilities: snapshot.debtLiabilities || [],
     loansGiven: snapshot.loansGiven || [],
     creditSales: snapshot.creditSales || [],
+    runwayPlans: snapshot.runwayPlans || [],
+    runwayLines: snapshot.runwayLines || [],
+    runwayPledges: snapshot.runwayPledges || [],
+    runwayClaims: snapshot.runwayClaims || [],
+    runwayTemplates: snapshot.runwayTemplates || [],
   };
 }
 
@@ -327,6 +377,15 @@ class AgroDataService {
         }
       };
     }
+
+    // Configure persistent Outbox executor for cloud persistence
+    outboxService.setExecutor(async (item) => {
+      if (!firestoreDb) {
+        initFirebaseInstance(this.getCustomFirebaseConfig());
+      }
+      if (!firestoreDb) throw new Error('Firestore is not available');
+      await setDoc(doc(firestoreDb, item.collectionPath, item.docId), item.data);
+    });
 
     const customCfg = this.getCustomFirebaseConfig();
     const fb = initFirebaseInstance(customCfg);
@@ -495,7 +554,7 @@ class AgroDataService {
     this.sessionListeners.forEach((cb) => cb(enrichedSession));
   }
 
-  private saveLocalState(nextState: AgroStateSnapshot, broadcast = true) {
+  public saveLocalState(nextState: AgroStateSnapshot, broadcast = true) {
     const cleaned = sanitizeSnapshotOfLegacySeed(nextState);
     this.state = cleaned;
     if (typeof window !== 'undefined') {
@@ -504,6 +563,7 @@ class AgroDataService {
       } catch (e) {
         console.warn('LocalStorage quota warning:', e);
       }
+      void appStorage.setItem(STORAGE_KEY, cleaned);
     }
     if (broadcast && this.channel) {
       this.channel.postMessage({ type: 'STATE_UPDATED', payload: cleaned });
@@ -542,6 +602,105 @@ class AgroDataService {
 
   public getState(): AgroStateSnapshot {
     return this.state;
+  }
+
+  public getActiveOrgId(): string {
+    return (
+      this.state.activeOrgId ||
+      this.activeSession?.activeOrgId ||
+      this.state.organizations?.[0]?.id ||
+      'org-master'
+    );
+  }
+
+  public computeLivestockStatuses(): LivestockComputedStatus[] {
+    const orgId = this.getActiveOrgId();
+    const entries = (this.state.livestockEntries || []).filter((e) => e.orgId === orgId);
+    const events = (this.state.livestockEvents || []).filter((e) => e.orgId === orgId);
+    const feed = (this.state.feedLedger || []).filter((f) => f.orgId === orgId);
+    return entries.map((entry) => computeLivestockStatus(entry, events, feed));
+  }
+
+  public computeFixedAssetGroupSummaries(): FixedAssetGroupSummary[] {
+    const orgId = this.getActiveOrgId();
+    const assets = (this.state.fixedAssets || []).filter((a) => a.orgId === orgId);
+    const locations = (this.state.locations || []).filter((l) => l.orgId === orgId);
+    return computeFixedAssetGroups(assets, locations);
+  }
+
+  public computeFeedInventorySummaries(): FeedInventorySummary[] {
+    const orgId = this.getActiveOrgId();
+    const feed = (this.state.feedLedger || []).filter((f) => f.orgId === orgId);
+    const locations = (this.state.locations || []).filter((l) => l.orgId === orgId);
+    return computeFeedInventories(feed, locations);
+  }
+
+  public computeMemberEquitySummaries(): MemberEquitySummary[] {
+    const orgId = this.getActiveOrgId();
+    const members = (this.state.members || []).filter((m) => m.orgId === orgId);
+    const contributions = (this.state.capitalContributions || []).filter((c) => c.orgId === orgId);
+    const financials = this.computeFinancialSummary();
+    return computeMemberEquities(members, contributions, financials.leftMoney);
+  }
+
+  public computeFinancialSummary(): FinancialSummary {
+    const orgId = this.getActiveOrgId();
+    const contributions = (this.state.capitalContributions || []).filter((c) => c.orgId === orgId);
+    const expenses = (this.state.expenses || []).filter((e) => e.orgId === orgId);
+    const debts = (this.state.debtLiabilities || []).filter((d) => d.orgId === orgId);
+    const loans = (this.state.loansGiven || []).filter((l) => l.orgId === orgId);
+    const creditSales = (this.state.creditSales || []).filter((cs) => cs.orgId === orgId);
+    const fixedAssets = (this.state.fixedAssets || []).filter((a) => a.orgId === orgId);
+    const livestockEvents = (this.state.livestockEvents || []).filter((e) => e.orgId === orgId);
+    const livestockStatuses = this.computeLivestockStatuses();
+
+    return computeFinancialSummary({
+      capitalContributions: contributions,
+      expenses,
+      fixedAssets,
+      livestockStatuses,
+      livestockEvents,
+      debtLiabilities: debts,
+      loansGiven: loans,
+      creditSales,
+    });
+  }
+
+  public getFinancialSummary(): FinancialSummary {
+    return this.computeFinancialSummary();
+  }
+
+  public toggleMilestone(batchId: string, milestoneKey: string, completed: boolean, actor: OrgMember) {
+    return this.updateLivestockCheckpoint({
+      livestockId: batchId,
+      checkpointId: milestoneKey,
+      updates: {
+        completed,
+        completedAt: completed ? new Date().toISOString() : undefined,
+      },
+      actor,
+    });
+  }
+
+  public logFeedConsumption(params: {
+    livestockId: string;
+    quantityKg: number;
+    feedBrandOrRation: string;
+    date?: string;
+    notes: string;
+    photoDataUrl?: string;
+    actor: OrgMember;
+  }): FeedLedgerEvent {
+    const entry = this.state.livestockEntries.find((e) => e.id === params.livestockId);
+    const locationId = entry?.locationId || this.state.locations[0]?.id || 'loc-master';
+    return this.logBatchDirectFeed({
+      livestockId: params.livestockId,
+      locationId,
+      kgConsumed: params.quantityKg,
+      feedType: params.feedBrandOrRation,
+      note: params.notes,
+      actor: params.actor,
+    });
   }
 
   public getActiveSession(): AuthenticatedSession | null {
@@ -1558,6 +1717,14 @@ class AgroDataService {
         { path: 'livestock_lifecycle_events', key: 'livestockEvents' as const },
         { path: 'feed_ledger', key: 'feedLedger' as const },
         { path: 'audit_notifications', key: 'auditNotifications' as const },
+        { path: 'debt_liabilities', key: 'debtLiabilities' as const },
+        { path: 'loans_given', key: 'loansGiven' as const },
+        { path: 'credit_sales', key: 'creditSales' as const },
+        { path: 'runway_plans', key: 'runwayPlans' as const },
+        { path: 'runway_lines', key: 'runwayLines' as const },
+        { path: 'runway_pledges', key: 'runwayPledges' as const },
+        { path: 'runway_claims', key: 'runwayClaims' as const },
+        { path: 'runway_templates', key: 'runwayTemplates' as const },
       ];
 
       for (const col of collectionsToClean) {
@@ -1949,48 +2116,78 @@ class AgroDataService {
         {
           path: 'capital_contributions',
           apply: (docs) => {
-            this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
+            const serverDocs = (docs as CapitalContributionEvent[]).filter(
               (x) => !isLegacySeedId('capitalContributions', x.id)
+            );
+            this.state.capitalContributions = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.capitalContributions || [],
+              'capital_contributions'
             );
           },
         },
         {
           path: 'expense_ledger',
           apply: (docs) => {
-            this.state.expenses = (docs as ExpenseLedgerEvent[]).filter(
+            const serverDocs = (docs as ExpenseLedgerEvent[]).filter(
               (x) => !isLegacySeedId('expenses', x.id)
+            );
+            this.state.expenses = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.expenses || [],
+              'expense_ledger'
             );
           },
         },
         {
           path: 'fixed_assets_ledger',
           apply: (docs) => {
-            this.state.fixedAssets = (docs as FixedAssetLedgerEvent[]).filter(
+            const serverDocs = (docs as FixedAssetLedgerEvent[]).filter(
               (x) => !isLegacySeedId('fixedAssets', x.id)
+            );
+            this.state.fixedAssets = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.fixedAssets || [],
+              'fixed_assets_ledger'
             );
           },
         },
         {
           path: 'livestock_entries',
           apply: (docs) => {
-            this.state.livestockEntries = (docs as LivestockEntry[]).filter(
+            const serverDocs = (docs as LivestockEntry[]).filter(
               (x) => !isLegacySeedId('livestockEntries', x.id)
+            );
+            this.state.livestockEntries = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.livestockEntries || [],
+              'livestock_entries'
             );
           },
         },
         {
           path: 'livestock_lifecycle_events',
           apply: (docs) => {
-            this.state.livestockEvents = (docs as LivestockLifecycleEvent[]).filter(
+            const serverDocs = (docs as LivestockLifecycleEvent[]).filter(
               (x) => !isLegacySeedId('livestockEvents', x.id)
+            );
+            this.state.livestockEvents = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.livestockEvents || [],
+              'livestock_lifecycle_events'
             );
           },
         },
         {
           path: 'feed_ledger',
           apply: (docs) => {
-            this.state.feedLedger = (docs as FeedLedgerEvent[]).filter(
+            const serverDocs = (docs as FeedLedgerEvent[]).filter(
               (x) => !isLegacySeedId('feedLedger', x.id)
+            );
+            this.state.feedLedger = outboxService.reconcileSnapshot(
+              serverDocs,
+              this.state.feedLedger || [],
+              'feed_ledger'
             );
           },
         },
@@ -1998,6 +2195,86 @@ class AgroDataService {
           path: 'audit_notifications',
           apply: (docs) => {
             this.processIncomingAuditNotifications(docs);
+          },
+        },
+        {
+          path: 'debt_liabilities',
+          apply: (docs) => {
+            this.state.debtLiabilities = outboxService.reconcileSnapshot(
+              docs as DebtLiabilityEvent[],
+              this.state.debtLiabilities || [],
+              'debt_liabilities'
+            );
+          },
+        },
+        {
+          path: 'loans_given',
+          apply: (docs) => {
+            this.state.loansGiven = outboxService.reconcileSnapshot(
+              docs as LoanGivenEvent[],
+              this.state.loansGiven || [],
+              'loans_given'
+            );
+          },
+        },
+        {
+          path: 'credit_sales',
+          apply: (docs) => {
+            this.state.creditSales = outboxService.reconcileSnapshot(
+              docs as CreditSaleEvent[],
+              this.state.creditSales || [],
+              'credit_sales'
+            );
+          },
+        },
+        {
+          path: 'runway_plans',
+          apply: (docs) => {
+            this.state.runwayPlans = outboxService.reconcileSnapshot(
+              docs as RunwayPlan[],
+              this.state.runwayPlans || [],
+              'runway_plans'
+            );
+          },
+        },
+        {
+          path: 'runway_lines',
+          apply: (docs) => {
+            this.state.runwayLines = outboxService.reconcileSnapshot(
+              docs as RunwayLine[],
+              this.state.runwayLines || [],
+              'runway_lines'
+            );
+          },
+        },
+        {
+          path: 'runway_pledges',
+          apply: (docs) => {
+            this.state.runwayPledges = outboxService.reconcileSnapshot(
+              docs as RunwayPledge[],
+              this.state.runwayPledges || [],
+              'runway_pledges'
+            );
+          },
+        },
+        {
+          path: 'runway_claims',
+          apply: (docs) => {
+            this.state.runwayClaims = outboxService.reconcileSnapshot(
+              docs as RunwayPaymentClaim[],
+              this.state.runwayClaims || [],
+              'runway_claims'
+            );
+          },
+        },
+        {
+          path: 'runway_templates',
+          apply: (docs) => {
+            this.state.runwayTemplates = outboxService.reconcileSnapshot(
+              docs as RunwayTemplate[],
+              this.state.runwayTemplates || [],
+              'runway_templates'
+            );
           },
         },
       ];
@@ -2041,6 +2318,14 @@ class AgroDataService {
       'livestock_lifecycle_events',
       'feed_ledger',
       'audit_notifications',
+      'debt_liabilities',
+      'loans_given',
+      'credit_sales',
+      'runway_plans',
+      'runway_lines',
+      'runway_pledges',
+      'runway_claims',
+      'runway_templates',
     ];
 
     // Attempt to ensure an active Firebase Auth user session exists if available
@@ -2078,31 +2363,109 @@ class AgroDataService {
       } else if (colPath === 'members') {
         this.state.members = this.mergeAndDeduplicateCloudMembers(docs);
       } else if (colPath === 'capital_contributions') {
-        this.state.capitalContributions = (docs as CapitalContributionEvent[]).filter(
+        const serverDocs = (docs as CapitalContributionEvent[]).filter(
           (x) => !isLegacySeedId('capitalContributions', x.id)
         );
+        this.state.capitalContributions = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.capitalContributions || [],
+          'capital_contributions'
+        );
       } else if (colPath === 'expense_ledger') {
-        this.state.expenses = (docs as ExpenseLedgerEvent[]).filter(
+        const serverDocs = (docs as ExpenseLedgerEvent[]).filter(
           (x) => !isLegacySeedId('expenses', x.id)
         );
+        this.state.expenses = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.expenses || [],
+          'expense_ledger'
+        );
       } else if (colPath === 'fixed_assets_ledger') {
-        this.state.fixedAssets = (docs as FixedAssetLedgerEvent[]).filter(
+        const serverDocs = (docs as FixedAssetLedgerEvent[]).filter(
           (x) => !isLegacySeedId('fixedAssets', x.id)
         );
+        this.state.fixedAssets = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.fixedAssets || [],
+          'fixed_assets_ledger'
+        );
       } else if (colPath === 'livestock_entries') {
-        this.state.livestockEntries = (docs as LivestockEntry[]).filter(
+        const serverDocs = (docs as LivestockEntry[]).filter(
           (x) => !isLegacySeedId('livestockEntries', x.id)
         );
+        this.state.livestockEntries = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.livestockEntries || [],
+          'livestock_entries'
+        );
       } else if (colPath === 'livestock_lifecycle_events') {
-        this.state.livestockEvents = (docs as LivestockLifecycleEvent[]).filter(
+        const serverDocs = (docs as LivestockLifecycleEvent[]).filter(
           (x) => !isLegacySeedId('livestockEvents', x.id)
         );
+        this.state.livestockEvents = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.livestockEvents || [],
+          'livestock_lifecycle_events'
+        );
       } else if (colPath === 'feed_ledger') {
-        this.state.feedLedger = (docs as FeedLedgerEvent[]).filter(
+        const serverDocs = (docs as FeedLedgerEvent[]).filter(
           (x) => !isLegacySeedId('feedLedger', x.id)
+        );
+        this.state.feedLedger = outboxService.reconcileSnapshot(
+          serverDocs,
+          this.state.feedLedger || [],
+          'feed_ledger'
         );
       } else if (colPath === 'audit_notifications') {
         this.processIncomingAuditNotifications(docs);
+      } else if (colPath === 'debt_liabilities') {
+        this.state.debtLiabilities = outboxService.reconcileSnapshot(
+          docs as DebtLiabilityEvent[],
+          this.state.debtLiabilities || [],
+          'debt_liabilities'
+        );
+      } else if (colPath === 'loans_given') {
+        this.state.loansGiven = outboxService.reconcileSnapshot(
+          docs as LoanGivenEvent[],
+          this.state.loansGiven || [],
+          'loans_given'
+        );
+      } else if (colPath === 'credit_sales') {
+        this.state.creditSales = outboxService.reconcileSnapshot(
+          docs as CreditSaleEvent[],
+          this.state.creditSales || [],
+          'credit_sales'
+        );
+      } else if (colPath === 'runway_plans') {
+        this.state.runwayPlans = outboxService.reconcileSnapshot(
+          docs as RunwayPlan[],
+          this.state.runwayPlans || [],
+          'runway_plans'
+        );
+      } else if (colPath === 'runway_lines') {
+        this.state.runwayLines = outboxService.reconcileSnapshot(
+          docs as RunwayLine[],
+          this.state.runwayLines || [],
+          'runway_lines'
+        );
+      } else if (colPath === 'runway_pledges') {
+        this.state.runwayPledges = outboxService.reconcileSnapshot(
+          docs as RunwayPledge[],
+          this.state.runwayPledges || [],
+          'runway_pledges'
+        );
+      } else if (colPath === 'runway_claims') {
+        this.state.runwayClaims = outboxService.reconcileSnapshot(
+          docs as RunwayPaymentClaim[],
+          this.state.runwayClaims || [],
+          'runway_claims'
+        );
+      } else if (colPath === 'runway_templates') {
+        this.state.runwayTemplates = outboxService.reconcileSnapshot(
+          docs as RunwayTemplate[],
+          this.state.runwayTemplates || [],
+          'runway_templates'
+        );
       }
     }
 
@@ -2118,9 +2481,11 @@ class AgroDataService {
     if (!firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
+    const cleanData = JSON.parse(JSON.stringify(data));
+    outboxService.enqueue(collectionPath, docId, cleanData);
+
     if (firestoreDb) {
       try {
-        const cleanData = JSON.parse(JSON.stringify(data));
         // Protect against demoting an already approved member on app reinstall or new phone:
         if (collectionPath === 'members' && cleanData.approvalStatus === 'PENDING_APPROVAL') {
           try {
@@ -2523,6 +2888,9 @@ class AgroDataService {
     referenceTransactionId?: string;
     note: string;
     actor: OrgMember;
+    runwayPlanId?: string;
+    pledgeId?: string;
+    claimId?: string;
   }): CapitalContributionEvent {
     if (!PERMISSIONS.canLogCapitalDeposit(params.actor.role)) {
       throw new Error('Access Denied: Only Treasurers and Organization Admins can record capital contributions.');
@@ -2534,9 +2902,23 @@ class AgroDataService {
     }
 
     const now = new Date().toISOString();
-    const id = `TX-CAP-${Date.now().toString(36).toUpperCase()}${params.direction === 'CONTRA_REVERSAL' ? '-CONTRA' : ''}`;
+    const isContra = params.direction === 'CONTRA_REVERSAL';
+    const id = `TX-CAP-${Date.now().toString(36).toUpperCase()}${isContra ? '-CONTRA' : ''}`;
     const cleanAmount = Number(params.amount.toFixed(2));
     const cleanNote = params.note.trim().slice(0, 500);
+
+    let planId = params.runwayPlanId;
+    let plgId = params.pledgeId;
+    let clmId = params.claimId;
+
+    if (isContra && params.referenceTransactionId) {
+      const ref = this.state.capitalContributions.find((c) => c.id === params.referenceTransactionId);
+      if (ref && ref.runwayPlanId) {
+        planId = ref.runwayPlanId;
+        plgId = ref.pledgeId;
+        clmId = ref.claimId;
+      }
+    }
 
     const newEvent: CapitalContributionEvent = {
       id,
@@ -2547,6 +2929,9 @@ class AgroDataService {
       amount: cleanAmount,
       referenceTransactionId: params.referenceTransactionId,
       note: cleanNote,
+      runwayPlanId: planId,
+      pledgeId: plgId,
+      claimId: clmId,
       createdAt: now,
       createdByMemberId: params.actor.id,
       auditHash: computeLedgerRecordHash(
@@ -2559,7 +2944,6 @@ class AgroDataService {
       ),
     };
 
-    const isContra = params.direction === 'CONTRA_REVERSAL';
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
       locationId: 'ALL',
@@ -2600,6 +2984,7 @@ class AgroDataService {
     gpsStamp?: string;
     receiptPhotoDataUrl?: string;
     actor: OrgMember;
+    runwayAllocation?: RunwayAllocation;
   }): ExpenseLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Farm location is required.');
@@ -2613,12 +2998,41 @@ class AgroDataService {
     const cleanAmount = Number(params.amount.toFixed(2));
     const cleanNote = params.note.trim().slice(0, 500);
 
+    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+
+    let runwayPlanId: string | undefined;
+    let runwayLineId: string | undefined;
+    let runwayReserveDraw: number | undefined;
+    let runwayAllocationNote: string | undefined;
+
+    if (isContra && params.referenceTransactionId) {
+      const ref = this.state.expenses.find((e) => e.id === params.referenceTransactionId);
+      if (ref && ref.runwayPlanId) {
+        runwayPlanId = ref.runwayPlanId;
+        runwayLineId = ref.runwayLineId;
+        if (ref.runwayReserveDraw) {
+          runwayReserveDraw = -Math.abs(ref.runwayReserveDraw);
+        }
+      }
+    } else if (!isContra) {
+      const tags = this.assertRunwayCompliance({
+        orgId: targetOrgId,
+        amount: cleanAmount,
+        allocation: params.runwayAllocation,
+        actor: params.actor,
+      });
+      runwayPlanId = tags.runwayPlanId;
+      runwayLineId = tags.runwayLineId;
+      runwayReserveDraw = tags.runwayReserveDraw;
+      runwayAllocationNote = tags.runwayAllocationNote;
+    }
+
     const requiresMultiSig = !isContra && cleanAmount > 150;
     const approvalStatus = requiresMultiSig ? 'PENDING_MULTISIG' : 'APPROVED';
 
     const newExpense: ExpenseLedgerEvent = {
       id,
-      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
+      orgId: targetOrgId,
       locationId: loc.id,
       locationName: loc.name,
       batchOrAnimalId: params.batchOrAnimalId || undefined,
@@ -2633,6 +3047,10 @@ class AgroDataService {
       receiptPhotoDataUrl: params.receiptPhotoDataUrl,
       approvalStatus,
       approvedByMemberIds: [params.actor.id],
+      runwayPlanId,
+      runwayLineId,
+      runwayReserveDraw,
+      runwayAllocationNote,
       createdAt: now,
       auditHash: computeLedgerRecordHash(
         'EXPENSE',
@@ -2674,6 +3092,11 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('expense_ledger', newExpense.id, newExpense);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (newExpense.runwayPlanId && newExpense.approvalStatus === 'APPROVED') {
+      this.checkAndBroadcastPlanMilestones(newExpense.runwayPlanId, params.actor);
+    }
+
     return newExpense;
   }
 
@@ -2718,6 +3141,10 @@ class AgroDataService {
       }).catch((err) => console.warn('Cloud expense approval update warning:', err));
     }
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (target.runwayPlanId) {
+      this.checkAndBroadcastPlanMilestones(target.runwayPlanId, actor);
+    }
   }
 
   public getCurrentOrgLeftMoney(orgId?: string): number {
@@ -2794,6 +3221,7 @@ class AgroDataService {
     configuredSalePricePerUnit?: number;
     configuredSalePricePerKg?: number;
     actor: OrgMember;
+    runwayAllocation?: RunwayAllocation;
   }): LivestockEntry {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -2915,6 +3343,14 @@ class AgroDataService {
       newEntry.fundingDebtId = debtId;
       updatedDebts.unshift(debtEvent);
       void this.persistDocumentToCloudIfActive('debt_liabilities', debtEvent.id, debtEvent);
+
+      if (params.runwayAllocation && params.runwayAllocation.mode === 'LINE') {
+        const line = (this.state.runwayLines || []).find((l) => l.id === (params.runwayAllocation as any).lineId);
+        if (line) {
+          line.linkedDebtId = debtId;
+          void this.persistDocumentToCloudIfActive('runway_lines', line.id, line);
+        }
+      }
     }
 
     const regAudit = this.createChainedAuditEvent({
@@ -2935,6 +3371,13 @@ class AgroDataService {
     this.state.auditNotifications = updatedAudits;
 
     if (params.fundingSource !== 'SUPPLIER_CREDIT' && params.autoDeductPurchaseFromLeftMoney && params.purchaseCostTotal > 0) {
+      const tags = this.assertRunwayCompliance({
+        orgId: targetOrgId,
+        amount: params.purchaseCostTotal,
+        allocation: params.runwayAllocation,
+        actor: params.actor,
+      });
+
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
       const expNote = `Auto-logged livestock acquisition cost for ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}.`;
       const expEvent: ExpenseLedgerEvent = {
@@ -2952,11 +3395,19 @@ class AgroDataService {
         receiptPhotoDataUrl: params.imageUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
+        runwayPlanId: tags.runwayPlanId,
+        runwayLineId: tags.runwayLineId,
+        runwayReserveDraw: tags.runwayReserveDraw,
+        runwayAllocationNote: tags.runwayAllocationNote,
         createdAt: now,
         auditHash: computeLedgerRecordHash('EXPENSE', expId, now, params.purchaseCostTotal, expNote),
       };
       updatedExpenses.unshift(expEvent);
       void this.persistDocumentToCloudIfActive('expense_ledger', expEvent.id, expEvent);
+
+      if (expEvent.runwayPlanId) {
+        this.checkAndBroadcastPlanMilestones(expEvent.runwayPlanId, params.actor);
+      }
     }
 
     const nextState: AgroStateSnapshot = {
@@ -3340,6 +3791,19 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('debt_liabilities', newDebt.id, newDebt);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (newDebt.dueDate) {
+      const numericDebtReminderId = Math.abs(id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+      void nativeReminders.scheduleDueReminders({
+        id: numericDebtReminderId,
+        title: `Debt Due: ${params.creditorName}`,
+        body: `Payment of $${amount.toFixed(2)}`,
+        dueDate: new Date(newDebt.dueDate),
+        entityId: id,
+        type: 'DEBT_LIABILITY',
+      });
+    }
+
     return newDebt;
   }
 
@@ -3351,6 +3815,7 @@ class AgroDataService {
     note?: string;
     referenceNote?: string;
     actor: OrgMember;
+    runwayAllocation?: RunwayAllocation;
   }): DebtRepaymentLog {
     const debt = (this.state.debtLiabilities || []).find((d) => d.id === params.debtId);
     if (!debt) throw new Error('Debt liability record not found.');
@@ -3363,6 +3828,13 @@ class AgroDataService {
     if (params.amount > currentLeftMoney) {
       throw new Error(`Insufficient liquid funds in Left Money ($${currentLeftMoney.toFixed(2)} available) to disburse repayment of $${params.amount.toFixed(2)}.`);
     }
+
+    this.assertRunwayCompliance({
+      orgId: debt.orgId,
+      amount: params.amount,
+      allocation: params.runwayAllocation,
+      actor: params.actor,
+    });
 
     const now = new Date().toISOString();
     const repId = `REP-${Date.now().toString(36).toUpperCase()}`;
@@ -3409,6 +3881,12 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('debt_liabilities', updatedDebt.id, updatedDebt);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (updatedDebt.status === 'SETTLED') {
+      const numericDebtReminderId = Math.abs(debt.id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+      void nativeReminders.cancelReminders(numericDebtReminderId);
+    }
+
     return repLog;
   }
 
@@ -3424,6 +3902,7 @@ class AgroDataService {
     purposeNote?: string;
     reason?: string;
     actor: OrgMember;
+    runwayAllocation?: RunwayAllocation;
   }): LoanGivenEvent {
     if (!params.borrowerName.trim()) throw new Error('Borrower name is required.');
     if (!params.principalAmount || params.principalAmount <= 0) {
@@ -3439,6 +3918,13 @@ class AgroDataService {
     if (params.principalAmount > currentLeftMoney) {
       throw new Error(`Insufficient funds in Left Money ($${currentLeftMoney.toFixed(2)} available) to issue loan of $${params.principalAmount.toFixed(2)}.`);
     }
+
+    this.assertRunwayCompliance({
+      orgId: targetOrgId,
+      amount: params.principalAmount,
+      allocation: params.runwayAllocation,
+      actor: params.actor,
+    });
 
     const now = new Date().toISOString();
     const id = `LOAN-OUT-${Date.now().toString(36).toUpperCase()}`;
@@ -3603,19 +4089,34 @@ class AgroDataService {
     const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
 
     let livestockEntry: LivestockEntry | undefined;
+    let lifecycleEvent: LivestockLifecycleEvent | undefined;
+
     if (params.livestockId) {
       livestockEntry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
       if (livestockEntry) {
-        // Also log lifecycle event to reduce live headcount
-        this.logLivestockLifecycleEvent({
+        const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === livestockEntry!.id);
+        const currentHeadcount = livestockEntry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+        if (params.quantitySold > currentHeadcount) {
+          throw new Error(`Invalid credit sale: Harvest headcount (${params.quantitySold}) exceeds current live headcount (${currentHeadcount}).`);
+        }
+        const eventId = `EVENT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const eventNote = `Credit sale of ${params.quantitySold}x to ${params.customerName}. Total: $${totalAmount}, Deposit: $${deposit}, Credit: $${creditRemaining}. Due: ${settlementDate}. ${rawNotes.trim()}`;
+        lifecycleEvent = {
+          id: eventId,
+          orgId: targetOrgId,
           livestockId: livestockEntry.id,
+          livestockName: livestockEntry.nameOrTag,
+          locationId: livestockEntry.locationId,
           eventType: 'SALE_DISPATCH',
           headcountDelta: -params.quantitySold,
-          saleRevenueAmount: 0, // Cash is tracked through creditSales customer deposits to prevent double counting
+          saleRevenueAmount: 0,
           reinvestmentPercentage: 100,
-          note: `Credit sale of ${params.quantitySold}x to ${params.customerName}. Total: $${totalAmount}, Deposit: $${deposit}, Credit: $${creditRemaining}. Due: ${settlementDate}. ${rawNotes.trim()}`,
-          actor: params.actor,
-        });
+          referenceTransactionId: id,
+          note: eventNote,
+          loggedByName: params.actor.fullName,
+          createdAt: now,
+          auditHash: computeLedgerRecordHash('LIVESTOCK_EVENT', eventId, now, -params.quantitySold, eventNote),
+        };
       }
     }
 
@@ -3673,15 +4174,34 @@ class AgroDataService {
       timestamp: now,
     });
 
+    // Pure Atomic Commit: All related state changes committed in a single snapshot update
     const nextState: AgroStateSnapshot = {
       ...this.state,
+      livestockEvents: lifecycleEvent
+        ? [lifecycleEvent, ...(this.state.livestockEvents || [])]
+        : (this.state.livestockEvents || []),
       creditSales: [newCreditSale, ...(this.state.creditSales || [])],
       auditNotifications: [broadcastAudit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
+    if (lifecycleEvent) {
+      void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', lifecycleEvent.id, lifecycleEvent);
+    }
     void this.persistDocumentToCloudIfActive('credit_sales', newCreditSale.id, newCreditSale);
     void this.persistDocumentToCloudIfActive('audit_notifications', broadcastAudit.id, broadcastAudit);
+
+    // Schedule native due date reminder on Android AlarmManager
+    const numericReminderId = Math.abs(id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+    void nativeReminders.scheduleDueReminders({
+      id: numericReminderId,
+      title: `Credit Sale: ${params.customerName}`,
+      body: `Settlement of $${creditRemaining.toFixed(2)}`,
+      dueDate: new Date(settlementDate),
+      entityId: id,
+      type: 'CREDIT_SALE',
+    });
+
     return newCreditSale;
   }
 
@@ -3818,6 +4338,12 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('credit_sales', updatedSale.id, updatedSale);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (updatedSale.status === 'SETTLED') {
+      const numericSaleReminderId = Math.abs(sale.id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+      void nativeReminders.cancelReminders(numericSaleReminderId);
+    }
+
     return payLog;
   }
 
@@ -3835,6 +4361,7 @@ class AgroDataService {
     deductFromLeftMoney?: boolean;
     photoUrl?: string;
     actor: OrgMember;
+    runwayAllocation?: RunwayAllocation;
   }): FixedAssetLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -3900,7 +4427,7 @@ class AgroDataService {
         ? `Fixed Asset Adjustment: ${newAssetEvent.assetName} (${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)})`
         : `Fixed Asset Logged: ${newAssetEvent.assetName} ($${params.valueDelta.toFixed(2)})`,
       message: `${id} at ${loc.name}: Qty ${params.quantityDelta >= 0 ? '+' : ''}${params.quantityDelta}, Val ${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)}. Note: ${cleanNote}`,
-      deltaFinancial: params.deductFromLeftMoney ? -Math.abs(params.valueDelta) : undefined,
+      deltaFinancial: shouldDeduct ? -Math.abs(params.valueDelta) : undefined,
       referenceEntityId: id,
       photoUrl: params.photoUrl,
       timestamp: now,
@@ -3908,7 +4435,14 @@ class AgroDataService {
     updatedAudits.unshift(assetAudit);
     this.state.auditNotifications = updatedAudits;
 
-    if (params.deductFromLeftMoney && params.valueDelta > 0) {
+    if (shouldDeduct) {
+      const tags = this.assertRunwayCompliance({
+        orgId: params.actor.orgId || loc.orgId || 'org-master',
+        amount: params.valueDelta,
+        allocation: params.runwayAllocation,
+        actor: params.actor,
+      });
+
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
       const expNote = `Fixed asset acquisition: ${newAssetEvent.assetName} (${params.quantityDelta} units) at ${loc.name}. ${cleanNote}`;
       const expEvent: ExpenseLedgerEvent = {
@@ -3925,11 +4459,19 @@ class AgroDataService {
         receiptPhotoDataUrl: params.photoUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
+        runwayPlanId: tags.runwayPlanId,
+        runwayLineId: tags.runwayLineId,
+        runwayReserveDraw: tags.runwayReserveDraw,
+        runwayAllocationNote: tags.runwayAllocationNote,
         createdAt: now,
         auditHash: computeLedgerRecordHash('EXPENSE', expId, now, params.valueDelta, expNote),
       };
       updatedExpenses.unshift(expEvent);
       void this.persistDocumentToCloudIfActive('expense_ledger', expEvent.id, expEvent);
+
+      if (expEvent.runwayPlanId) {
+        this.checkAndBroadcastPlanMilestones(expEvent.runwayPlanId, params.actor);
+      }
     }
 
     const nextState: AgroStateSnapshot = {
@@ -4881,6 +5423,1232 @@ class AgroDataService {
       ...this.state,
       auditNotifications: updated,
     });
+  }
+
+  // ==========================================
+  // RUNWAY CAPITAL PLANNING MODULE METHODS
+  // ==========================================
+
+  public assertRunwayCompliance(params: {
+    orgId: string;
+    amount: number;
+    allocation?: RunwayAllocation;
+    actor: OrgMember;
+  }): {
+    runwayPlanId?: string;
+    runwayLineId?: string;
+    runwayReserveDraw?: number;
+    runwayAllocationNote?: string;
+  } {
+    const activePlan = (this.state.runwayPlans || []).find(
+      (p) => p.orgId === params.orgId && p.status === 'ACTIVE'
+    );
+    if (!activePlan) {
+      return {};
+    }
+
+    const lines = (this.state.runwayLines || []).filter((l) => l.planId === activePlan.id);
+    const leftMoney = this.getCurrentOrgLeftMoney(params.orgId);
+    const availableCash = computeAvailableCash(leftMoney, this.state.expenses);
+
+    const evalResult = evaluateSpend({
+      plan: activePlan,
+      lines,
+      expenses: this.state.expenses,
+      allocation: params.allocation,
+      amount: params.amount,
+      availableCash,
+      actorRole: params.actor.role,
+      debts: this.state.debtLiabilities,
+    });
+
+    if (evalResult.advisoryWarning) {
+      const now = new Date().toISOString();
+      const audit = this.createChainedAuditEvent({
+        actor: params.actor,
+        locationId: activePlan.locationId || 'ALL',
+        locationName: 'Runway Capital Engine',
+        eventType: 'RUNWAY_OFF_PLAN_WARNING',
+        severity: 'INFO',
+        title: `Off-Plan Spend Warning: ${activePlan.name}`,
+        message: `${params.actor.fullName} logged $${params.amount.toFixed(2)} without Runway plan allocation under ADVISORY enforcement.`,
+        referenceEntityId: activePlan.id,
+        timestamp: now,
+      });
+      this.state.auditNotifications = [audit, ...this.state.auditNotifications];
+      this.saveLocalState({ ...this.state });
+      void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    }
+
+    return evalResult.tags;
+  }
+
+  public checkAndBroadcastPlanMilestones(planId: string, actor: OrgMember): void {
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === planId);
+    if (!plan) return;
+
+    const lines = (this.state.runwayLines || []).filter((l) => l.planId === plan.id);
+    const pledges = (this.state.runwayPledges || []).filter((p) => p.planId === plan.id);
+    const contributions = (this.state.capitalContributions || []).filter((c) => c.runwayPlanId === plan.id);
+    const expenses = (this.state.expenses || []).filter((e) => e.runwayPlanId === plan.id);
+    const debts = (this.state.debtLiabilities || []).filter((d) => d.runwayPlanId === plan.id);
+
+    const layers = computeFundingLayers(plan, lines, pledges, contributions, expenses, debts);
+
+    // Calculate revenue from livestock sales and credit sales for break-even
+    const salesRevenue = (this.state.livestockEvents || [])
+      .filter((e) => e.eventType === 'SALE_DISPATCH')
+      .reduce((acc, e) => acc + (e.saleRevenueAmount || 0), 0);
+    const creditSaleReceipts = (this.state.creditSales || []).reduce((acc, cs) => {
+      const repSum = (cs.paymentLogs || []).reduce((pAcc: number, p) => pAcc + (p.amount || 0), 0);
+      return acc + repSum;
+    }, 0);
+
+    const recovery = computeRecovery(layers.executed, salesRevenue, creditSaleReceipts);
+    const newMilestones = detectMilestones(layers, plan, recovery.isBreakEven);
+
+    if (newMilestones.length === 0) return;
+
+    const now = new Date().toISOString();
+    const updatedMilestones = { ...(plan.milestonesReached || {}) };
+    const newAudits: AuditNotificationEvent[] = [];
+
+    for (const m of newMilestones) {
+      updatedMilestones[m] = now;
+      const title = `Runway Milestone: ${m.replace('_', ' ')} (${plan.name})`;
+      const message = `${plan.name} reached milestone ${m.replace('_', ' ')}! Progress: Pledged ${layers.pledgedPct}%, Collected ${layers.collectedPct}%, Executed ${layers.executedPct}%.`;
+
+      const audit = this.createChainedAuditEvent({
+        actor,
+        locationId: plan.locationId || 'ALL',
+        locationName: 'Runway Capital Engine',
+        eventType: 'RUNWAY_MILESTONE',
+        severity: 'MILESTONE',
+        title,
+        message,
+        referenceEntityId: plan.id,
+        timestamp: now,
+      });
+      newAudits.unshift(audit);
+      this.state.auditNotifications = [audit, ...(this.state.auditNotifications || [])];
+    }
+
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      milestonesReached: updatedMilestones,
+      updatedAt: now,
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+      auditNotifications: this.state.auditNotifications,
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    for (const aud of newAudits) {
+      void this.persistDocumentToCloudIfActive('audit_notifications', aud.id, aud);
+    }
+  }
+
+  public setRunwayModuleEnabled(params: {
+    orgId: string;
+    enabled: boolean;
+    actor: OrgMember;
+  }): Organization {
+    if (!PERMISSIONS.canEnableRunwayModule(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can toggle the Runway Planning module.');
+    }
+    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    if (params.actor.orgId && params.actor.orgId !== targetOrgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization.');
+    }
+
+    if (!params.enabled) {
+      const activeOrPledgingPlan = (this.state.runwayPlans || []).find(
+        (p) => p.orgId === targetOrgId && (p.status === 'PLEDGING' || p.status === 'ACTIVE')
+      );
+      if (activeOrPledgingPlan) {
+        throw new Error('Cannot disable Runway module while a plan is in PLEDGING or ACTIVE status.');
+      }
+    }
+
+    const org = this.getActiveOrganization(targetOrgId);
+    const updatedFeatures = {
+      ...org.features,
+      runwayModule: params.enabled,
+    };
+    const now = new Date().toISOString();
+    const updatedOrg: Organization = {
+      ...org,
+      features: updatedFeatures,
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Organization Master',
+      eventType: 'ORGANIZATION_CREATED',
+      severity: 'INFO',
+      title: `Runway Planning Module ${params.enabled ? 'Enabled' : 'Disabled'}`,
+      message: `Runway Capital Planning module was ${params.enabled ? 'enabled' : 'disabled'} for ${org.name} by ${params.actor.fullName}.`,
+      referenceEntityId: org.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: (this.state.organizations || []).map((o) => (o.id === org.id ? updatedOrg : o)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('organizations', updatedOrg.id, updatedOrg);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updatedOrg;
+  }
+
+  public snoozeRunwayPromo(params: {
+    orgId: string;
+    days?: number;
+    actor: OrgMember;
+  }): Organization {
+    const org = this.getActiveOrganization(params.orgId);
+    const days = params.days ?? 7;
+    const now = new Date();
+    const snoozedUntil = new Date(now.getTime() + days * 86_400_000).toISOString();
+    const count = (org.runwayPromoShownCount || 0) + 1;
+
+    const updatedOrg: Organization = {
+      ...org,
+      runwayPromoSnoozedUntil: snoozedUntil,
+      runwayPromoShownCount: count,
+      updatedAt: now.toISOString(),
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: (this.state.organizations || []).map((o) => (o.id === org.id ? updatedOrg : o)),
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('organizations', updatedOrg.id, updatedOrg);
+    return updatedOrg;
+  }
+
+  public createRunwayPlan(params: {
+    name: string;
+    orgId?: string;
+    orgType?: 'AGRO_FARMING' | 'GENERAL_VENTURE';
+    mode?: RunwayMode;
+    contingencyMode?: ContingencyMode;
+    contingencyPercent?: number;
+    contingencyFixedAmount?: number;
+    targetBasis?: RunwayTargetBasis;
+    activationThresholdPct?: number;
+    startDate?: string;
+    fundingDeadline?: string;
+    breakEvenTargetDate?: string;
+    locationId?: string;
+    linkedLivestockId?: string;
+    templateId?: string;
+    showMemberPledges?: boolean;
+    collectionMode?: 'ANYTIME' | 'BY_DEADLINE' | 'INSTALMENTS';
+    enforcement?: RunwayEnforcement;
+    spendEnforcement?: RunwayEnforcement;
+    phases?: (RunwayPhase | Omit<RunwayPhase, 'id'>)[];
+    plannedFinancing?: { id: string; lenderName: string; amount: number; expectedDate?: string }[];
+    lines?: Omit<RunwayLine, 'id' | 'planId' | 'orgId' | 'createdAt' | 'updatedAt' | 'auditHash' | 'approval' | 'origin'>[];
+    actor: OrgMember;
+  }): { plan: RunwayPlan; lines: RunwayLine[] } {
+    if (!PERMISSIONS.canCreateRunwayPlan(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can create a Runway Plan.');
+    }
+    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    if (params.actor.orgId && params.actor.orgId !== targetOrgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot create a plan for another organization.');
+    }
+
+    const org = this.getActiveOrganization(targetOrgId);
+    const now = new Date().toISOString();
+    const planId = `RWY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    const newPlan: RunwayPlan = {
+      id: planId,
+      orgId: targetOrgId,
+      name: params.name.trim().slice(0, 140),
+      orgType: params.orgType || org.type,
+      mode: params.mode || 'SIMPLE',
+      status: 'DRAFT',
+      enforcement: params.enforcement || params.spendEnforcement || 'STRICT',
+      locationId: params.locationId,
+      linkedLivestockId: params.linkedLivestockId,
+      templateId: params.templateId,
+      startDate: params.startDate || now,
+      fundingDeadline: params.fundingDeadline,
+      breakEvenTargetDate: params.breakEvenTargetDate,
+      contingencyMode: params.contingencyMode || 'PERCENT',
+      contingencyPercent: params.contingencyPercent ?? (org.type === 'AGRO_FARMING' ? 15 : 10),
+      contingencyFixedAmount: params.contingencyFixedAmount,
+      targetBasis: params.targetBasis || 'GROSS',
+      activationThresholdPct: params.activationThresholdPct ?? 100,
+      openingCashAdopted: 0,
+      plannedFinancing: params.plannedFinancing || [],
+      phases: (params.phases || []).map((p, idx) => ('id' in p ? (p as RunwayPhase) : { ...p, id: `PHASE-${idx + 1}` })),
+      showMemberPledges: Boolean(params.showMemberPledges),
+      collectionMode: params.collectionMode || 'ANYTIME',
+      milestonesReached: {},
+      version: 1,
+      createdByMemberId: params.actor.id,
+      createdByName: params.actor.fullName,
+      createdAt: now,
+      updatedAt: now,
+      auditHash: computeLedgerRecordHash('RUNWAY_PLAN', planId, now, 0, params.name.trim()),
+    };
+
+    const createdLines: RunwayLine[] = (params.lines || []).map((l, index) => {
+      const lineId = `RWL-${Date.now().toString(36).toUpperCase()}-${index}`;
+      const lineCost = round2((l.qty || 1) * (l.unitCost || 0));
+      return {
+        ...l,
+        id: lineId,
+        planId,
+        orgId: targetOrgId,
+        origin: 'PLAN',
+        approval: 'APPROVED',
+        sortOrder: index,
+        createdAt: now,
+        updatedAt: now,
+        auditHash: computeLedgerRecordHash('RUNWAY_LINE', lineId, now, lineCost, l.title),
+      };
+    });
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: params.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_PLAN_CREATED',
+      severity: 'FINANCIAL',
+      title: `Runway Plan Created: ${newPlan.name}`,
+      message: `Created Runway Plan "${newPlan.name}" (${newPlan.mode} mode, ${newPlan.contingencyPercent}% contingency) with ${createdLines.length} planned steps.`,
+      referenceEntityId: newPlan.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: [newPlan, ...(this.state.runwayPlans || [])],
+      runwayLines: [...(this.state.runwayLines || []), ...createdLines],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', newPlan.id, newPlan);
+    for (const l of createdLines) {
+      void this.persistDocumentToCloudIfActive('runway_lines', l.id, l);
+    }
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    return { plan: newPlan, lines: createdLines };
+  }
+
+  public upsertRunwayLine(params: {
+    planId: string;
+    line: Partial<RunwayLine> & {
+      title: string;
+      category: string;
+      qty: number;
+      unitCost: number;
+    };
+    actor: OrgMember;
+  }): RunwayLine {
+    if (!PERMISSIONS.canEditRunwayDraft(params.actor.role)) {
+      throw new Error('Access Denied: Only Admins and Treasurers can edit a Runway Plan draft.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (plan.status !== 'DRAFT') {
+      throw new RunwayError(
+        'RUNWAY_PLAN_LOCKED',
+        'Plan is locked. Lines cannot be directly edited after locking; propose an amendment instead.'
+      );
+    }
+
+    const now = new Date().toISOString();
+    const lineId = params.line.id || `RWL-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const cost = round2(params.line.qty * params.line.unitCost);
+
+    const existingLines = (this.state.runwayLines || []).filter((l) => l.planId === plan.id);
+    const existingIndex = existingLines.findIndex((l) => l.id === lineId);
+
+    const upsertedLine: RunwayLine = {
+      id: lineId,
+      planId: plan.id,
+      orgId: plan.orgId,
+      phaseId: params.line.phaseId,
+      kind: params.line.kind || 'COST',
+      title: params.line.title.trim().slice(0, 140),
+      category: params.line.category.trim(),
+      qty: params.line.qty,
+      unitCost: params.line.unitCost,
+      unitLabel: params.line.unitLabel,
+      recurrence: params.line.recurrence,
+      plannedDate: params.line.plannedDate,
+      priority: params.line.priority || 'ESSENTIAL',
+      excludeFromContingency: Boolean(params.line.excludeFromContingency),
+      confidencePct: params.line.confidencePct,
+      origin: 'PLAN',
+      approval: 'APPROVED',
+      sortOrder: params.line.sortOrder ?? (existingIndex >= 0 ? existingLines[existingIndex].sortOrder : existingLines.length),
+      createdAt: existingIndex >= 0 ? existingLines[existingIndex].createdAt : now,
+      updatedAt: now,
+      auditHash: computeLedgerRecordHash('RUNWAY_LINE', lineId, now, cost, params.line.title.trim()),
+    };
+
+    let nextLines: RunwayLine[];
+    if (existingIndex >= 0) {
+      nextLines = (this.state.runwayLines || []).map((l) => (l.id === lineId ? upsertedLine : l));
+    } else {
+      nextLines = [...(this.state.runwayLines || []), upsertedLine];
+    }
+
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      updatedAt: now,
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayLines: nextLines,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_lines', upsertedLine.id, upsertedLine);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    return upsertedLine;
+  }
+
+  public removeRunwayLine(params: {
+    planId: string;
+    lineId: string;
+    actor: OrgMember;
+  }): void {
+    if (!PERMISSIONS.canEditRunwayDraft(params.actor.role)) {
+      throw new Error('Access Denied: Only Admins and Treasurers can edit a Runway Plan draft.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (plan.status !== 'DRAFT') {
+      throw new RunwayError(
+        'RUNWAY_PLAN_LOCKED',
+        'Plan is locked. Lines cannot be deleted after locking.'
+      );
+    }
+
+    const nextLines = (this.state.runwayLines || []).filter((l) => l.id !== params.lineId);
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayLines: nextLines,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+    };
+
+    this.saveLocalState(nextState);
+    if (firestoreDb && !params.lineId.startsWith('local-')) {
+      deleteDoc(doc(firestoreDb, 'runway_lines', params.lineId)).catch((err) =>
+        console.warn('Cloud runway line deletion warning:', err)
+      );
+    }
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+  }
+
+  public reorderRunwayLines(params: {
+    planId: string;
+    lineIds: string[];
+    actor: OrgMember;
+  }): void {
+    if (!PERMISSIONS.canEditRunwayDraft(params.actor.role)) {
+      throw new Error('Access Denied: Only Admins and Treasurers can edit a Runway Plan draft.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (plan.status !== 'DRAFT') {
+      throw new RunwayError('RUNWAY_PLAN_LOCKED', 'Plan is locked.');
+    }
+
+    const nextLines = (this.state.runwayLines || []).map((l) => {
+      if (l.planId !== plan.id) return l;
+      const newOrder = params.lineIds.indexOf(l.id);
+      return newOrder >= 0 ? { ...l, sortOrder: newOrder, updatedAt: new Date().toISOString() } : l;
+    });
+
+    this.saveLocalState({
+      ...this.state,
+      runwayLines: nextLines,
+    });
+  }
+
+  public updateRunwayReserve(params: {
+    planId: string;
+    contingencyMode: ContingencyMode;
+    contingencyPercent?: number;
+    contingencyFixedAmount?: number;
+    actor: OrgMember;
+  }): RunwayPlan {
+    if (!PERMISSIONS.canEditRunwayDraft(params.actor.role)) {
+      throw new Error('Access Denied: Only Admins and Treasurers can edit a Runway Plan draft.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (plan.status !== 'DRAFT') {
+      throw new RunwayError('RUNWAY_PLAN_LOCKED', 'Plan is locked.');
+    }
+
+    const now = new Date().toISOString();
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      contingencyMode: params.contingencyMode,
+      contingencyPercent: params.contingencyPercent,
+      contingencyFixedAmount: params.contingencyFixedAmount,
+      updatedAt: now,
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    return updatedPlan;
+  }
+
+  public lockRunwayPlan(params: {
+    planId: string;
+    enforcement?: RunwayEnforcement;
+    activationThresholdPct?: number;
+    adoptOpeningCash?: boolean;
+    actor: OrgMember;
+  }): RunwayPlan {
+    if (!PERMISSIONS.canLockRunwayPlan(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can lock a Runway Plan.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (plan.status !== 'DRAFT') {
+      throw new Error('Only DRAFT plans can be locked for pledging.');
+    }
+
+    const lines = (this.state.runwayLines || []).filter((l) => l.planId === plan.id);
+    const totals = computePlanTotals(plan, lines);
+    if (totals.totalRequirement <= 0) {
+      throw new Error('Cannot lock plan with zero total capital requirement. Please add at least one step.');
+    }
+
+    let openingCashAdopted = 0;
+    if (params.adoptOpeningCash) {
+      openingCashAdopted = Math.max(0, this.getCurrentOrgLeftMoney(plan.orgId));
+    }
+
+    const now = new Date().toISOString();
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      status: 'PLEDGING',
+      enforcement: params.enforcement || 'STRICT',
+      activationThresholdPct: params.activationThresholdPct ?? 100,
+      openingCashAdopted,
+      lockedAt: now,
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_PLAN_LOCKED',
+      severity: 'FINANCIAL',
+      title: `Runway Plan Locked: ${plan.name} ($${totals.totalRequirement.toFixed(2)})`,
+      message: `Plan locked for member pledging. Total Capital Requirement: $${totals.totalRequirement.toFixed(2)} (Opening cash adopted: $${openingCashAdopted.toFixed(2)}).`,
+      referenceEntityId: plan.id,
+      timestamp: now,
+    });
+    this.state.auditNotifications = [audit, ...(this.state.auditNotifications || [])];
+
+    const broadcast = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'All Locations (Master Organization)',
+      eventType: 'GROUND_BROADCAST',
+      severity: 'MILESTONE',
+      title: `Capital Plan Open for Pledges: ${plan.name}`,
+      message: `Our organization needs $${totals.totalRequirement.toFixed(2)} for ${plan.name}. Add your pledge now to help us reach our target!`,
+      referenceEntityId: plan.id,
+      timestamp: now,
+    });
+    this.state.auditNotifications = [broadcast, ...(this.state.auditNotifications || [])];
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+      auditNotifications: this.state.auditNotifications,
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    void this.persistDocumentToCloudIfActive('audit_notifications', broadcast.id, broadcast);
+    return updatedPlan;
+  }
+
+  public pledgeToRunwayPlan(params: {
+    planId: string;
+    memberId: string;
+    amount: number;
+    pace?: 'ONE_OFF' | 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+    instalments?: { dueDate: string; amount: number }[];
+    note?: string;
+    actor: OrgMember;
+  }): RunwayPledge {
+    if (!PERMISSIONS.canPledge(params.actor.role)) {
+      throw new Error('Access Denied: You do not have permission to pledge.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot pledge to another organization\'s plan.');
+    }
+
+    if (plan.status !== 'PLEDGING' && plan.status !== 'ACTIVE') {
+      throw new Error(`Cannot pledge to a plan in ${plan.status} status. Pledging is only open during PLEDGING and ACTIVE stages.`);
+    }
+
+    const isSelf = params.memberId === params.actor.id;
+    const isPrivileged =
+      params.actor.role === 'ORG_ADMIN' ||
+      params.actor.role === 'SYNDICATE_ADMIN' ||
+      params.actor.role === 'TREASURER';
+    if (!isSelf && !isPrivileged) {
+      throw new Error('Access Denied: Only Admins and Treasurers can record a pledge on behalf of another member.');
+    }
+
+    const member = this.state.members.find((m) => m.id === params.memberId);
+    if (!member) throw new Error('Target member not found.');
+
+    const cleanAmount = Number(params.amount.toFixed(2));
+    if (cleanAmount <= 0) {
+      throw new Error('Pledge amount must be greater than zero.');
+    }
+
+    const now = new Date().toISOString();
+    const existingPledge = (this.state.runwayPledges || []).find(
+      (p) => p.planId === plan.id && p.memberId === member.id
+    );
+
+    let updatedPledge: RunwayPledge;
+
+    if (existingPledge) {
+      if (cleanAmount < existingPledge.amount) {
+        const paidContributions = (this.state.capitalContributions || [])
+          .filter(
+            (c) =>
+              c.runwayPlanId === plan.id &&
+              (c.pledgeId === existingPledge.id || c.memberId === member.id) &&
+              c.direction !== 'CONTRA_REVERSAL'
+          )
+          .reduce((acc, c) => acc + c.amount, 0);
+
+        if (cleanAmount < paidContributions) {
+          throw new RunwayError(
+            'RUNWAY_PLEDGE_BELOW_PAID',
+            `Cannot reduce pledge ($${cleanAmount.toFixed(2)}) below amount already contributed ($${paidContributions.toFixed(2)}).`
+          );
+        }
+      }
+
+      const eventType: 'INCREASE' | 'DECREASE' = cleanAmount > existingPledge.amount ? 'INCREASE' : 'DECREASE';
+      const historyEvent = {
+        id: `PEV-${Date.now().toString(36).toUpperCase()}`,
+        type: eventType,
+        previousAmount: existingPledge.amount,
+        newAmount: cleanAmount,
+        note: params.note || `Pledge ${eventType.toLowerCase()}d from $${existingPledge.amount.toFixed(2)} to $${cleanAmount.toFixed(2)}`,
+        byMemberId: params.actor.id,
+        at: now,
+        auditHash: computeLedgerRecordHash('PLEDGE_EVENT', existingPledge.id, now, cleanAmount, params.note || ''),
+      };
+
+      updatedPledge = {
+        ...existingPledge,
+        amount: cleanAmount,
+        pace: params.pace || existingPledge.pace,
+        instalments: params.instalments || existingPledge.instalments,
+        history: [...(existingPledge.history || []), historyEvent],
+        updatedAt: now,
+      };
+    } else {
+      const pledgeId = `PLG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      const historyEvent = {
+        id: `PEV-${Date.now().toString(36).toUpperCase()}`,
+        type: 'INITIAL' as const,
+        previousAmount: 0,
+        newAmount: cleanAmount,
+        note: params.note || `Initial pledge of $${cleanAmount.toFixed(2)}`,
+        byMemberId: params.actor.id,
+        at: now,
+        auditHash: computeLedgerRecordHash('PLEDGE_EVENT', pledgeId, now, cleanAmount, params.note || ''),
+      };
+
+      updatedPledge = {
+        id: pledgeId,
+        planId: plan.id,
+        orgId: plan.orgId,
+        memberId: member.id,
+        memberName: member.fullName,
+        amount: cleanAmount,
+        pace: params.pace || 'ONE_OFF',
+        instalments: params.instalments,
+        history: [historyEvent],
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_PLEDGE',
+      severity: 'FINANCIAL',
+      title: `Pledge: $${cleanAmount.toFixed(2)} by ${member.fullName}`,
+      message: `${member.fullName} committed $${cleanAmount.toFixed(2)} toward ${plan.name} (${updatedPledge.pace}).`,
+      referenceEntityId: updatedPledge.id,
+      timestamp: now,
+    });
+
+    const nextPledges = existingPledge
+      ? (this.state.runwayPledges || []).map((p) => (p.id === updatedPledge.id ? updatedPledge : p))
+      : [updatedPledge, ...(this.state.runwayPledges || [])];
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPledges: nextPledges,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_pledges', updatedPledge.id, updatedPledge);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    this.checkAndBroadcastPlanMilestones(plan.id, params.actor);
+    return updatedPledge;
+  }
+
+  public submitRunwayPaymentClaim(params: {
+    planId: string;
+    pledgeId?: string;
+    amount: number;
+    method: string;
+    reference?: string;
+    proofPhotoDataUrl?: string;
+    actor: OrgMember;
+  }): RunwayPaymentClaim {
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot claim payment for another organization.');
+    }
+
+    const pledge = (this.state.runwayPledges || []).find(
+      (p) => (params.pledgeId ? p.id === params.pledgeId : p.planId === plan.id && p.memberId === params.actor.id)
+    );
+
+    const now = new Date().toISOString();
+    const claimId = `CLM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const cleanAmount = Number(params.amount.toFixed(2));
+
+    const claim: RunwayPaymentClaim = {
+      id: claimId,
+      planId: plan.id,
+      orgId: plan.orgId,
+      pledgeId: pledge ? pledge.id : '',
+      memberId: params.actor.id,
+      memberName: params.actor.fullName,
+      amount: cleanAmount,
+      method: params.method.trim(),
+      reference: params.reference?.trim(),
+      proofPhotoDataUrl: params.proofPhotoDataUrl,
+      status: 'PENDING',
+      createdAt: now,
+      auditHash: computeLedgerRecordHash('PAYMENT_CLAIM', claimId, now, cleanAmount, params.method.trim()),
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayClaims: [claim, ...(this.state.runwayClaims || [])],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_claims', claim.id, claim);
+    return claim;
+  }
+
+  public resolveRunwayPaymentClaim(params: {
+    claimId: string;
+    decision: 'CONFIRM' | 'REJECT';
+    note?: string;
+    actor: OrgMember;
+  }): RunwayPaymentClaim {
+    if (!PERMISSIONS.canConfirmPaymentClaim(params.actor.role)) {
+      throw new Error('Access Denied: Only Treasurers and Organization Admins can confirm or reject payment claims.');
+    }
+    const claim = (this.state.runwayClaims || []).find((c) => c.id === params.claimId);
+    if (!claim) throw new Error('Payment claim not found.');
+    if (params.actor.orgId && params.actor.orgId !== claim.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot resolve claim for another organization.');
+    }
+    if (claim.status !== 'PENDING') {
+      throw new Error(`Claim has already been resolved with status ${claim.status}.`);
+    }
+
+    const now = new Date().toISOString();
+    let updatedClaim: RunwayPaymentClaim;
+
+    if (params.decision === 'CONFIRM') {
+      const contribution = this.logCapitalContribution({
+        memberId: claim.memberId,
+        direction: 'ADDITION',
+        amount: claim.amount,
+        note: `Runway Pay-in: ${claim.method} ${claim.reference || ''} - ${params.note || ''}`.trim(),
+        actor: params.actor,
+        runwayPlanId: claim.planId,
+        pledgeId: claim.pledgeId || undefined,
+        claimId: claim.id,
+      });
+
+      updatedClaim = {
+        ...claim,
+        status: 'CONFIRMED',
+        resolvedByMemberId: params.actor.id,
+        resolutionNote: params.note,
+        contributionId: contribution.id,
+        resolvedAt: now,
+      };
+    } else {
+      updatedClaim = {
+        ...claim,
+        status: 'REJECTED',
+        resolvedByMemberId: params.actor.id,
+        resolutionNote: params.note || 'Rejected by treasurer',
+        resolvedAt: now,
+      };
+    }
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayClaims: (this.state.runwayClaims || []).map((c) => (c.id === claim.id ? updatedClaim : c)),
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_claims', updatedClaim.id, updatedClaim);
+    return updatedClaim;
+  }
+
+  public activateRunwayPlan(params: {
+    planId: string;
+    actor: OrgMember;
+  }): RunwayPlan {
+    if (!PERMISSIONS.canActivateRunwayPlan(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can activate a Runway Plan.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+
+    const existingActive = (this.state.runwayPlans || []).find(
+      (p) => p.orgId === plan.orgId && p.status === 'ACTIVE' && p.id !== plan.id
+    );
+    if (existingActive) {
+      throw new RunwayError(
+        'RUNWAY_ACTIVE_PLAN_EXISTS',
+        `Organization already has an ACTIVE plan: "${existingActive.name}". Complete or archive it before activating a new plan.`
+      );
+    }
+
+    const lines = (this.state.runwayLines || []).filter((l) => l.planId === plan.id);
+    const pledges = (this.state.runwayPledges || []).filter((p) => p.planId === plan.id);
+    const contributions = (this.state.capitalContributions || []).filter((c) => c.runwayPlanId === plan.id);
+    const expenses = (this.state.expenses || []).filter((e) => e.runwayPlanId === plan.id);
+    const debts = (this.state.debtLiabilities || []).filter((d) => d.runwayPlanId === plan.id);
+
+    const layers = computeFundingLayers(plan, lines, pledges, contributions, expenses, debts);
+    const requiredTarget = round2(((plan.activationThresholdPct || 100) / 100) * layers.memberTarget);
+
+    if (layers.collected < requiredTarget) {
+      throw new RunwayError(
+        'RUNWAY_THRESHOLD_NOT_MET',
+        `Activation threshold not met. Collected $${layers.collected.toFixed(2)} of $${requiredTarget.toFixed(2)} (${plan.activationThresholdPct}% of $${layers.memberTarget.toFixed(2)} required).`
+      );
+    }
+
+    const now = new Date().toISOString();
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      status: 'ACTIVE',
+      activatedAt: now,
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_PLAN_ACTIVATED',
+      severity: 'MILESTONE',
+      title: `Runway Plan Activated: ${plan.name}`,
+      message: `Plan activated with $${layers.collected.toFixed(2)} collected. STRICT Spend Gate is now active.`,
+      referenceEntityId: plan.id,
+      timestamp: now,
+    });
+    this.state.auditNotifications = [audit, ...(this.state.auditNotifications || [])];
+
+    const broadcast = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'All Locations (Master Organization)',
+      eventType: 'GROUND_BROADCAST',
+      severity: 'MILESTONE',
+      title: `Execution Begins: ${plan.name}`,
+      message: `${plan.name} is fully activated and execution has begun! Real-time progress updates will appear on your dashboard.`,
+      referenceEntityId: plan.id,
+      timestamp: now,
+    });
+
+    this.state.auditNotifications = [broadcast, ...(this.state.auditNotifications || [])];
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+      auditNotifications: this.state.auditNotifications,
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    void this.persistDocumentToCloudIfActive('audit_notifications', broadcast.id, broadcast);
+    return updatedPlan;
+  }
+
+  public proposeRunwayAmendment(params: {
+    planId: string;
+    title: string;
+    category: string;
+    qty?: number;
+    unitCost?: number;
+    note: string;
+    priority?: RunwayLinePriority;
+    phaseId?: string;
+    actor: OrgMember;
+  }): RunwayLine {
+    if (!PERMISSIONS.canProposeAmendment(params.actor.role)) {
+      throw new Error('Access Denied: You do not have permission to propose a plan amendment.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (params.note.trim().length < 4) {
+      throw new Error('Mandatory explanation note (at least 4 characters) is required for amendments.');
+    }
+
+    const now = new Date().toISOString();
+    const lineId = `RWL-AMD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const qty = params.qty ?? 1;
+    const unitCost = params.unitCost ?? 0;
+    const cost = round2(qty * unitCost);
+
+    const existingLines = (this.state.runwayLines || []).filter((l) => l.planId === plan.id);
+
+    const amendmentLine: RunwayLine = {
+      id: lineId,
+      planId: plan.id,
+      orgId: plan.orgId,
+      phaseId: params.phaseId,
+      kind: 'COST',
+      title: params.title.trim().slice(0, 140),
+      category: params.category.trim(),
+      qty,
+      unitCost,
+      priority: params.priority || 'IMPORTANT',
+      origin: 'AMENDMENT',
+      approval: 'PROPOSED',
+      proposedByMemberId: params.actor.id,
+      amendmentNote: params.note.trim(),
+      sortOrder: existingLines.length,
+      createdAt: now,
+      updatedAt: now,
+      auditHash: computeLedgerRecordHash('RUNWAY_AMENDMENT', lineId, now, cost, params.note.trim()),
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_AMENDMENT',
+      severity: 'WARNING_CONTRA',
+      title: `Plan Amendment Proposed: ${amendmentLine.title} ($${cost.toFixed(2)})`,
+      message: `${params.actor.fullName} (${params.actor.role}) proposed adding "${amendmentLine.title}" ($${cost.toFixed(2)}) to ${plan.name}. Note: ${params.note}`,
+      referenceEntityId: amendmentLine.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayLines: [...(this.state.runwayLines || []), amendmentLine],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_lines', amendmentLine.id, amendmentLine);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return amendmentLine;
+  }
+
+  public resolveRunwayAmendment(params: {
+    lineId: string;
+    decision: 'APPROVE' | 'REJECT';
+    note?: string;
+    actor: OrgMember;
+  }): RunwayLine {
+    if (!PERMISSIONS.canApproveAmendment(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins and Treasurers can approve or reject plan amendments.');
+    }
+    const line = (this.state.runwayLines || []).find((l) => l.id === params.lineId);
+    if (!line) throw new Error('Amendment line not found.');
+    if (params.actor.orgId && params.actor.orgId !== line.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (line.approval !== 'PROPOSED') {
+      throw new Error(`Amendment line has already been resolved with status ${line.approval}.`);
+    }
+
+    if (line.proposedByMemberId === params.actor.id) {
+      const otherApprovers = (this.state.members || []).filter(
+        (m) =>
+          m.orgId === line.orgId &&
+          m.active &&
+          m.approvalStatus === 'APPROVED' &&
+          m.id !== params.actor.id &&
+          (m.role === 'ORG_ADMIN' || m.role === 'SYNDICATE_ADMIN' || m.role === 'TREASURER')
+      );
+      if (otherApprovers.length > 0) {
+        throw new Error('Maker-Checker violation: The proposer cannot approve their own amendment when other approvers exist.');
+      }
+    }
+
+    const now = new Date().toISOString();
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === line.planId);
+
+    const updatedLine: RunwayLine = {
+      ...line,
+      approval: params.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+      approvedByMemberId: params.actor.id,
+      updatedAt: now,
+    };
+
+    let updatedPlan: RunwayPlan | undefined;
+    if (plan && params.decision === 'APPROVE') {
+      updatedPlan = {
+        ...plan,
+        version: (plan.version || 1) + 1,
+        updatedAt: now,
+      };
+    }
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan?.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_AMENDMENT',
+      severity: params.decision === 'APPROVE' ? 'FINANCIAL' : 'INFO',
+      title: `Amendment ${params.decision === 'APPROVE' ? 'Approved' : 'Rejected'}: ${line.title}`,
+      message: `${params.actor.fullName} ${params.decision.toLowerCase()}d amendment "${line.title}". ${params.note || ''}`.trim(),
+      referenceEntityId: line.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayLines: (this.state.runwayLines || []).map((l) => (l.id === line.id ? updatedLine : l)),
+      runwayPlans: updatedPlan
+        ? (this.state.runwayPlans || []).map((p) => (p.id === updatedPlan!.id ? updatedPlan! : p))
+        : this.state.runwayPlans,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_lines', updatedLine.id, updatedLine);
+    if (updatedPlan) {
+      void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    }
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updatedLine;
+  }
+
+  public spendAgainstRunwayPlan(params: {
+    planId: string;
+    allocation: RunwayAllocation;
+    amount: number;
+    locationId: string;
+    category?: ExpenseCategory;
+    note: string;
+    actor: OrgMember;
+    receiptPhotoDataUrl?: string;
+  }): ExpenseLedgerEvent {
+    return this.logExpense({
+      locationId: params.locationId,
+      category: params.category || 'OTHER',
+      direction: 'DEDUCTION',
+      amount: params.amount,
+      note: params.note,
+      actor: params.actor,
+      receiptPhotoDataUrl: params.receiptPhotoDataUrl,
+      runwayAllocation: params.allocation,
+    });
+  }
+
+  public closeRunwayPlan(params: {
+    planId: string;
+    note?: string;
+    actor: OrgMember;
+  }): RunwayPlan {
+    if (!PERMISSIONS.canClosePlan(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can close a Runway Plan.');
+    }
+    const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    if (!plan) throw new Error('Runway plan not found.');
+    if (params.actor.orgId && params.actor.orgId !== plan.orgId) {
+      throw new Error('Tenant Boundary Violation: Actor cannot modify another organization\'s plan.');
+    }
+    if (plan.status !== 'ACTIVE') {
+      throw new Error(`Only ACTIVE plans can be closed (current status: ${plan.status}).`);
+    }
+
+    const now = new Date().toISOString();
+    const updatedPlan: RunwayPlan = {
+      ...plan,
+      status: 'COMPLETED',
+      completedAt: now,
+      updatedAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: plan.locationId || 'ALL',
+      locationName: 'Runway Capital Engine',
+      eventType: 'RUNWAY_PLAN_CLOSED',
+      severity: 'FINANCIAL',
+      title: `Runway Plan Closed: ${plan.name}`,
+      message: `Runway Plan "${plan.name}" marked COMPLETED by ${params.actor.fullName}. ${params.note || ''}`.trim(),
+      referenceEntityId: plan.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayPlans: (this.state.runwayPlans || []).map((p) => (p.id === plan.id ? updatedPlan : p)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_plans', updatedPlan.id, updatedPlan);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updatedPlan;
+  }
+
+  public saveRunwayTemplate(params: {
+    name: string;
+    orgId?: string;
+    orgType: 'AGRO_FARMING' | 'GENERAL_VENTURE' | 'ANY';
+    contingencyPercent: number;
+    phases: Omit<RunwayPhase, 'id'>[];
+    lines: Omit<RunwayLine, 'id' | 'planId' | 'orgId' | 'createdAt' | 'updatedAt' | 'auditHash' | 'approval' | 'origin'>[];
+    actor: OrgMember;
+  }): RunwayTemplate {
+    if (!PERMISSIONS.canEditRunwayDraft(params.actor.role)) {
+      throw new Error('Access Denied: Only Admins and Treasurers can save Runway templates.');
+    }
+    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId;
+    const now = new Date().toISOString();
+    const templateId = `TMP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    const template: RunwayTemplate = {
+      id: templateId,
+      orgId: targetOrgId,
+      name: params.name.trim().slice(0, 120),
+      orgType: params.orgType,
+      contingencyPercent: params.contingencyPercent,
+      phases: params.phases,
+      lines: params.lines,
+      isBuiltIn: false,
+      createdAt: now,
+    };
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      runwayTemplates: [...(this.state.runwayTemplates || []), template],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('runway_templates', template.id, template);
+    return template;
+  }
+
+  public checkRunwayReminders(): void {
+    const activePlans = (this.state.runwayPlans || []).filter((p) => p.status === 'ACTIVE');
+    if (activePlans.length === 0) return;
+
+    for (const plan of activePlans) {
+      const leftMoney = this.getCurrentOrgLeftMoney(plan.orgId);
+      const runwayMonths = computeRunwayMonths(leftMoney, this.state.expenses);
+
+      if (runwayMonths < 0.5) {
+        void dispatchSystemNotification({
+          title: `Critical Runway Warning: ${plan.name}`,
+          body: `Only ${(runwayMonths * 4.3).toFixed(0)} weeks of cash remaining ($${leftMoney.toFixed(2)} available). Action required.`,
+          urgent: true,
+          severity: 'URGENT_GROUND',
+        });
+      } else if (runwayMonths < 1.0) {
+        void dispatchSystemNotification({
+          title: `Low Runway Alert: ${plan.name}`,
+          body: `Estimated ${(runwayMonths * 4.3).toFixed(0)} weeks of cash remaining ($${leftMoney.toFixed(2)} available).`,
+          urgent: false,
+          severity: 'FINANCIAL',
+        });
+      }
+    }
   }
 }
 

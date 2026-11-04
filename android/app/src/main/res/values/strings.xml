@@ -4,4 +4,10 @@
     <string name="title_activity_main">Agro Planner</string>
     <string name="package_name">com.basobaso.agroplanner</string>
     <string name="custom_url_scheme">com.basobaso.agroplanner</string>
+    <string name="shortcut_credit_sale_short">Credit Sale</string>
+    <string name="shortcut_credit_sale_long">Record Credit Sale</string>
+    <string name="shortcut_expense_short">Log Expense</string>
+    <string name="shortcut_expense_long">Log Farm Expense</string>
+    <string name="shortcut_broadcast_short">Broadcast</string>
+    <string name="shortcut_broadcast_long">Ground Broadcast</string>
 </resources>

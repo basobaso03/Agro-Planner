@@ -14,6 +14,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { FarmLocation, OrgMember } from '../types/agro.ts';
+import { ConfirmSheet } from './ui/ConfirmSheet.tsx';
+import { BottomSheet } from './ui/BottomSheet.tsx';
 import { dataService } from '../services/dataService.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 
@@ -44,6 +46,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
   const [statusMsg, setStatusMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [decommissionTarget, setDecommissionTarget] = useState<FarmLocation | null>(null);
 
   const handleGetDeviceGps = () => {
     if (!navigator.geolocation) {
@@ -128,12 +131,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
     }
   };
 
-  const handleDelete = (loc: FarmLocation) => {
-    const confirmDelete = window.confirm(
-      `Are you sure you want to permanently decommission site "${loc.name}"? This action is audited.`
-    );
-    if (!confirmDelete) return;
-
+  const executeDelete = (loc: FarmLocation) => {
     setErrorMsg('');
     setStatusMsg('');
     try {
@@ -147,39 +145,18 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
     }
   };
 
-  return (
-    <div
-      className="modal-overlay-responsive animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="modal-dialog-responsive max-w-xl p-5 sm:p-6 space-y-4 bg-white border border-[#E8DFCE] rounded-3xl shadow-2xl text-slate-950">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-800">
-              <Building className="w-5 h-5 text-emerald-700" />
-            </div>
-            <div>
-              <h2 className="text-base font-black text-slate-950">
-                Farm Sites &amp; Station Management
-              </h2>
-              <p className="text-xs text-slate-600 font-medium">
-                Manage operational farm locations, stations and ground operators
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const handleDelete = (loc: FarmLocation) => {
+    setDecommissionTarget(loc);
+  };
 
+  return (
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Farm Sites & Station Management"
+      subtitle="Manage operational farm locations, stations and ground operators"
+    >
+      <div className="space-y-4 p-1">
         {statusMsg && (
           <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 flex items-center gap-2 font-bold">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -380,7 +357,17 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
           ))}
         </div>
       </div>
-    </div>
+
+      <ConfirmSheet
+        isOpen={Boolean(decommissionTarget)}
+        onClose={() => setDecommissionTarget(null)}
+        onConfirm={() => decommissionTarget && executeDelete(decommissionTarget)}
+        title="Decommission Site"
+        message={`Are you sure you want to permanently decommission site "${decommissionTarget?.name}"? This action is audited.`}
+        confirmLabel="Decommission"
+        isDestructive
+      />
+    </BottomSheet>
   );
 };
 

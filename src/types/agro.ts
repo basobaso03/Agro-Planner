@@ -1,6 +1,14 @@
 import type { Organization } from './organization.ts';
 export * from './financials.ts';
 import type { DebtLiabilityEvent, LoanGivenEvent, CreditSaleEvent } from './financials.ts';
+export * from './runway.ts';
+import type {
+  RunwayPlan,
+  RunwayLine,
+  RunwayPledge,
+  RunwayPaymentClaim,
+  RunwayTemplate,
+} from './runway.ts';
 
 export type Role =
   | 'ORG_ADMIN'
@@ -80,6 +88,9 @@ export interface CapitalContributionEvent {
   referenceTransactionId?: string; // Required if direction === 'CONTRA_REVERSAL'
   note: string; // Mandatory explanation
   receiptUrlOrBase64?: string;
+  runwayPlanId?: string;
+  pledgeId?: string;
+  claimId?: string;
   createdAt: string;
   createdByMemberId: string;
   auditHash: string;
@@ -117,6 +128,10 @@ export interface ExpenseLedgerEvent {
   receiptPhotoDataUrl?: string;
   approvalStatus: ApprovalStatus;
   approvedByMemberIds: string[];
+  runwayPlanId?: string;
+  runwayLineId?: string;
+  runwayReserveDraw?: number;
+  runwayAllocationNote?: string;
   createdAt: string;
   auditHash: string;
 }
@@ -170,6 +185,7 @@ export interface AnimalCheckpoint {
   targetWeightKg?: number;
   feedPhase?: string;
   instructions?: string;
+  description?: string;
   completed: boolean;
   completedAt?: string;
   completedNote?: string;
@@ -312,7 +328,17 @@ export type AuditEventType =
   | 'GROUND_BROADCAST'
   | 'FINANCIAL_TRANSACTION'
   | 'CREDIT_SALE'
-  | 'LIVESTOCK_UPDATED';
+  | 'LIVESTOCK_UPDATED'
+  | 'RUNWAY_PLAN_CREATED'
+  | 'RUNWAY_PLAN_LOCKED'
+  | 'RUNWAY_PLAN_ACTIVATED'
+  | 'RUNWAY_PLEDGE'
+  | 'RUNWAY_PAYMENT'
+  | 'RUNWAY_AMENDMENT'
+  | 'RUNWAY_RESERVE_DRAW'
+  | 'RUNWAY_MILESTONE'
+  | 'RUNWAY_OFF_PLAN_WARNING'
+  | 'RUNWAY_PLAN_CLOSED';
 
 export interface AuditNotificationEvent {
   id: string;
@@ -376,6 +402,9 @@ export interface FinancialSummary {
   totalDebtRepaid?: number;
   totalLoansRecovered?: number;
   netFinancialPosition?: number;
+  creditSalesReceivables?: number;
+  debtLiabilitiesOwed?: number;
+  loansGivenRecoverable?: number;
 }
 
 export type CountdownUrgency = 'NORMAL' | 'PREPARE_MARKET' | 'READY_FOR_SALE';
@@ -451,6 +480,8 @@ export interface FeedInventorySummary {
   totalContraBags: number;
   remainingBags: number;
   remainingKg: number;
+  currentBagsBalance?: number;
+  currentKgBalance?: number;
   kgPerBag: number;
   estimatedDailyBurnBags: number;
   daysRemaining: number;
@@ -484,6 +515,11 @@ export interface AgroStateSnapshot {
   debtLiabilities?: DebtLiabilityEvent[];
   loansGiven?: LoanGivenEvent[];
   creditSales?: CreditSaleEvent[];
+  runwayPlans?: RunwayPlan[];
+  runwayLines?: RunwayLine[];
+  runwayPledges?: RunwayPledge[];
+  runwayClaims?: RunwayPaymentClaim[];
+  runwayTemplates?: RunwayTemplate[];
 }
 
 export type CapitaSeedStateSnapshot = AgroStateSnapshot;

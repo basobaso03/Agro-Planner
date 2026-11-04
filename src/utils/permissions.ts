@@ -81,6 +81,19 @@ export const PERMISSIONS = {
     return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
   },
 
+  // UI-level Firestore rules mirror methods (Fixes B22)
+  canRecordDebt: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  canIssueLoan: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  canLogContribution: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
   // Maker-Checker Governance: Approving Expenses > $150
   canApproveMultiSig: (role: Role): boolean => {
     return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
@@ -130,6 +143,88 @@ export const PERMISSIONS = {
   // Seeing all individual investor equity stakes and dollar amounts vs just one's own stake
   canViewAllInvestorStakes: (role: Role): boolean => {
     return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  // Runway Capital Planning Module Permissions
+  canEnableRunwayModule: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  canCreateRunwayPlan: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  canLockRunwayPlan: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  canActivateRunwayPlan: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  canClosePlan: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN';
+  },
+
+  canEditRunwayDraft: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  canProposeAmendment: (role: Role): boolean => {
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'GROUND_OPERATOR'
+    );
+  },
+
+  canApproveAmendment: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  canPledge: (role: Role): boolean => {
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'MEMBER' ||
+      role === 'REMOTE_INVESTOR'
+    );
+  },
+
+  canConfirmPaymentClaim: (role: Role): boolean => {
+    return role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER';
+  },
+
+  canSpendAgainstPlan: (role: Role): boolean => {
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'GROUND_OPERATOR'
+    );
+  },
+
+  canViewRunwayPlan: (role: Role): boolean => {
+    return (
+      role === 'ORG_ADMIN' ||
+      role === 'SYNDICATE_ADMIN' ||
+      role === 'TREASURER' ||
+      role === 'MEMBER' ||
+      role === 'REMOTE_INVESTOR' ||
+      role === 'GROUND_OPERATOR'
+    );
+  },
+
+  canViewAllPledges: (role: Role, planShowMemberPledges?: boolean): boolean => {
+    if (role === 'ORG_ADMIN' || role === 'SYNDICATE_ADMIN' || role === 'TREASURER') {
+      return true;
+    }
+    if ((role === 'MEMBER' || role === 'REMOTE_INVESTOR') && Boolean(planShowMemberPledges)) {
+      return true;
+    }
+    return false;
   },
 };
 

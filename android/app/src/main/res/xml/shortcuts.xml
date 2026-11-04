@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="record_credit_sale"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_credit_sale_short"
+        android:shortcutLongLabel="@string/shortcut_credit_sale_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.basobaso.agroplanner"
+            android:targetClass="com.basobaso.agroplanner.MainActivity"
+            android:data="https://localhost/action/credit-sale" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="log_expense"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_expense_short"
+        android:shortcutLongLabel="@string/shortcut_expense_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.basobaso.agroplanner"
+            android:targetClass="com.basobaso.agroplanner.MainActivity"
+            android:data="https://localhost/action/log-expense" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="ground_broadcast"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_broadcast_short"
+        android:shortcutLongLabel="@string/shortcut_broadcast_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.basobaso.agroplanner"
+            android:targetClass="com.basobaso.agroplanner.MainActivity"
+            android:data="https://localhost/action/broadcast" />
+    </shortcut>
+</shortcuts>
+

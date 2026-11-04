@@ -14,6 +14,9 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg', 'manifest.json'],
         manifest: false,
+        workbox: {
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        },
         devOptions: {
           enabled: false,
           type: 'module',

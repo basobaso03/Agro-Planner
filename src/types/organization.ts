@@ -6,6 +6,7 @@ export interface OrganizationFeatures {
   feedInventoryModule: boolean;
   multiSigApprovals: boolean;
   publicAuditVerifier: boolean;
+  runwayModule?: boolean;
 }
 
 export interface Organization {
@@ -32,6 +33,14 @@ export interface Organization {
 
   // Adaptive Workspace Features
   features: OrganizationFeatures;
+
+  // Runway Planning Module Configuration
+  runwayPromoSnoozedUntil?: string;
+  runwayPromoShownCount?: number;
+  runwayDefaults?: {
+    mode: 'SIMPLE' | 'ADVANCED';
+    contingencyPercent: number;
+  };
 }
 
 export interface InviteCodeLookup {

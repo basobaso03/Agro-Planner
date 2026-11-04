@@ -321,6 +321,40 @@ workflow-tests/
   - **App Version Comparison & Force Update Gating (`compareSemver`):** Verifies version comparison logic controlling `ForceUpdateModal`.
   - **Site-Level Viewport Isolation:** Verifies that filtering by Site A strictly excludes Site B/C records from the user's dashboard view.
 
+### 6.8 Suite 8: `08-debt-loans-credit.test.ts`
+- **Scope (Financial Redesign, 9-Pillar Wealth & Banking Hub):**
+  - **Debt Liabilities & Financing Outflows:** Supplier credit, commercial bank loans, and director loans with amortization and repayments.
+  - **Loans Given Portfolio:** Micro-loans given to staff and suppliers with repayment tracking and interest.
+  - **Credit Sales & Receivables:** Customer invoice dispatches, receivables aging, and debt settlement receipts.
+  - **9-Pillar Wealth Model & Modern Banking Hub:** Left Money, NAV, Liquidity Reserves, and Solvency calculations.
+
+### 6.9 Suite 9: `09-runway-capital-planning.test.ts`
+- **Scope (Runway Capital Planning Module & Spend Gate):**
+  - **WF-RUN-01:** Feature toggle isolation & no-regression (`features.runwayModule` off -> early exit).
+  - **WF-RUN-02:** Enable module + draft plan creation with built-in template (`TMP-AGRO-BROILER-42D`).
+  - **WF-RUN-03:** Line CRUD + auto-sum totals + reserve mode handling (`PERCENT` vs `FIXED`).
+  - **WF-RUN-04:** Opening cash snapshot + planned debt financing layer (`targetBasis: GROSS`).
+  - **WF-RUN-05:** Target basis `PEAK_NEED` vs `GROSS` & stress sliders verification.
+  - **WF-RUN-06:** Lock plan: transitions to `PLEDGING` & freezes line editing.
+  - **WF-RUN-07:** Member pledge creation + edit history tracking + withdrawal guard.
+  - **WF-RUN-08:** Member payment claim submission with optional proof photo.
+  - **WF-RUN-09:** Treasurer verifies claim -> converts to `CapitalContributionEvent` with `runwayPlanId`.
+  - **WF-RUN-10:** Reaching threshold triggers plan activation -> status `ACTIVE` & notifications.
+  - **WF-RUN-11:** Premature activation without threshold throws `RUNWAY_THRESHOLD_NOT_MET`.
+  - **WF-RUN-12:** Spend Gate: MUST_HAVE step execution with exact match.
+  - **WF-RUN-13:** Spend Gate: Strict enforcement rejects unallocated spend when active plan exists.
+  - **WF-RUN-14:** Spend Gate: Advisory enforcement warns on unallocated spend without blocking.
+  - **WF-RUN-15:** Spend Gate: Contingency reserve draw requires reason + tracks remaining reserve.
+  - **WF-RUN-16:** Spend Gate: Overrun triggers amendment workflow (`PROPOSE` -> `APPROVE`/`REJECT`).
+  - **WF-RUN-17:** Spend Gate: Zero-cash defense blocks disbursements when ground cash is insufficient.
+  - **WF-RUN-18:** Spend Gate: Multi-sig expenses deduct against plan only upon final approval.
+  - **WF-RUN-19:** Off-plan spend detection & variance reporting engine (`RunwayVarianceReport`).
+  - **WF-RUN-20:** Break-even recovery tracking: links sales revenue against executed capital spend.
+  - **WF-RUN-21:** Plan closure releases spend gate restrictions & transitions status to `COMPLETED`.
+  - **WF-RUN-22:** Custom template extraction: saves plan as reusable enterprise template.
+  - **WF-RUN-23:** Chained cryptographic audit hash verification for all runway operations.
+  - **WF-RUN-24:** Tenant boundary isolation: cross-tenant access to runway collections strictly blocked.
+
 ---
 
 ## 7. Execution Commands & Reporting
@@ -354,6 +388,12 @@ cmd /c "npx tsx workflow-tests/06-multi-tenant-isolation.test.ts"
 
 # Suite 7: Member Governance & RBAC Lifecycle
 cmd /c "npx tsx workflow-tests/07-member-governance-rbac.test.ts"
+
+# Suite 8: Financial Redesign, 9-Pillar Wealth & Modern Banking Hub
+cmd /c "npx tsx workflow-tests/08-debt-loans-credit.test.ts"
+
+# Suite 9: Runway Capital Planning Module & Spend Gate
+cmd /c "npx tsx workflow-tests/09-runway-capital-planning.test.ts"
 
 # Master Workflow Runner
 cmd /c "npx tsx workflow-tests/run-all-workflow-tests.ts"

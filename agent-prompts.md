@@ -100,3 +100,20 @@ then everyone now start to pay towards their pledged money with the progress bar
  the above is basic, and unstructured idea that need to be looked and think over it in full, then design the best module that is optional in our system that can help users to structure their money in their business, this module must be introduced to new users, to encourage them to use it but its optional to use, they can use the general features of the app. so l need you to develop the best advanced and moden design of this module you have to read the code in full, capital-seed-implementation-plan.md, all files in plans so that we have the module that is relevent to our application, and have the best and advanced features but it must be simple and easy to use for everyone, then create a new folder and write the implementation plan in the plans folder, with all the designs features, files to be modified or created, and how you will implement it step by step without breaking the existing code. how we are going to test the full workflow in workflow-tests folder and test with the existing ones so that we make sure  the workflows are working as expected and in full confidence
 
 
+
+l observed the following issues while testing the app:
+- when l open the app from the overview, when l click back the app exit instead of going to the previous page
+- when l run the venue wizard it do not recognise the account type l am logged in with, because it askes me venture type, while l have registerd the business in one account type, we need to fix this such that. the contigency emegency is fixed, l cannot put what l want on top of that the step 3 is completely immutable and fixed (l cannot edit the slate and even if selected the final will be blank), also after save it direct to user management and role assignment console. also on 
+
+
+
+- on the sales on credit page:
+1. the 0 active element is ugly on small phones, also the record credit sale form must be a well sized that do not go too much on top pop up with amination from buttom up not in page form, and must also respond to keyboard,
+2. the same is on loans, debits and liabilities
+
+can you look at the UI, its poorly designed especially on the routing, there is no proper navigation system that stores the opened pages, the swiping rigt and left will display pages thet the user do not understand, all the forms that are in pages must made popups from buttom with a good amination, and must not go too much upwards, the overview page is not well designed with icons-title-preview columns like mobile banking apps. many inputs, forms are not actually senting data and l get nothing this means that there are bugs on  frontend, so lets dedicate this session on planning the complete UI and UX for the application to be a best android app since it use web technology it lacks some basic features that are available in android framework so identify them and add them here so the UI must be aligned and work with all what was implemented in files in plans folder and all the tests in workflow-tests folder so identify the gaps, bugs, and all the missing features and screens and create the impementation plan in the new folder you must create in plans folder, the plan must include all designs, gaps improvelents etc plus the files to be created or modified to fix all issues for both agro and general
+
+
+
+
+the ob

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import type {
   AgroStateSnapshot,
   AuditNotificationEvent,
@@ -22,24 +23,19 @@ import {
   computeMemberEquities,
   computeSiteComparisons,
 } from './utils/calculations.ts';
-import { Header } from './components/Header.tsx';
+import type { RunwayAllocation } from './types/runway.ts';
 import { NotificationDrawer } from './components/NotificationDrawer.tsx';
-import { HomeTab } from './components/HomeTab.tsx';
-import { LivestockTab } from './components/LivestockTab.tsx';
-import { ExpensesFeedTab } from './components/ExpensesFeedTab.tsx';
-import { PoolEquityTab } from './components/PoolEquityTab.tsx';
-import { AssetsTab } from './components/AssetsTab.tsx';
-import { AuditAlertsTab } from './components/AuditAlertsTab.tsx';
-import { BroadcastCenterTab } from './components/BroadcastCenterTab.tsx';
-import { UserManagementTab } from './components/UserManagementTab.tsx';
-import { UserSettingsTab } from './components/UserSettingsTab.tsx';
-import { ShieldAlert, LogOut, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, LogOut } from 'lucide-react';
 import { AuthGatePage } from './components/AuthGatePage.tsx';
 import { OrgOnboardingModal } from './components/OrgOnboardingModal.tsx';
 import { SiteManagerModal } from './components/SiteManagerModal.tsx';
 import { FirstLoginBiometricPrompt } from './components/FirstLoginBiometricPrompt.tsx';
 import { FarmTerrainBackground } from './components/FarmTerrainBackground.tsx';
-import { FloatingNavbar } from './components/FloatingNavbar.tsx';
+import { nativeKeyboard } from './native/keyboard.ts';
+import { nativeStatusBar } from './native/statusBar.ts';
+import { nativeBiometrics } from './native/biometrics.ts';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { useBackHandler } from './navigation/useBackHandler.ts';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal.tsx';
 import { PrivacyUnlockModal } from './components/PrivacyUnlockModal.tsx';
 import {
@@ -60,17 +56,15 @@ import { ForceUpdateModal } from './components/ForceUpdateModal.tsx';
 import { PERMISSIONS } from './utils/permissions.ts';
 import { FONT_OPTIONS, type FontStyleId } from './types/theme.ts';
 import { SplashScreen } from './components/SplashScreen.tsx';
-
-export type ActiveTab =
-  | 'HOME'
-  | 'LIVESTOCK'
-  | 'EXPENSES'
-  | 'POOL'
-  | 'ASSETS'
-  | 'BROADCASTS'
-  | 'AUDIT'
-  | 'USERS'
-  | 'SETTINGS';
+import { NavigationProvider } from './navigation/NavigationProvider.tsx';
+import { AppBar } from './navigation/AppBar.tsx';
+import { BottomNav } from './navigation/BottomNav.tsx';
+import { RouteRenderer } from './navigation/RouteRenderer.tsx';
+import { ToastProvider } from './components/ui/Toast.tsx';
+import { LogExpenseSheet } from './sheets/expenses/LogExpenseSheet.tsx';
+import { RecordCreditSaleSheet } from './sheets/credit/RecordCreditSaleSheet.tsx';
+import { NewDebtSheet } from './sheets/loans/NewDebtSheet.tsx';
+import { BroadcastSheet } from './sheets/common/BroadcastSheet.tsx';
 
 export default function App() {
   const [state, setState] = useState<AgroStateSnapshot>(() => dataService.getState());
@@ -78,7 +72,6 @@ export default function App() {
     dataService.getActiveSession()
   );
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
-  const [activeTab, setActiveTab] = useState<ActiveTab>('HOME');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mobileFrameMode, setMobileFrameMode] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
@@ -86,15 +79,6 @@ export default function App() {
 
   // Deep-linking target section inside Settings tab (e.g. 'biometrics', 'password', 'profile')
   const [settingsTargetSection, setSettingsTargetSection] = useState<string | null>(null);
-
-  const handleNavigateTab = (tab: ActiveTab, section?: string | null) => {
-    if (section) {
-      setSettingsTargetSection(section);
-    } else if (tab !== 'SETTINGS') {
-      setSettingsTargetSection(null);
-    }
-    setActiveTab(tab);
-  };
 
   // Number Privacy Masking: Show on fresh login, default to hide (••••••) on restored local session
   const [showNumbers, setShowNumbers] = useState<boolean>(() =>
@@ -104,6 +88,12 @@ export default function App() {
   const [privacyModalError, setPrivacyModalError] = useState<string | null>(null);
   const [privacyModalMode, setPrivacyModalMode] = useState<'password' | 'setup'>('password');
   const [isAuthenticatingPrivacy, setIsAuthenticatingPrivacy] = useState(false);
+
+  // Quick Action Bottom Sheets State
+  const [showLogExpenseSheet, setShowLogExpenseSheet] = useState(false);
+  const [showRecordSaleSheet, setShowRecordSaleSheet] = useState(false);
+  const [showNewDebtSheet, setShowNewDebtSheet] = useState(false);
+  const [showBroadcastSheet, setShowBroadcastSheet] = useState(false);
 
   // Native Android & Flutter Typography State (persisted to localStorage)
   const [activeFontId, setActiveFontId] = useState<FontStyleId>(() => {
@@ -171,25 +161,12 @@ export default function App() {
     }
   }, [activeFontId]);
 
-  // Universal smooth scroll centering for any active input field when mobile keyboard opens
   useEffect(() => {
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const tag = target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-        // Delay 260ms to let virtual keyboard slide into position
-        setTimeout(() => {
-          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 260);
-      }
-    };
+    // Lock portrait orientation on mobile phones (< 600px) per Android plan
+    if (typeof window !== 'undefined' && window.innerWidth < 600) {
+      void ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => { });
+    }
 
-    window.addEventListener('focusin', handleFocusIn);
-    return () => window.removeEventListener('focusin', handleFocusIn);
-  }, []);
-
-  useEffect(() => {
     // Initialize Android Notification Channels, Push Notifications, and tap handler
     void initializeNotificationChannels();
     void initPushNotifications(() => {
@@ -198,6 +175,34 @@ export default function App() {
 
     // Fetch version.json from the GitHub repository online on every application startup
     void runOnlineVersionCheck(false);
+
+    // Track 5-minute background inactivity for biometric auto-lock
+    let backgroundTimestamp = 0;
+    const appStateListenerPromise = CapacitorApp.addListener('appStateChange', async (appState) => {
+      if (!appState.isActive) {
+        backgroundTimestamp = Date.now();
+      } else {
+        const elapsed = Date.now() - backgroundTimestamp;
+        if (backgroundTimestamp > 0 && elapsed >= 5 * 60 * 1000) {
+          setShowNumbers(false);
+          const currentSession = dataService.getActiveSession();
+          if (currentSession) {
+            const hasBio = await nativeBiometrics.isAvailable();
+            if (hasBio) {
+              const success = await nativeBiometrics.authenticate('CapitaSeed Inactivity Challenge: Confirm Identity');
+              if (success) {
+                setShowNumbers(true);
+              } else {
+                setShowPrivacyModal(true);
+              }
+            } else {
+              setShowPrivacyModal(true);
+            }
+          }
+        }
+        backgroundTimestamp = 0;
+      }
+    });
 
     // Also re-verify version.json whenever the application returns to the foreground
     const handleVisibilityChange = () => {
@@ -220,7 +225,6 @@ export default function App() {
         setShowNumbers(Boolean(session.freshlyAuthenticated));
       } else {
         setShowNumbers(false);
-        setActiveTab('HOME');
         setSelectedLocationId('ALL');
         setDrawerOpen(false);
         setShowPrivacyModal(false);
@@ -229,6 +233,7 @@ export default function App() {
     });
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      void appStateListenerPromise.then((handle) => handle.remove()).catch(() => { });
       unsubState();
       unsubAuth();
       unsubSession();
@@ -313,94 +318,52 @@ export default function App() {
     }
   }, [activeMember?.id]);
 
-  // Dynamic list of tabs accessible to the active user's role
-  const accessibleTabs = useMemo<ActiveTab[]>(() => {
-    if (!activeMember) return ['HOME'];
-    const tabs: ActiveTab[] = ['HOME'];
-    if (isAgroEnabled) {
-      tabs.push('LIVESTOCK');
-    }
-    tabs.push('EXPENSES');
-    if (PERMISSIONS.canViewCapitalPoolTab(activeMember.role)) {
-      tabs.push('POOL');
-    }
-    tabs.push('ASSETS', 'BROADCASTS', 'AUDIT');
-    if (PERMISSIONS.canManageMembers(activeMember.role)) {
-      tabs.push('USERS');
-    }
-    tabs.push('SETTINGS');
-    return tabs;
-  }, [activeMember, isAgroEnabled]);
 
-  // Strict role & workspace enforcement: bounce unauthorized tabs to HOME
+
   useEffect(() => {
-    if (activeMember && activeTab === 'USERS' && !PERMISSIONS.canManageMembers(activeMember.role)) {
-      setActiveTab('HOME');
+    if (activeOrg?.id) {
+      dataService.checkRunwayReminders();
     }
-    if (!isAgroEnabled && activeTab === 'LIVESTOCK') {
-      setActiveTab('HOME');
-    }
-  }, [activeMember, activeTab, isAgroEnabled]);
+  }, [activeOrg?.id]);
 
-  // Touch gesture listener for horizontal swiping right or left to switch between tabs
-  const touchStartRef = useRef<{ x: number; y: number; time: number; target: HTMLElement | null } | null>(null);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    touchStartRef.current = {
-      x: touch.clientX,
-      y: touch.clientY,
-      time: Date.now(),
-      target: e.target as HTMLElement | null,
-    };
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || e.changedTouches.length !== 1) return;
-    const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStartRef.current.x;
-    const deltaY = touch.clientY - touchStartRef.current.y;
-    const deltaTime = Date.now() - touchStartRef.current.time;
-    const startTarget = touchStartRef.current.target;
-    touchStartRef.current = null;
-
-    // Disregard long drags (> 650ms) or short jitters (< 50px)
-    if (deltaTime > 650) return;
-    if (Math.abs(deltaX) < 50) return;
-    // Gesture must be predominantly horizontal (1.3x more horizontal than vertical)
-    if (Math.abs(deltaX) < Math.abs(deltaY) * 1.3) return;
-
-    // Avoid hijacking touches on inputs, sliders, modals, or horizontal tables/scroll-containers
-    if (startTarget) {
-      if (
-        startTarget.closest(
-          'input, textarea, select, button, [role="slider"], [role="dialog"], .overflow-x-auto, [data-prevent-swipe]'
-        )
-      ) {
-        return;
-      }
-    }
-
-    const currentIndex = accessibleTabs.indexOf(activeTab);
-    if (currentIndex === -1) return;
-
-    if (deltaX < 0) {
-      // Swiping Left -> Next tab
-      if (currentIndex < accessibleTabs.length - 1) {
-        const nextTab = accessibleTabs[currentIndex + 1];
-        handleNavigateTab(nextTab);
-        triggerHapticFeedback([20]);
-      }
+  useEffect(() => {
+    nativeKeyboard.init();
+    const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    if (isDark) {
+      void nativeStatusBar.setDarkStyle();
     } else {
-      // Swiping Right -> Previous tab
-      if (currentIndex > 0) {
-        const prevTab = accessibleTabs[currentIndex - 1];
-        handleNavigateTab(prevTab);
-        triggerHapticFeedback([20]);
-      }
+      void nativeStatusBar.setLightStyle();
     }
-  };
+  }, []);
+
+  // Priority 50: App-level modals and drawer
+  useBackHandler(
+    50,
+    () => {
+      if (showThemeModal) {
+        setShowThemeModal(false);
+        return true;
+      }
+      if (showPrivacyModal) {
+        setShowPrivacyModal(false);
+        return true;
+      }
+      if (showUpdateModal && !isForcedUpdate) {
+        setShowUpdateModal(false);
+        return true;
+      }
+      if (drawerOpen) {
+        setDrawerOpen(false);
+        return true;
+      }
+      if (settingsTargetSection) {
+        setSettingsTargetSection(null);
+        return true;
+      }
+      return false;
+    },
+    [showThemeModal, showPrivacyModal, showUpdateModal, isForcedUpdate, drawerOpen, settingsTargetSection]
+  );
 
   const handleToggleShowNumbers = async () => {
     if (showNumbers) {
@@ -655,7 +618,6 @@ export default function App() {
 
   const handleSignOut = () => {
     setShowNumbers(false);
-    setActiveTab('HOME');
     setSelectedLocationId('ALL');
     setDrawerOpen(false);
     setShowPrivacyModal(false);
@@ -783,394 +745,173 @@ export default function App() {
 
   // GATE 4: Approved & Active Organization Member Workspace
   return (
-    <>
-      {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
-      {previewSplash && (
-        <SplashScreen
-          isManualPreview
-          duration={5000}
-          onFinish={() => setPreviewSplash(false)}
-        />
-      )}
-      {showUpdateModal && updateConfig && (
-        <ForceUpdateModal
-          config={updateConfig}
-          isForced={isForcedUpdate}
-          isBelowMin={isBelowMinVersion}
-          onClose={() => {
-            if (!isForcedUpdate) {
-              setShowUpdateModal(false);
-              markReleaseNotesSeenForVersion(updateConfig.latestVersion);
-            }
-          }}
-        />
-      )}
-      <div
-        className={`min-h-screen relative flex flex-col ${activeFontCss} ${mobileFrameMode
-          ? 'max-w-[430px] mx-auto border-x border-[#E8DFCE] shadow-2xl bg-[#FAF7F2]'
-          : 'w-full'
-          }`}
-      >
-        {/* Procedural Topographical Farm Terrain Background */}
-        <FarmTerrainBackground intensity={bgIntensity} />
-
-        {/* Top App Bar & Location Switcher (Persona Switcher Removed) */}
-        <Header
-          locations={orgLocations}
-          selectedLocationId={selectedLocationId}
-          onSelectLocation={setSelectedLocationId}
-          activeMember={activeMember}
-          pendingUsersCount={pendingUsersCount}
-          unreadCount={unreadCount}
-          onOpenNotifications={() => setDrawerOpen(true)}
-          onNavigateTab={handleNavigateTab}
-          onSignOut={handleSignOut}
-          onOpenSiteManager={() => setShowSiteManagerModal(true)}
-          organizationName={activeOrg?.name}
-          workspaceMode={activeOrg?.type}
-          mobileFrameMode={mobileFrameMode}
-          onToggleMobileFrame={() => setMobileFrameMode(!mobileFrameMode)}
-          isCloudConnected={Boolean(cloudUserEmail || activeSession.isCloudAuth)}
-          showNumbers={showNumbers}
-          onToggleShowNumbers={handleToggleShowNumbers}
-          isAuthenticatingPrivacy={isAuthenticatingPrivacy}
-        />
-
-        {/* Main Scrollable Viewport with Touch Gesture Swiping between Tabs */}
-        <main
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          className={`flex-1 px-4 pt-4 pb-28 select-none-touch ${mobileFrameMode ? 'w-full' : 'max-w-6xl w-full mx-auto'
-            }`}
-        >
-          {/* Back to Overview Hub banner when navigating subpages from the Banking Hub */}
-          {activeTab !== 'HOME' && activeTab !== 'LIVESTOCK' && activeTab !== 'EXPENSES' && (
-            <div className="mb-4 flex items-center justify-between bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 rounded-2xl backdrop-blur-sm">
-              <button
-                type="button"
-                onClick={() => handleNavigateTab('HOME')}
-                className="inline-flex items-center gap-2 text-xs font-bold text-amber-900 hover:text-amber-950 transition-colors cursor-pointer"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>← Back to Overview Hub</span>
-              </button>
-              <span className="text-[11px] font-mono font-bold text-amber-800">
-                Hub Subpage · {activeTab}
-              </span>
-            </div>
-          )}
-
-          {activeTab === 'HOME' && (
-            <HomeTab
-              financials={financials}
-              livestockStatuses={visibleLivestockStatuses}
-              siteComparisons={siteComparisons}
-              latestBroadcast={latestBroadcast}
-              selectedLocationName={selectedLocationName}
-              activeMember={activeMember}
-              locations={orgLocations}
-              onNavigateTab={handleNavigateTab}
-              onSelectLocation={setSelectedLocationId}
-              onPostBroadcast={(data) =>
-                dataService.postGroundBroadcast({ ...data, actor: activeMember })
+    <NavigationProvider>
+      <ToastProvider>
+        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+        {previewSplash && (
+          <SplashScreen
+            isManualPreview
+            duration={5000}
+            onFinish={() => setPreviewSplash(false)}
+          />
+        )}
+        {showUpdateModal && updateConfig && (
+          <ForceUpdateModal
+            config={updateConfig}
+            isForced={isForcedUpdate}
+            isBelowMin={isBelowMinVersion}
+            onClose={() => {
+              if (!isForcedUpdate) {
+                setShowUpdateModal(false);
+                markReleaseNotesSeenForVersion(updateConfig.latestVersion);
               }
-              showNumbers={showNumbers}
-              isAgroEnabled={isAgroEnabled}
-              debtLiabilities={orgDebtLiabilities}
-              loansGiven={orgLoansGiven}
-              creditSales={orgCreditSales}
-              livestockEntries={orgLivestockEntries}
-              pendingUsersCount={pendingUsersCount}
-              unreadBroadcastsCount={unreadCount}
-              totalMembersCount={orgMembers.length}
-              totalFixedAssetsCount={orgFixedAssets.length}
-              totalAuditCount={state.auditNotifications?.length || 0}
-            />
-          )}
-
-          {activeTab === 'LIVESTOCK' && isAgroEnabled && (
-            <LivestockTab
-              livestockStatuses={visibleLivestockStatuses}
-              locations={orgLocations}
-              selectedLocationId={selectedLocationId}
-              activeMember={activeMember}
-              memberEquities={memberEquities}
-              leftMoney={financials.leftMoney}
-              onRegisterLivestock={(data) =>
-                dataService.registerLivestock({ ...data, actor: activeMember })
-              }
-              onLogLifecycleEvent={(data) =>
-                dataService.logLivestockLifecycleEvent({
-                  ...data,
-                  actor: activeMember,
-                })
-              }
-              onAddLivestockPhoto={(livestockId: string, photoUrl: string, caption?: string) =>
-                dataService.addLivestockGalleryPhoto({
-                  livestockId,
-                  photoUrl,
-                  caption,
-                  actor: activeMember,
-                })
-              }
-              onBroadcastMilestone={(data) =>
-                dataService.dispatchLivestockMilestoneBroadcast({
-                  ...data,
-                  actor: activeMember,
-                })
-              }
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'EXPENSES' && (
-            <ExpensesFeedTab
-              expenses={visibleExpenses}
-              feedSummaries={feedSummaries}
-              financials={financials}
-              locations={orgLocations}
-              livestockStatuses={allLivestockStatuses}
-              selectedLocationId={selectedLocationId}
-              activeMember={activeMember}
-              onLogExpense={(data: {
-                locationId: string;
-                batchOrAnimalId?: string;
-                category: ExpenseCategory;
-                direction: 'DEDUCTION' | 'CONTRA_REVERSAL';
-                amount: number;
-                referenceTransactionId?: string;
-                note: string;
-                gpsStamp?: string;
-                receiptPhotoDataUrl?: string;
-              }) =>
-                dataService.logExpense({ ...data, actor: activeMember })
-              }
-              onApproveMultiSig={(txId: string) =>
-                dataService.approveMultiSigExpense(txId, activeMember)
-              }
-              onLogFeedEvent={(data: {
-                locationId: string;
-                feedType: string;
-                direction: FeedLedgerEvent['direction'];
-                bagsDelta: number;
-                kgPerBag: number;
-                linkedLivestockId?: string;
-                referenceTransactionId?: string;
-                note: string;
-              }) =>
-                dataService.logFeedEvent({ ...data, actor: activeMember })
-              }
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'POOL' && (
-            <PoolEquityTab
-              financials={financials}
-              memberEquities={memberEquities}
-              capitalContributions={orgCapitalContributions}
-              locations={orgLocations}
-              activeMember={activeMember}
-              onAddMember={(data: {
-                fullName: string;
-                phoneOrEmail: string;
-                role: Role;
-                assignedLocationId?: string;
-                initialContributionUsd?: number;
-                contributionNote?: string;
-              }) =>
-                dataService.addMember({ ...data, actor: activeMember })
-              }
-              onLogContribution={(data: {
-                memberId: string;
-                direction: 'ADDITION' | 'CONTRA_REVERSAL';
-                amount: number;
-                referenceTransactionId?: string;
-                note: string;
-              }) =>
-                dataService.logCapitalContribution({ ...data, actor: activeMember })
-              }
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'ASSETS' && (
-            <AssetsTab
-              assetGroups={fixedAssetGroups}
-              locations={orgLocations}
-              selectedLocationId={selectedLocationId}
-              activeMember={activeMember}
-              leftMoney={financials.leftMoney}
-              onLogAssetEvent={(data: {
-                assetGroupId?: string;
-                assetName: string;
-                category: FixedAssetCategory;
-                locationId: string;
-                direction: FixedAssetLedgerEvent['direction'];
-                quantityDelta: number;
-                valueDelta: number;
-                condition: FixedAssetLedgerEvent['condition'];
-                referenceTransactionId?: string;
-                note: string;
-                deductFromLeftMoney?: boolean;
-                photoUrl?: string;
-              }) =>
-                dataService.logFixedAssetEvent({ ...data, actor: activeMember })
-              }
-              onTransferAsset={(data: {
-                assetGroupId: string;
-                assetName: string;
-                category: FixedAssetCategory;
-                fromLocationId: string;
-                toLocationId: string;
-                quantityToTransfer: number;
-                valueToTransfer: number;
-                condition: FixedAssetLedgerEvent['condition'];
-                note: string;
-              }) =>
-                dataService.transferFixedAssetBetweenLocations({
-                  ...data,
-                  actor: activeMember,
-                })
-              }
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'BROADCASTS' && (
-            <BroadcastCenterTab
-              notifications={visibleNotifications}
-              locations={orgLocations}
-              activeMember={activeMember}
-              onPostBroadcast={(data) =>
-                dataService.postGroundBroadcast({ ...data, actor: activeMember })
-              }
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'AUDIT' && (
-            <AuditAlertsTab
-              auditNotifications={visibleNotifications}
-              locations={orgLocations}
-              activeMember={activeMember}
-              cloudUserEmail={cloudUserEmail}
-              onPostBroadcast={(data) =>
-                dataService.postGroundBroadcast({ ...data, actor: activeMember })
-              }
-              activeFontId={activeFontId}
-              onSelectFont={handleSelectFont}
-              backgroundIntensity={bgIntensity}
-              onSelectBackgroundIntensity={handleSelectBgIntensity}
-              onOpenThemeModal={() => setShowThemeModal(true)}
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'USERS' && PERMISSIONS.canManageMembers(activeMember.role) && (
-            <UserManagementTab
-              members={orgMembers}
-              locations={orgLocations}
-              activeMember={activeMember}
-              activeOrg={activeOrg}
-              showNumbers={showNumbers}
-            />
-          )}
-
-          {activeTab === 'SETTINGS' && (
-            <UserSettingsTab
-              activeMember={activeMember}
-              session={activeSession}
-              locations={orgLocations}
-              activeOrg={activeOrg}
-              activeFontId={activeFontId}
-              onSelectFont={handleSelectFont}
-              backgroundIntensity={bgIntensity}
-              onSelectBackgroundIntensity={handleSelectBgIntensity}
-              onPreviewSplash={() => setPreviewSplash(true)}
-              onCheckUpdates={() => void runOnlineVersionCheck(true)}
-              onSignOut={handleSignOut}
-              targetSection={settingsTargetSection}
-            />
-          )}
-        </main>
-
-        {/* Signature CapitaSeed Floating Navigation Bar */}
-        <FloatingNavbar
-          activeTab={activeTab}
-          onNavigateTab={handleNavigateTab}
-          mobileFrameMode={mobileFrameMode}
-          activeRole={activeMember.role}
-          pendingUsersCount={pendingUsersCount}
-          unreadBroadcastsCount={unreadCount}
-          isAgroEnabled={isAgroEnabled}
-        />
-
-        {/* Typography & Theme Studio Modal */}
-        <ThemeSettingsModal
-          isOpen={showThemeModal}
-          onClose={() => setShowThemeModal(false)}
-          activeFontId={activeFontId}
-          onSelectFont={handleSelectFont}
-          backgroundIntensity={bgIntensity}
-          onSelectBackgroundIntensity={handleSelectBgIntensity}
-        />
-
-        {/* Notification & Ground Broadcast Slide-Over Drawer */}
-        <NotificationDrawer
-          isOpen={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          notifications={visibleNotifications}
-          activeMember={activeMember}
-          locations={orgLocations}
-          onMarkAllRead={() => dataService.markAllNotificationsRead(activeMember.id)}
-          onPostBroadcast={(data) =>
-            dataService.postGroundBroadcast({ ...data, actor: activeMember })
-          }
-        />
-
-        {/* Security Re-Authentication for Unhiding System Numbers */}
-        <PrivacyUnlockModal
-          isOpen={showPrivacyModal}
-          onClose={() => {
-            setShowPrivacyModal(false);
-            setPrivacyModalError(null);
-          }}
-          activeMember={activeMember}
-          onNavigateToSettings={(sec?: string) => handleNavigateTab('SETTINGS', sec || 'biometrics')}
-          initialError={privacyModalError}
-          initialMode={privacyModalMode}
-          onSuccess={() => {
-            setShowNumbers(true);
-            setShowPrivacyModal(false);
-            setPrivacyModalError(null);
-          }}
-        />
-
-        {/* Full CRUD Site Manager Modal */}
-        <SiteManagerModal
-          isOpen={showSiteManagerModal}
-          onClose={() => setShowSiteManagerModal(false)}
-          locations={orgLocations}
-          activeMember={activeMember}
-          onSiteSelected={(id) => setSelectedLocationId(id)}
-        />
-
-        {/* First-Login Fingerprint Biometric Prompt */}
-        {showFirstLoginBioPrompt && (
-          <FirstLoginBiometricPrompt
-            memberId={activeMember.id}
-            memberEmail={activeMember.email || activeMember.phoneOrEmail}
-            memberName={activeMember.fullName}
-            onDone={() => {
-              if (typeof window !== 'undefined') {
-                localStorage.setItem(`first_login_bio_prompt_seen_${activeMember.id}`, 'true');
-              }
-              setShowFirstLoginBioPrompt(false);
             }}
           />
         )}
-      </div>
-    </>
+        <div
+          className={`min-h-screen relative flex flex-col ${activeFontCss} ${mobileFrameMode
+            ? 'max-w-[430px] mx-auto border-x border-[#E8DFCE] shadow-2xl bg-[#FAF7F2]'
+            : 'w-full'
+            }`}
+        >
+          {/* Procedural Topographical Farm Terrain Background */}
+          <FarmTerrainBackground intensity={bgIntensity} />
+
+          {/* Android-Native AppBar with hardware back button & site selector */}
+          <AppBar
+            orgName={activeOrg?.name}
+            locations={orgLocations}
+            selectedLocationId={selectedLocationId}
+            onSelectLocation={setSelectedLocationId}
+            showNumbers={showNumbers}
+            onToggleShowNumbers={handleToggleShowNumbers}
+            unreadNotificationsCount={unreadCount}
+            onOpenNotifications={() => setDrawerOpen(true)}
+          />
+
+          {/* Main Viewport rendering Active Screen within Multi-Stack Navigation */}
+          <main className="flex-1 w-full pb-20 overflow-y-auto">
+            <RouteRenderer
+              state={state}
+              activeMember={activeMember}
+              locations={orgLocations}
+              selectedLocationId={selectedLocationId}
+              financials={financials}
+              memberEquities={memberEquities}
+              livestockStatuses={visibleLivestockStatuses}
+              fixedAssetGroups={fixedAssetGroups}
+              feedSummaries={feedSummaries}
+              isAgroEnabled={isAgroEnabled}
+              showNumbers={showNumbers}
+              cloudUserEmail={cloudUserEmail}
+              onRefresh={async () => {
+                await dataService.syncWithCloudServer();
+              }}
+              onSignOut={handleSignOut}
+              onLogExpense={() => setShowLogExpenseSheet(true)}
+              onRecordSale={() => setShowRecordSaleSheet(true)}
+              onAddLoanDebt={() => setShowNewDebtSheet(true)}
+              onBroadcast={() => setShowBroadcastSheet(true)}
+            />
+          </main>
+
+          {/* 4-Tab Bottom Navigation Bar */}
+          <BottomNav isAgroEnabled={isAgroEnabled} />
+
+          {/* Quick Action Bottom Sheets */}
+          <LogExpenseSheet
+            isOpen={showLogExpenseSheet}
+            onClose={() => setShowLogExpenseSheet(false)}
+            activeMember={activeMember}
+          />
+
+          <RecordCreditSaleSheet
+            isOpen={showRecordSaleSheet}
+            onClose={() => setShowRecordSaleSheet(false)}
+            activeMember={activeMember}
+          />
+
+          <NewDebtSheet
+            isOpen={showNewDebtSheet}
+            onClose={() => setShowNewDebtSheet(false)}
+            activeMember={activeMember}
+          />
+
+          <BroadcastSheet
+            isOpen={showBroadcastSheet}
+            onClose={() => setShowBroadcastSheet(false)}
+            activeMember={activeMember}
+          />
+
+          {/* Typography & Theme Studio Modal */}
+          <ThemeSettingsModal
+            isOpen={showThemeModal}
+            onClose={() => setShowThemeModal(false)}
+            activeFontId={activeFontId}
+            onSelectFont={handleSelectFont}
+            backgroundIntensity={bgIntensity}
+            onSelectBackgroundIntensity={handleSelectBgIntensity}
+          />
+
+          {/* Notification & Ground Broadcast Slide-Over Drawer */}
+          <NotificationDrawer
+            isOpen={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            notifications={visibleNotifications}
+            activeMember={activeMember}
+            locations={orgLocations}
+            onMarkAllRead={() => dataService.markAllNotificationsRead(activeMember.id)}
+            onPostBroadcast={(data) =>
+              dataService.postGroundBroadcast({ ...data, actor: activeMember })
+            }
+          />
+
+          {/* Security Re-Authentication for Unhiding System Numbers */}
+          <PrivacyUnlockModal
+            isOpen={showPrivacyModal}
+            onClose={() => {
+              setShowPrivacyModal(false);
+              setPrivacyModalError(null);
+            }}
+            activeMember={activeMember}
+            onNavigateToSettings={(sec?: string) => {
+              setSettingsTargetSection(sec || 'biometrics');
+              setShowPrivacyModal(false);
+            }}
+            initialError={privacyModalError}
+            initialMode={privacyModalMode}
+            onSuccess={() => {
+              setShowNumbers(true);
+              setShowPrivacyModal(false);
+              setPrivacyModalError(null);
+            }}
+          />
+
+          {/* Full CRUD Site Manager Modal */}
+          <SiteManagerModal
+            isOpen={showSiteManagerModal}
+            onClose={() => setShowSiteManagerModal(false)}
+            locations={orgLocations}
+            activeMember={activeMember}
+            onSiteSelected={(id) => setSelectedLocationId(id)}
+          />
+
+          {/* First-Login Fingerprint Biometric Prompt */}
+          {showFirstLoginBioPrompt && (
+            <FirstLoginBiometricPrompt
+              memberId={activeMember.id}
+              memberEmail={activeMember.email || activeMember.phoneOrEmail}
+              memberName={activeMember.fullName}
+              onDone={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem(`first_login_bio_prompt_seen_${activeMember.id}`, 'true');
+                }
+                setShowFirstLoginBioPrompt(false);
+              }}
+            />
+          )}
+        </div>
+      </ToastProvider>
+    </NavigationProvider>
   );
 }

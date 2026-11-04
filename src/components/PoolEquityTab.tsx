@@ -27,6 +27,10 @@ import type { Organization } from '../types/organization.ts';
 import { computeDividendDistribution } from '../utils/calculations.ts';
 import { PERMISSIONS, maskContact } from '../utils/permissions.ts';
 import { dataService } from '../services/dataService.ts';
+import { useRunway } from '../hooks/useRunway.ts';
+import { AddMemberSheet } from '../sheets/pool/AddMemberSheet.tsx';
+import { ContributionSheet } from '../sheets/pool/ContributionSheet.tsx';
+import { TargetFundraisingSheet } from '../sheets/pool/TargetFundraisingSheet.tsx';
 
 interface PoolEquityTabProps {
   memberEquities: MemberEquitySummary[];
@@ -49,6 +53,9 @@ interface PoolEquityTabProps {
     amount: number;
     referenceTransactionId?: string;
     note: string;
+    runwayPlanId?: string;
+    pledgeId?: string;
+    claimId?: string;
   }) => void;
   showNumbers?: boolean;
 }
@@ -64,6 +71,10 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
   onLogContribution,
   showNumbers = true,
 }) => {
+  const runway = useRunway();
+  const activePlan = runway.isEnabled && (runway.plan?.status === 'ACTIVE' || runway.plan?.status === 'PLEDGING') ? runway.plan : null;
+  const [applyToRunway, setApplyToRunway] = useState(false);
+
   const [simulatedProfit, setSimulatedProfit] = useState('2500');
   const [copiedCode, setCopiedCode] = useState(false);
 
@@ -149,6 +160,15 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
     setCRefId('');
     setCNote('');
     setCError('');
+
+    if (activePlan) {
+      const pl = runway.pledges.find((p) => p.planId === activePlan.id && p.memberId === memberId);
+      const paid = pl?.paidAmount ?? 0;
+      const pledged = pl?.pledgedAmount ?? pl?.amount ?? 0;
+      setApplyToRunway(Boolean(pl && paid < pledged));
+    } else {
+      setApplyToRunway(false);
+    }
   };
 
   const handleContribSubmit = (e: React.FormEvent) => {
@@ -166,11 +186,14 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
 
     try {
       if (contribModal.mode === 'ADDITION') {
+        const pledge = activePlan ? runway.pledges.find((p) => p.planId === activePlan.id && p.memberId === cMemberId) : null;
         onLogContribution({
           memberId: cMemberId,
           direction: 'ADDITION',
           amount: parsedAmount,
           note: cNote.trim(),
+          runwayPlanId: applyToRunway && activePlan ? activePlan.id : undefined,
+          pledgeId: applyToRunway && pledge ? pledge.id : undefined,
         });
       } else {
         const finalAmount = cContraSign === 'DEDUCT' ? -parsedAmount : parsedAmount;
@@ -436,8 +459,8 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
               <div
                 key={eq.member.id}
                 className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-3.5 transition-all shadow-xs ${isCurrentViewer
-                    ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                    : 'bg-white border-[#E8DFCE] hover:border-[#D5C9B3]'
+                  ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                  : 'bg-white border-[#E8DFCE] hover:border-[#D5C9B3]'
                   }`}
               >
                 <div className="space-y-3">
@@ -489,8 +512,8 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                       </div>
                       <span
                         className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isGoalMet
-                            ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
-                            : 'bg-amber-100 text-amber-950 border border-amber-300'
+                          ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
+                          : 'bg-amber-100 text-amber-950 border border-amber-300'
                           }`}
                       >
                         {isGoalMet ? 'Goal Met ✓' : `${progress}% (${eq.contributionPace})`}
@@ -529,6 +552,22 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                       </p>
                     </div>
                   </div>
+
+                  {activePlan && (() => {
+                    const pl = runway.pledges.find((p) => p.planId === activePlan.id && p.memberId === eq.member.id);
+                    if (!pl) return null;
+                    return (
+                      <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 flex items-center justify-between text-xs">
+                        <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          Runway Pledge
+                        </span>
+                        <span className="font-mono font-bold text-indigo-900">
+                          ${(pl.paidAmount ?? 0).toFixed(2)} / ${(pl.pledgedAmount ?? pl.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="pt-3 border-t border-[#F0EBE1] flex flex-wrap items-center justify-between gap-2">
@@ -610,347 +649,29 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
         </div>
       </section>
 
-      {/* ADD NEW MEMBER MODAL */}
-      {showAddMemberModal && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-member-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6 bg-white rounded-3xl border border-[#E8DFCE] text-slate-950">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <h2 id="add-member-title" className="text-base font-black text-slate-950">
-                Add New Organization Member
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowAddMemberModal(false)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Bottom Sheets */}
+      <AddMemberSheet
+        isOpen={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        activeMember={activeMember}
+      />
 
-            <form onSubmit={handleAddMemberSubmit} className="modal-body-scroll mt-4 space-y-3.5">
-              {memError && (
-                <p className="text-xs text-rose-900 bg-rose-50 border border-rose-300 rounded-lg px-3 py-2 font-bold">
-                  {memError}
-                </p>
-              )}
-
-              <div>
-                <label htmlFor="mem-name" className="block text-xs font-black text-slate-950 mb-1">
-                  Full Name *
-                </label>
-                <input
-                  id="mem-name"
-                  type="text"
-                  required
-                  placeholder="e.g. Farai M."
-                  value={memName}
-                  onChange={(e) => setMemName(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2.5 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="mem-contact" className="block text-xs font-black text-slate-950 mb-1">
-                  Phone or Email *
-                </label>
-                <input
-                  id="mem-contact"
-                  type="text"
-                  required
-                  placeholder="e.g. +263 77 812 3300"
-                  value={memContact}
-                  onChange={(e) => setMemContact(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2.5 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600 focus:bg-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="mem-role" className="block text-xs font-black text-slate-950 mb-1">
-                    Role
-                  </label>
-                  <select
-                    id="mem-role"
-                    value={memRole}
-                    onChange={(e) => setMemRole(e.target.value as Role)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600 cursor-pointer"
-                  >
-                    <option value="MEMBER">Member</option>
-                    <option value="GROUND_OPERATOR">Ground Operator</option>
-                    <option value="TREASURER">Treasurer</option>
-                    <option value="ORG_ADMIN">Organization Admin</option>
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="mem-loc" className="block text-xs font-black text-slate-950 mb-1">
-                    Assigned Farm Site
-                  </label>
-                  <select
-                    id="mem-loc"
-                    value={memLocationId}
-                    onChange={(e) => setMemLocationId(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600 cursor-pointer"
-                  >
-                    <option value="">Remote / Unassigned</option>
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="mem-deposit" className="block text-xs font-black text-slate-950 mb-1">
-                  Initial Capital Deposit ($)
-                </label>
-                <input
-                  id="mem-deposit"
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={memInitDeposit}
-                  onChange={(e) => setMemInitDeposit(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600 focus:bg-white"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddMemberModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black cursor-pointer shadow-xs"
-                >
-                  Add Member
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* LOG CONTRIBUTION / CONTRA MODAL */}
       {contribModal && (
-        <div className="modal-overlay-responsive" role="dialog" aria-modal="true">
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6 bg-white rounded-3xl border border-[#E8DFCE] text-slate-950">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
-              <h2 className="text-base font-black text-slate-950">
-                {contribModal.mode === 'ADDITION' ? 'Log Capital Contribution' : 'Post Accounting Contra Adjustment'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setContribModal(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleContribSubmit} className="modal-body-scroll mt-4 space-y-3.5">
-              {cError && (
-                <p className="text-xs text-rose-900 bg-rose-50 border border-rose-300 rounded-lg px-3 py-2 font-bold">
-                  {cError}
-                </p>
-              )}
-
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Select Member *
-                </label>
-                <select
-                  value={cMemberId}
-                  onChange={(e) => setCMemberId(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-600"
-                >
-                  {memberEquities.map((eq) => (
-                    <option key={eq.member.id} value={eq.member.id}>
-                      {eq.member.fullName} ({eq.member.role.replace(/_/g, ' ')})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Amount ($) *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  required
-                  value={cAmount}
-                  onChange={(e) => setCAmount(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-bold font-mono focus:outline-none focus:border-emerald-600"
-                />
-              </div>
-
-              {contribModal.mode === 'CONTRA_REVERSAL' && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] font-black text-slate-950 mb-1">
-                      Adjustment Type
-                    </label>
-                    <select
-                      value={cContraSign}
-                      onChange={(e) => setCContraSign(e.target.value as any)}
-                      className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-1.5 text-xs text-slate-950 font-bold"
-                    >
-                      <option value="DEDUCT">Deduct from Member</option>
-                      <option value="ADD">Add / Refund to Member</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-black text-slate-950 mb-1">
-                      Reference Tx ID
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. TX-CAP-1234"
-                      value={cRefId}
-                      onChange={(e) => setCRefId(e.target.value)}
-                      className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3 py-1.5 text-xs text-slate-950 font-mono"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Mandatory Audit Note *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Capital top-up via bank transfer for poultry feed"
-                  value={cNote}
-                  onChange={(e) => setCNote(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-medium focus:outline-none focus:border-emerald-600"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setContribModal(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black cursor-pointer shadow-xs"
-                >
-                  {contribModal.mode === 'ADDITION' ? 'Record Deposit' : 'Post Adjustment'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ContributionSheet
+          isOpen={Boolean(contribModal)}
+          onClose={() => setContribModal(null)}
+          activeMember={activeMember}
+          targetMember={memberEquities.find((m) => m.member.id === (cMemberId || contribModal.defaultMemberId))?.member}
+        />
       )}
 
-      {/* Modal 3: Edit Member Target Capital & Pace */}
       {targetModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="modal-overlay-responsive animate-in fade-in duration-200"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setTargetModal(null);
-          }}
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6 space-y-4 bg-white border border-[#E8DFCE] rounded-3xl shadow-2xl text-slate-950">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800">
-                  <Target className="w-5 h-5 text-amber-700" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-slate-950">
-                    Configure Capital Target
-                  </h2>
-                  <p className="text-xs text-slate-600 font-medium">
-                    {targetModal.memberName}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTargetModal(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-950 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {targetError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-950 font-bold">
-                {targetError}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveTargetSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Agreed Capital Target ($ USD) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
-                  value={targetAmount}
-                  onChange={(e) => setTargetAmount(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-mono font-bold focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Contribution Pace *
-                </label>
-                <select
-                  value={targetPace}
-                  onChange={(e) => setTargetPace(e.target.value as any)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
-                >
-                  <option value="MONTHLY">Monthly Agreed Commitment</option>
-                  <option value="MILESTONE">Milestone-Based Capital Calls</option>
-                  <option value="FLEXIBLE">Flexible / Self-Paced</option>
-                </select>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTargetModal(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black cursor-pointer shadow-xs transition-colors"
-                >
-                  Save Target
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <TargetFundraisingSheet
+          isOpen={Boolean(targetModal)}
+          onClose={() => setTargetModal(null)}
+          member={memberEquities.find((m) => m.member.id === targetModal.memberId)?.member || activeMember}
+          activeMember={activeMember}
+        />
       )}
     </div>
   );

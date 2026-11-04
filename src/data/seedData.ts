@@ -66,6 +66,14 @@ export const LEGACY_SEED_IDS = {
     'AUD-007',
     'AUD-008',
   ],
+  debtLiabilities: [],
+  loansGiven: [],
+  creditSales: [],
+  runwayPlans: [],
+  runwayLines: [],
+  runwayPledges: [],
+  runwayClaims: [],
+  runwayTemplates: [],
 };
 
 export function createEmptyProductionSnapshot(): AgroStateSnapshot {
@@ -82,6 +90,11 @@ export function createEmptyProductionSnapshot(): AgroStateSnapshot {
     debtLiabilities: [],
     loansGiven: [],
     creditSales: [],
+    runwayPlans: [],
+    runwayLines: [],
+    runwayPledges: [],
+    runwayClaims: [],
+    runwayTemplates: [],
   };
 }
 

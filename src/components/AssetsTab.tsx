@@ -21,6 +21,14 @@ import type {
 } from '../types/agro.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import { compressImage, validateImageFile } from '../utils/imageUpload.ts';
+import { useRunway } from '../hooks/useRunway.ts';
+import { SpendGateDialog } from './runway/SpendGateDialog.tsx';
+import { AssetSheet } from '../sheets/assets/AssetSheet.tsx';
+import { AdjustAssetSheet } from '../sheets/assets/AdjustAssetSheet.tsx';
+import { TransferAssetSheet } from '../sheets/assets/TransferAssetSheet.tsx';
+import { ImageViewerSheet } from './ui/ImageViewerSheet.tsx';
+import type { RunwayAllocation } from '../types/runway.ts';
+import { RunwayError } from '../types/runway.ts';
 
 interface AssetsTabProps {
   assetGroups: FixedAssetGroupSummary[];
@@ -41,6 +49,7 @@ interface AssetsTabProps {
     note: string;
     deductFromLeftMoney?: boolean;
     photoUrl?: string;
+    runwayAllocation?: RunwayAllocation;
   }) => void;
   onTransferAsset: (data: {
     assetGroupId: string;
@@ -75,6 +84,13 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
   onTransferAsset,
   showNumbers = true,
 }) => {
+  const runway = useRunway();
+  const [spendGateOpen, setSpendGateOpen] = useState(false);
+  const [pendingAssetData, setPendingAssetData] = useState<{
+    payload: Parameters<typeof onLogAssetEvent>[0];
+    cost: number;
+  } | null>(null);
+
   const astFileInputRef = useRef<HTMLInputElement>(null);
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
 
@@ -173,27 +189,60 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
       return;
     }
 
+    const assetPayload: Parameters<typeof onLogAssetEvent>[0] = {
+      assetName: astName.trim(),
+      category: finalCategory,
+      locationId: targetLocId,
+      direction: 'INITIAL',
+      quantityDelta: qty,
+      valueDelta: val,
+      condition: astCondition,
+      note: astNote.trim(),
+      deductFromLeftMoney: true,
+      photoUrl: astPhoto || undefined,
+    };
+
     try {
-      onLogAssetEvent({
-        assetName: astName.trim(),
-        category: finalCategory,
-        locationId: targetLocId,
-        direction: 'INITIAL',
-        quantityDelta: qty,
-        valueDelta: val,
-        condition: astCondition,
-        note: astNote.trim(),
-        deductFromLeftMoney: true,
-        photoUrl: astPhoto || undefined,
-      });
+      onLogAssetEvent(assetPayload);
       setAstName('');
       setCustomCategory('');
       setAstNote('');
       setAstPhoto(null);
       setAstError('');
       setShowNewAssetModal(false);
-    } catch (err) {
-      setAstError(err instanceof Error ? err.message : 'Failed to register asset.');
+    } catch (err: unknown) {
+      const isRunwayGateError =
+        err instanceof RunwayError ||
+        (err as { code?: string })?.code === 'RUNWAY_ALLOCATION_REQUIRED' ||
+        (err as { code?: string })?.code === 'RUNWAY_LINE_OVERRUN' ||
+        (err instanceof Error && err.message.toLowerCase().includes('runway spend gate blocked'));
+
+      if (isRunwayGateError) {
+        setPendingAssetData({ payload: assetPayload, cost: val });
+        setSpendGateOpen(true);
+      } else {
+        setAstError(err instanceof Error ? err.message : 'Failed to register asset.');
+      }
+    }
+  };
+
+  const handleAssetSpendGateAllocate = (allocation: RunwayAllocation) => {
+    if (!pendingAssetData) return;
+    try {
+      onLogAssetEvent({
+        ...pendingAssetData.payload,
+        runwayAllocation: allocation,
+      });
+      setSpendGateOpen(false);
+      setPendingAssetData(null);
+      setAstName('');
+      setCustomCategory('');
+      setAstNote('');
+      setAstPhoto(null);
+      setAstError('');
+      setShowNewAssetModal(false);
+    } catch (err: unknown) {
+      console.warn('Spend allocation rejected:', err);
     }
   };
 
@@ -452,500 +501,54 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
         })}
       </div>
 
-      {/* REGISTER NEW FIXED ASSET MODAL */}
-      {showNewAssetModal && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="new-asset-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <h2 id="new-asset-title" className="text-base font-bold text-slate-900">
-                Register New Fixed Asset
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowNewAssetModal(false)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* 1. REGISTER NEW FIXED ASSET BOTTOM SHEET */}
+      <AssetSheet
+        isOpen={showNewAssetModal}
+        onClose={() => setShowNewAssetModal(false)}
+        locations={locations}
+        activeMember={activeMember}
+        leftMoney={leftMoney ?? 0}
+      />
 
-            <form onSubmit={handleCreateAsset} className="modal-body-scroll mt-4 space-y-3.5">
-              {astError && (
-                <p className="text-xs text-rose-300 bg-rose-950/60 border border-rose-800 rounded-lg px-3 py-2">
-                  {astError}
-                </p>
-              )}
-
-              <div>
-                <label htmlFor="ast-name" className="block text-xs font-medium text-slate-300 mb-1">
-                  Asset / Infrastructure Name *
-                </label>
-                <input
-                  id="ast-name"
-                  type="text"
-                  required
-                  placeholder="e.g. 20x Chick Brooder Infrared Lamps & Guard Rings"
-                  value={astName}
-                  onChange={(e) => setAstName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="ast-loc" className="block text-xs font-medium text-slate-300 mb-1">
-                    Farm Site
-                  </label>
-                  <select
-                    id="ast-loc"
-                    value={astLocId}
-                    onChange={(e) => setAstLocId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
-                  >
-                    {locations.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="ast-cat" className="block text-xs font-medium text-slate-300 mb-1">
-                    Category *
-                  </label>
-                  <select
-                    id="ast-cat"
-                    value={astCategory}
-                    onChange={(e) => setAstCategory(e.target.value as FixedAssetCategory)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
-                  >
-                    {ASSET_CATEGORIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {astCategory === 'CUSTOM' && (
-                <div>
-                  <label htmlFor="ast-custom-cat" className="block text-xs font-semibold text-emerald-400 mb-1">
-                    Enter Custom Category Name *
-                  </label>
-                  <input
-                    id="ast-custom-cat"
-                    type="text"
-                    required
-                    placeholder="e.g. Irrigation Pipes, Incubator, Backup Generator"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    className="w-full bg-slate-950 border border-emerald-500/70 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label htmlFor="ast-qty" className="block text-xs font-medium text-slate-300 mb-1">
-                    Quantity *
-                  </label>
-                  <input
-                    id="ast-qty"
-                    type="number"
-                    min="1"
-                    value={astQty}
-                    onChange={(e) => setAstQty(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="ast-val" className="block text-xs font-medium text-slate-300 mb-1">
-                    Total Value ($) *
-                  </label>
-                  <input
-                    id="ast-val"
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    value={astValue}
-                    onChange={(e) => setAstValue(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="ast-cond" className="block text-xs font-medium text-slate-300 mb-1">
-                    Condition
-                  </label>
-                  <select
-                    id="ast-cond"
-                    value={astCondition}
-                    onChange={(e) => setAstCondition(e.target.value as AssetCondition)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white"
-                  >
-                    <option value="EXCELLENT">Excellent</option>
-                    <option value="GOOD">Good</option>
-                    <option value="FAIR">Fair</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Photo Evidence Upload */}
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Asset Photo Evidence (Optional)
-                </label>
-                {astPhoto ? (
-                  <div className="relative rounded-xl overflow-hidden border border-slate-700 bg-slate-950 p-2 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={astPhoto}
-                        alt="Asset preview"
-                        className="w-14 h-14 object-cover rounded-lg border border-slate-700"
-                      />
-                      <div className="text-xs">
-                        <p className="font-semibold text-emerald-400">Photo attached & compressed</p>
-                        <p className="text-slate-400 text-[11px]">Will be saved with ledger entry</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAstPhoto(null)}
-                      className="px-2.5 py-1 rounded-lg bg-rose-950/60 text-rose-300 hover:bg-rose-900 border border-rose-800 text-xs cursor-pointer"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      ref={astFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={handlePhotoUpload}
-                      disabled={isCompressingAstPhoto}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => astFileInputRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center p-3.5 border border-dashed border-slate-700 rounded-xl hover:border-emerald-500 bg-slate-950/50 cursor-pointer transition-colors"
-                    >
-                      <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                      <span className="text-xs text-slate-300 font-medium">
-                        {isCompressingAstPhoto ? 'Compressing photo...' : 'Upload Asset / Machinery Photo (Single Tap)'}
-                      </span>
-                      <span className="text-[10px] text-slate-500 mt-0.5">JPEG, PNG, WebP · Auto-compressed</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="ast-note" className="block text-xs font-medium text-slate-300 mb-1">
-                  Mandatory Audit Note *
-                </label>
-                <textarea
-                  id="ast-note"
-                  rows={2}
-                  required
-                  placeholder="Describe supplier, serial number, or construction details..."
-                  value={astNote}
-                  onChange={(e) => setAstNote(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowNewAssetModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500"
-                >
-                  Register Asset
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* 2. VALUATION / QUANTITY ADJUSTMENT BOTTOM SHEET */}
+      {adjustTarget && adjustTarget.events && adjustTarget.events.length > 0 && (
+        <AdjustAssetSheet
+          isOpen={Boolean(adjustTarget)}
+          onClose={() => setAdjustTarget(null)}
+          asset={adjustTarget.events[0]}
+          activeMember={activeMember}
+        />
       )}
 
-      {/* VALUATION / QUANTITY CONTRA-ADJUSTMENT MODAL */}
-      {adjustTarget && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="adj-asset-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <div>
-                <h2 id="adj-asset-title" className="text-base font-bold text-slate-900">
-                  Log Asset Valuation / Quantity Adjustment
-                </h2>
-                <p className="text-xs text-slate-500">{adjustTarget.assetName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAdjustTarget(null)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAdjustSubmit} className="modal-body-scroll mt-4 space-y-3.5">
-              {adjError && (
-                <p className="text-xs text-rose-300 bg-rose-950/60 border border-rose-800 rounded-lg px-3 py-2">
-                  {adjError}
-                </p>
-              )}
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label htmlFor="adj-qty" className="block text-xs font-medium text-slate-300 mb-1">
-                    Qty Delta (+ or -)
-                  </label>
-                  <input
-                    id="adj-qty"
-                    type="number"
-                    value={adjQtyDelta}
-                    onChange={(e) => setAdjQtyDelta(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="adj-val" className="block text-xs font-medium text-slate-300 mb-1">
-                    Value Delta ($)
-                  </label>
-                  <input
-                    id="adj-val"
-                    type="number"
-                    step="0.01"
-                    value={adjValDelta}
-                    onChange={(e) => setAdjValDelta(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="adj-cond" className="block text-xs font-medium text-slate-300 mb-1">
-                    Updated Cond.
-                  </label>
-                  <select
-                    id="adj-cond"
-                    value={adjCondition}
-                    onChange={(e) => setAdjCondition(e.target.value as AssetCondition)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white"
-                  >
-                    <option value="EXCELLENT">Excellent</option>
-                    <option value="GOOD">Good</option>
-                    <option value="FAIR">Fair</option>
-                    <option value="DAMAGED">Damaged</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="adj-note" className="block text-xs font-medium text-slate-300 mb-1">
-                  Mandatory Reason for Adjustment (Depreciation, Breakage, Count Fix) *
-                </label>
-                <textarea
-                  id="adj-note"
-                  rows={2}
-                  required
-                  placeholder="e.g. 2 bell drinkers cracked during winter frost..."
-                  value={adjNote}
-                  onChange={(e) => setAdjNote(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setAdjustTarget(null)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-500"
-                >
-                  Append Adjustment
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* 3. INTER-LOCATION ASSET TRANSFER BOTTOM SHEET */}
+      {transferTarget && transferTarget.events && transferTarget.events.length > 0 && (
+        <TransferAssetSheet
+          isOpen={Boolean(transferTarget)}
+          onClose={() => setTransferTarget(null)}
+          asset={transferTarget.events[0]}
+          activeMember={activeMember}
+        />
       )}
 
-      {/* INTER-LOCATION ASSET TRANSFER MODAL */}
-      {transferTarget && (
-        <div
-          className="modal-overlay-responsive"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="tr-asset-title"
-        >
-          <div className="modal-dialog-responsive max-w-md p-5 sm:p-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1] shrink-0">
-              <div>
-                <h2 id="tr-asset-title" className="text-base font-bold text-slate-900">
-                  Transfer Fixed Asset Between Farm Sites
-                </h2>
-                <p className="text-xs text-slate-500">
-                  From {transferTarget.locationName} (Available: {transferTarget.currentQuantity})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTransferTarget(null)}
-                aria-label="Close modal"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* 4. PHOTO LIGHTBOX VIEWER SHEET */}
+      <ImageViewerSheet
+        isOpen={Boolean(lightboxPhoto)}
+        onClose={() => setLightboxPhoto(null)}
+        imageUrl={lightboxPhoto?.url}
+        title={lightboxPhoto?.title}
+      />
 
-            <form onSubmit={handleTransferSubmit} className="modal-body-scroll mt-4 space-y-3.5">
-              {trError && (
-                <p className="text-xs text-rose-300 bg-rose-950/60 border border-rose-800 rounded-lg px-3 py-2">
-                  {trError}
-                </p>
-              )}
-
-              <div>
-                <label htmlFor="tr-to-loc" className="block text-xs font-medium text-slate-300 mb-1">
-                  Destination Farm Site *
-                </label>
-                <select
-                  id="tr-to-loc"
-                  value={trToLocId}
-                  onChange={(e) => setTrToLocId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white"
-                >
-                  {locations
-                    .filter((l) => l.id !== transferTarget.locationId)
-                    .map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="tr-qty" className="block text-xs font-medium text-slate-300 mb-1">
-                    Quantity to Transfer *
-                  </label>
-                  <input
-                    id="tr-qty"
-                    type="number"
-                    min="1"
-                    max={transferTarget.currentQuantity}
-                    value={trQty}
-                    onChange={(e) => setTrQty(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="tr-val" className="block text-xs font-medium text-slate-300 mb-1">
-                    Book Value Transferred ($) *
-                  </label>
-                  <input
-                    id="tr-val"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={trVal}
-                    onChange={(e) => setTrVal(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm font-mono text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="tr-note" className="block text-xs font-medium text-slate-300 mb-1">
-                  Mandatory Dispatch & Transfer Note *
-                </label>
-                <textarea
-                  id="tr-note"
-                  rows={2}
-                  required
-                  placeholder="e.g. Dispatched 10 tubular feeders to Gweru via pickup truck..."
-                  value={trNote}
-                  onChange={(e) => setTrNote(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setTransferTarget(null)}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500"
-                >
-                  Log Paired Transfer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      {/* Photo Lightbox Modal */}
-      {lightboxPhoto && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
-          onClick={() => setLightboxPhoto(null)}
-        >
-          <div
-            className="relative max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950">
-              <h4 className="text-sm font-semibold text-white truncate">{lightboxPhoto.title}</h4>
-              <button
-                type="button"
-                onClick={() => setLightboxPhoto(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 flex items-center justify-center bg-black/50">
-              <img
-                src={lightboxPhoto.url}
-                alt={lightboxPhoto.title}
-                className="max-h-[70vh] w-auto max-w-full object-contain rounded-lg"
-              />
-            </div>
-          </div>
-        </div>
+      {/* SPEND GATE MODAL */}
+      {pendingAssetData && (
+        <SpendGateDialog
+          isOpen={spendGateOpen}
+          onClose={() => setSpendGateOpen(false)}
+          amount={pendingAssetData.cost}
+          category="FIXED_ASSET_PURCHASE"
+          lines={runway.lines}
+          reserveLeft={runway.layers.reserveLeft}
+          onAllocate={handleAssetSpendGateAllocate}
+        />
       )}
     </div>
   );
