@@ -22,7 +22,7 @@ import {
   computeRunwayMonths,
 } from '../utils/runway.ts';
 
-export function useRunway(planId?: string) {
+export function useRunway(planId?: string, orgIdOverride?: string) {
   const [state, setState] = useState<AgroStateSnapshot>(() => dataService.getState());
 
   useEffect(() => {
@@ -31,8 +31,10 @@ export function useRunway(planId?: string) {
     });
   }, []);
 
-  const activeOrgId = state.activeOrgId || 'org-master';
-  const currentOrg = (state.organizations || []).find((o) => o.id === activeOrgId);
+  const activeOrgId = orgIdOverride || state.activeOrgId || dataService.getActiveOrgId() || 'org-master';
+  const currentOrg =
+    (state.organizations || []).find((o) => o.id === activeOrgId) ||
+    dataService.getActiveOrganization(activeOrgId);
   const isEnabled = Boolean(currentOrg?.features?.runwayModule);
 
   const orgPlans = useMemo(() => {

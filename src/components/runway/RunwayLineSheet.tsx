@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Sparkles, Trash2, Check, Calculator } from 'lucide-react';
 import type {
   RunwayLine,
   RunwayLineKind,
   RunwayLinePriority,
 } from '../../types/runway';
-import type { ExpenseLedgerEvent, ExpenseCategory } from '../../types/agro';
+import type { ExpenseLedgerEvent } from '../../types/agro';
 import { suggestUnitCosts } from '../../utils/runway';
+import { useBackHandler } from '../../navigation/useBackHandler';
 
 interface RunwayLineSheetProps {
   isOpen: boolean;
@@ -33,8 +35,8 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState<RunwayLineKind>('COST');
   const [category, setCategory] = useState<string>('FEED');
-  const [qty, setQty] = useState<number>(1);
-  const [unitCost, setUnitCost] = useState<number>(0);
+  const [qtyStr, setQtyStr] = useState<string>('');
+  const [totalPriceStr, setTotalPriceStr] = useState<string>('');
   const [unitLabel, setUnitLabel] = useState<string>('units');
   const [priority, setPriority] = useState<RunwayLinePriority>('ESSENTIAL');
   const [excludeFromContingency, setExcludeFromContingency] = useState<boolean>(false);
@@ -46,13 +48,25 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   const [everyDays, setEveryDays] = useState<number>(30);
   const [occurrences, setOccurrences] = useState<number>(1);
 
+  useBackHandler(
+    100,
+    () => {
+      if (!isOpen) return false;
+      onClose();
+      return true;
+    },
+    [isOpen, onClose]
+  );
+
   useEffect(() => {
     if (existingLine) {
       setTitle(existingLine.title);
       setKind(existingLine.kind || 'COST');
       setCategory(existingLine.category || 'FEED');
-      setQty(existingLine.qty || 1);
-      setUnitCost(existingLine.unitCost || 0);
+      const q = existingLine.qty || 1;
+      const u = existingLine.unitCost || 0;
+      setQtyStr(String(q));
+      setTotalPriceStr(String(Number((q * u).toFixed(2))));
       setUnitLabel(existingLine.unitLabel || 'units');
       setPriority(existingLine.priority || 'ESSENTIAL');
       setExcludeFromContingency(Boolean(existingLine.excludeFromContingency));
@@ -69,8 +83,8 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       setTitle('');
       setKind('COST');
       setCategory('FEED');
-      setQty(1);
-      setUnitCost(0);
+      setQtyStr('');
+      setTotalPriceStr('');
       setUnitLabel('units');
       setPriority('ESSENTIAL');
       setExcludeFromContingency(false);
@@ -82,20 +96,26 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
 
   if (!isOpen) return null;
 
+  const parsedQty = parseFloat(qtyStr);
+  const parsedTotal = parseFloat(totalPriceStr);
+  const validQty = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 0;
+  const validTotal = Number.isFinite(parsedTotal) && parsedTotal >= 0 ? parsedTotal : 0;
+  const autoUnitCost = validQty > 0 ? validTotal / validQty : 0;
+
   const costSuggestions = suggestUnitCosts(category, pastExpenses || []);
-  const lineTotal = (qty || 0) * (unitCost || 0) * (isRecurring ? occurrences || 1 : 1);
+  const lineTotal = validTotal * (isRecurring ? occurrences || 1 : 1);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || qty <= 0 || unitCost <= 0) return;
+    if (!title.trim() || validQty <= 0 || validTotal <= 0) return;
 
     onSave({
       id: existingLine?.id,
       title: title.trim(),
       kind,
       category,
-      qty: Number(qty),
-      unitCost: Number(unitCost),
+      qty: Number(validQty),
+      unitCost: Number((validTotal / validQty).toFixed(4)),
       unitLabel: unitLabel.trim() || undefined,
       priority,
       excludeFromContingency,
@@ -125,30 +145,31 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
     'OTHER',
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-lg rounded-t-3xl sm:rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[90vh] flex flex-col overflow-hidden">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/65 backdrop-blur-xs px-2 py-2 sm:p-4 pt-safe pb-safe animate-in fade-in duration-200">
+      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[88dvh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-gray-100 dark:border-gray-800">
           <h3 className="text-base font-bold text-gray-900 dark:text-white">
             {existingLine ? 'Edit Budget Line' : 'Add Plan Budget Line'}
           </h3>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-3.5">
           {/* Kind Segmented Control */}
           <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800">
             <button
               type="button"
               onClick={() => setKind('COST')}
-              className={`py-1.5 text-xs font-bold rounded-lg transition-all ${kind === 'COST'
+              className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${kind === 'COST'
                   ? 'bg-white dark:bg-gray-700 text-rose-600 dark:text-rose-300 shadow-xs'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                 }`}
@@ -158,7 +179,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
             <button
               type="button"
               onClick={() => setKind('INCOME')}
-              className={`py-1.5 text-xs font-bold rounded-lg transition-all ${kind === 'INCOME'
+              className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${kind === 'INCOME'
                   ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-300 shadow-xs'
                   : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
                 }`}
@@ -217,35 +238,41 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
             </div>
           </div>
 
-          {/* Qty, Unit Cost, Unit Label */}
+          {/* Items Bought (Qty), Total Price ($), Unit Label */}
           <div className="grid grid-cols-3 gap-2.5">
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Quantity *
+                Items (Qty) *
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0.01"
                 step="any"
                 required
-                value={qty}
-                onChange={(e) => setQty(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                placeholder="e.g. 100"
+                value={qtyStr}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setQtyStr(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono font-bold"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Unit Cost ($) *
+                Total Price ($) *
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0.01"
                 step="0.01"
                 required
-                value={unitCost}
-                onChange={(e) => setUnitCost(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-semibold text-indigo-600 dark:text-indigo-400"
+                placeholder="e.g. 150.00"
+                value={totalPriceStr}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => setTotalPriceStr(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-mono font-bold text-indigo-600 dark:text-indigo-400"
               />
             </div>
 
@@ -272,7 +299,11 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setUnitCost(costSuggestions)}
+                  onClick={() => {
+                    const q = validQty > 0 ? validQty : 1;
+                    if (validQty <= 0) setQtyStr('1');
+                    setTotalPriceStr(String(Number((q * costSuggestions).toFixed(2))));
+                  }}
                   className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700/60 text-xs font-medium text-amber-900 dark:text-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
                 >
                   Apply Benchmark: ${costSuggestions.toFixed(2)} / unit
@@ -368,14 +399,16 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
             </label>
           )}
 
-          {/* Subtotal preview banner */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40">
+          {/* Auto-calculated Unit Cost & Subtotal preview banner */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-900/40">
             <div className="flex items-center space-x-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
-              <Calculator className="w-4 h-4" />
-              <span>Calculated Line Subtotal:</span>
+              <Calculator className="w-4 h-4 shrink-0" />
+              <span>
+                Auto Unit Cost: <strong>${autoUnitCost.toFixed(2)}/{unitLabel || 'unit'}</strong>
+              </span>
             </div>
-            <span className="text-base font-bold text-indigo-900 dark:text-indigo-100">
-              ${lineTotal.toFixed(2)}
+            <span className="text-sm sm:text-base font-bold font-mono text-indigo-900 dark:text-indigo-100">
+              Total: ${lineTotal.toFixed(2)}
             </span>
           </div>
 
@@ -388,18 +421,20 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
                   onDelete(existingLine.id);
                   onClose();
                 }}
-                className="px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition-colors flex items-center space-x-1"
+                className="px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition-colors flex items-center space-x-1 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Remove</span>
               </button>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
 
             <div className="flex items-center space-x-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 text-xs font-semibold transition-colors"
+                className="px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800 text-xs font-semibold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -416,4 +451,11 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    const portalRoot = document.getElementById('sheet-root') || document.body;
+    return createPortal(modalContent, portalRoot);
+  }
+
+  return modalContent;
 };

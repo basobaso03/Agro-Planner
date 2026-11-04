@@ -1,17 +1,14 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileEdit,
   X,
-  Check,
-  XCircle,
-  PlusCircle,
-  Clock,
-  CheckCircle,
-  AlertCircle,
+  Calculator,
 } from 'lucide-react';
 import type { RunwayLine } from '../../types/runway';
 import type { OrgMember } from '../../types/agro';
 import { PERMISSIONS } from '../../utils/permissions';
+import { useBackHandler } from '../../navigation/useBackHandler';
 
 interface AmendmentSheetProps {
   isOpen: boolean;
@@ -46,86 +43,101 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'PROPOSE' | 'PENDING'>('PROPOSE');
 
-  // Form State
+  // Form State (string-backed so fields clear cleanly on click/backspace)
   const [title, setTitle] = useState<string>('');
   const [category, setCategory] = useState<string>('FEED');
-  const [qty, setQty] = useState<number>(1);
-  const [unitCost, setUnitCost] = useState<number>(0);
+  const [qtyStr, setQtyStr] = useState<string>('');
+  const [totalPriceStr, setTotalPriceStr] = useState<string>('');
   const [note, setNote] = useState<string>('');
-  const [selectedExistingLineId, setSelectedExistingLineId] = useState<string>('');
-  const [isModifyingExisting, setIsModifyingExisting] = useState<boolean>(false);
+  const [selectedExistingLineId] = useState<string>('');
+  const [isModifyingExisting] = useState<boolean>(false);
 
   const canApprove = PERMISSIONS.canApproveAmendment(currentMember.role);
   const canPropose = PERMISSIONS.canProposeAmendment(currentMember.role);
+
+  useBackHandler(
+    100,
+    () => {
+      if (!isOpen) return false;
+      onClose();
+      return true;
+    },
+    [isOpen, onClose]
+  );
 
   const planLines = lines.filter((l) => l.planId === planId);
   const pendingAmendments = planLines.filter((l) => l.approval === 'PROPOSED');
 
   if (!isOpen) return null;
 
+  const parsedQty = parseFloat(qtyStr);
+  const parsedTotal = parseFloat(totalPriceStr);
+  const validQty = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 0;
+  const validTotal = Number.isFinite(parsedTotal) && parsedTotal > 0 ? parsedTotal : 0;
+  const autoUnitCost = validQty > 0 ? validTotal / validQty : 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || qty <= 0 || unitCost <= 0 || !note.trim()) return;
+    if (!title.trim() || validQty <= 0 || validTotal <= 0 || !note.trim()) return;
 
     onPropose({
       planId,
       title: title.trim(),
       category,
-      qty: Number(qty),
-      unitCost: Number(unitCost),
+      qty: Number(validQty),
+      unitCost: Number((validTotal / validQty).toFixed(4)),
       note: note.trim(),
       lineId: isModifyingExisting ? selectedExistingLineId : undefined,
     });
 
     setTitle('');
-    setQty(1);
-    setUnitCost(0);
+    setQtyStr('');
+    setTotalPriceStr('');
     setNote('');
     onClose();
   };
 
   const categories = ['FEED', 'EQUIPMENT', 'LIVESTOCK', 'MEDICINE', 'LABOR', 'UTILITIES', 'OTHER'];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-5 sm:p-6 space-y-4 max-h-[90vh] flex flex-col overflow-hidden">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-xs px-3 py-3 sm:p-4 pt-safe pb-safe animate-in fade-in">
+      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[88dvh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
-          <div className="flex items-center space-x-2">
-            <FileEdit className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">
-              Plan Amendments & Mid-Cycle Adjustments
+        <div className="shrink-0 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+          <div className="flex items-center space-x-2 min-w-0">
+            <FileEdit className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate">
+              Plan Amendments &amp; Mid-Cycle Adjustments
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab switcher */}
-        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-semibold">
+        <div className="shrink-0 grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-semibold">
           <button
             type="button"
             onClick={() => setActiveTab('PROPOSE')}
-            className={`py-1.5 rounded-lg transition-all ${
-              activeTab === 'PROPOSE'
+            className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === 'PROPOSE'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             Propose Amendment
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('PENDING')}
-            className={`py-1.5 rounded-lg transition-all flex items-center justify-center space-x-1.5 ${
-              activeTab === 'PENDING'
+            className={`py-1.5 rounded-lg transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${activeTab === 'PENDING'
                 ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
                 : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+              }`}
           >
             <span>Review Pending</span>
             {pendingAmendments.length > 0 && (
@@ -138,7 +150,7 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
 
         {/* PROPOSE TAB */}
         {activeTab === 'PROPOSE' && (
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto space-y-3.5 pr-1">
+          <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1">
             {!canPropose && (
               <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs">
                 Only Ground Operators, Treasurers, and Admins can submit plan amendments.
@@ -180,30 +192,37 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Qty *
+                  Items (Qty) *
                 </label>
                 <input
                   type="number"
-                  min="1"
+                  inputMode="decimal"
+                  min="0.01"
+                  step="any"
                   required
-                  value={qty}
-                  onChange={(e) => setQty(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs"
+                  placeholder="e.g. 10"
+                  value={qtyStr}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setQtyStr(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-mono font-bold"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Unit Cost ($) *
+                  Total Price ($) *
                 </label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min="0.01"
                   step="0.01"
                   required
-                  value={unitCost}
-                  onChange={(e) => setUnitCost(parseFloat(e.target.value) || 0)}
-                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-bold text-indigo-600"
+                  placeholder="e.g. 50.00"
+                  value={totalPriceStr}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setTotalPriceStr(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-mono font-bold text-indigo-600"
                 />
               </div>
             </div>
@@ -222,10 +241,13 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs">
-              <span className="text-gray-500">Additional Requirement:</span>
-              <span className="font-bold text-gray-900 dark:text-white">
-                ${(qty * unitCost).toFixed(2)}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs">
+              <span className="text-gray-500 flex items-center gap-1">
+                <Calculator className="w-3.5 h-3.5 text-indigo-500" />
+                Auto Unit Cost: <strong>${autoUnitCost.toFixed(2)}/unit</strong>
+              </span>
+              <span className="font-bold font-mono text-gray-900 dark:text-white">
+                Total: ${validTotal.toFixed(2)}
               </span>
             </div>
 
@@ -233,14 +255,14 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={!canPropose || !title.trim() || !note.trim() || qty <= 0 || unitCost <= 0}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50"
+                disabled={!canPropose || !title.trim() || !note.trim() || validQty <= 0 || validTotal <= 0}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer"
               >
                 Submit Amendment
               </button>
@@ -250,7 +272,7 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
 
         {/* PENDING TAB */}
         {activeTab === 'PENDING' && (
-          <div className="flex-1 overflow-y-auto space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
             {pendingAmendments.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-400">
                 No amendments currently awaiting review.
@@ -270,26 +292,28 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                       </span>
                     </div>
 
-                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] font-bold shrink-0">
                       Awaiting Sign-off
                     </span>
                   </div>
 
                   {line.amendmentReason && (
                     <p className="p-2.5 rounded-xl bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 italic">
-                      "{line.amendmentReason}"
+                      &quot;{line.amendmentReason}&quot;
                     </p>
                   )}
 
                   {canApprove && (
                     <div className="flex items-center justify-end space-x-2 pt-1">
                       <button
+                        type="button"
                         onClick={() => onResolve({ lineId: line.id, decision: 'REJECT' })}
                         className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-100/50 text-xs font-bold transition-colors cursor-pointer"
                       >
                         Reject
                       </button>
                       <button
+                        type="button"
                         onClick={() => onResolve({ lineId: line.id, decision: 'APPROVE' })}
                         className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
                       >
@@ -305,5 +329,11 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
       </div>
     </div>
   );
-};
 
+  if (typeof document !== 'undefined') {
+    const portalRoot = document.getElementById('sheet-root') || document.body;
+    return createPortal(modalContent, portalRoot);
+  }
+
+  return modalContent;
+};

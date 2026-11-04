@@ -168,6 +168,7 @@ export default function App() {
     }
 
     // Initialize Android Notification Channels, Push Notifications, and tap handler
+    void nativeStatusBar.setLightStyle();
     void initializeNotificationChannels();
     void initPushNotifications(() => {
       setDrawerOpen(true);
@@ -769,7 +770,7 @@ export default function App() {
           />
         )}
         <div
-          className={`min-h-screen relative flex flex-col ${activeFontCss} ${mobileFrameMode
+          className={`h-dvh max-h-dvh overflow-hidden relative flex flex-col ${activeFontCss} ${mobileFrameMode
             ? 'max-w-[430px] mx-auto border-x border-[#E8DFCE] shadow-2xl bg-[#FAF7F2]'
             : 'w-full'
             }`}
@@ -790,7 +791,7 @@ export default function App() {
           />
 
           {/* Main Viewport rendering Active Screen within Multi-Stack Navigation */}
-          <main className="flex-1 w-full pb-20 overflow-y-auto">
+          <main className="flex-1 min-h-0 w-full pb-24 overflow-y-auto overflow-x-hidden">
             <RouteRenderer
               state={state}
               activeMember={activeMember}

@@ -39,7 +39,7 @@ export const TabHost: React.FC<TabHostProps> = ({
           <div
             key={tab.id}
             style={{ display: isActive ? 'block' : 'none' }}
-            className="w-full min-h-[calc(100dvh-60px-64px)] pb-24"
+            className="w-full pb-6"
           >
             {tab.content}
           </div>

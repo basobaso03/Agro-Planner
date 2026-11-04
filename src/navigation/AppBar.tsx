@@ -35,7 +35,7 @@ export const AppBar: React.FC<AppBarProps> = ({
       : locations.find((l) => l.id === selectedLocationId)?.name || 'Select Site';
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E8DFCE] pt-safe px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-30 shrink-0 bg-white/95 backdrop-blur-md border-b border-[#E8DFCE] pt-safe px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
       {/* Left Column: Back button or Org Branding */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {canPop ? (

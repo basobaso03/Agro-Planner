@@ -3,6 +3,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 export const nativeStatusBar = {
   setLightStyle: async () => {
     try {
+      await StatusBar.setOverlaysWebView({ overlay: false });
       await StatusBar.setStyle({ style: Style.Light });
       await StatusBar.setBackgroundColor({ color: '#FAF8F5' });
     } catch {
@@ -11,6 +12,7 @@ export const nativeStatusBar = {
   },
   setDarkStyle: async () => {
     try {
+      await StatusBar.setOverlaysWebView({ overlay: false });
       await StatusBar.setStyle({ style: Style.Dark });
       await StatusBar.setBackgroundColor({ color: '#0F172A' });
     } catch {

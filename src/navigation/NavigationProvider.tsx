@@ -235,43 +235,57 @@ function recordPageVisit(routeId: RouteId, params?: Record<string, string>, titl
   });
 }
 
+const ROOT_OVERVIEW_ENTRY: RouteEntry = {
+  key: 'root-overview',
+  id: 'overview',
+  title: 'Overview',
+};
+
+const TAB_ROOT_TITLES: Record<TabId, string> = {
+  overview: 'Overview',
+  operations: 'Operations',
+  money: 'Money & Wealth',
+  more: 'More',
+};
+
 export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTabState] = useState<TabId>('overview');
-
-  const [stacks, setStacks] = useState<Record<TabId, RouteEntry[]>>({
-    overview: [{ key: 'root-overview', id: 'overview', title: 'Overview' }],
-    operations: [{ key: 'root-operations', id: 'operations', title: 'Operations' }],
-    money: [{ key: 'root-money', id: 'money', title: 'Money & Wealth' }],
-    more: [{ key: 'root-more', id: 'more', title: 'More' }],
-  });
-
+  // Unified stack always rooted at 'overview' so back navigation (both top-left arrow and phone hardware back button)
+  // steps cleanly through all opened pages down to Overview before exiting.
+  const [navStack, setNavStack] = useState<RouteEntry[]>([ROOT_OVERVIEW_ENTRY]);
   const [activeSheet, setActiveSheet] = useState<{ sheetId: string; props?: any } | null>(null);
 
-  const currentStack = stacks[activeTab] || [];
-  const currentRoute = currentStack[currentStack.length - 1] || {
-    key: `root-${activeTab}`,
-    id: activeTab,
-    title: activeTab.toUpperCase(),
-  };
+  const currentRoute = navStack[navStack.length - 1] || ROOT_OVERVIEW_ENTRY;
+  const activeTab = resolveTabForRoute(currentRoute.id);
 
   const switchTab = useCallback((tab: TabId) => {
     void nativeHaptics.selectionChanged();
-    setActiveTabState((prevTab) => {
-      if (prevTab === tab) {
-        // Re-tap active tab: pop to root
-        setStacks((prev) => ({
-          ...prev,
-          [tab]: [prev[tab][0]],
-        }));
+    setNavStack((prev) => {
+      if (tab === 'overview') {
+        return [ROOT_OVERVIEW_ENTRY];
       }
-      return tab;
+      const top = prev[prev.length - 1];
+      // If already on this tab root, keep stack as-is; if deep inside this tab, pop back to this tab's root
+      if (top && top.id === tab) {
+        return prev;
+      }
+      const tabRootEntry: RouteEntry = {
+        key: `root-${tab}-${Date.now()}`,
+        id: tab,
+        title: TAB_ROOT_TITLES[tab] || tab,
+      };
+      const filtered = prev.filter((entry, idx) => idx === 0 || entry.id !== tab);
+      return [...filtered, tabRootEntry];
     });
+    backHandlerRegistry.ensureHistoryGuard();
   }, []);
 
   const navigate = useCallback(
     (routeId: RouteId, params?: Record<string, string>, title?: string) => {
       void nativeHaptics.impact();
-      const targetTab = resolveTabForRoute(routeId);
+      if (routeId === 'overview') {
+        setNavStack([ROOT_OVERVIEW_ENTRY]);
+        return;
+      }
 
       const newEntry: RouteEntry = {
         key: `route_${routeId}_${Date.now()}`,
@@ -280,19 +294,23 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         title: title || routeId,
       };
 
-      setStacks((prev) => ({
-        ...prev,
-        [targetTab]: [...prev[targetTab], newEntry],
-      }));
-
-      setActiveTabState(targetTab);
+      setNavStack((prev) => {
+        const top = prev[prev.length - 1];
+        // Avoid pushing duplicate consecutive route with identical id and params
+        if (
+          top &&
+          top.id === routeId &&
+          JSON.stringify(top.params || {}) === JSON.stringify(params || {})
+        ) {
+          return prev;
+        }
+        return [...prev, newEntry];
+      });
 
       // Record page visit to persistent Recents system
       recordPageVisit(routeId, params, title);
 
-      if (typeof window !== 'undefined') {
-        window.history.pushState({ tab: targetTab, routeId }, '');
-      }
+      backHandlerRegistry.ensureHistoryGuard();
     },
     []
   );
@@ -303,27 +321,25 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return true;
     }
 
-    const tabStack = stacks[activeTab];
-    if (tabStack.length > 1) {
+    if (navStack.length > 1) {
       void nativeHaptics.selectionChanged();
-      setStacks((prev) => ({
-        ...prev,
-        [activeTab]: prev[activeTab].slice(0, prev[activeTab].length - 1),
-      }));
+      setNavStack((prev) => (prev.length > 1 ? prev.slice(0, prev.length - 1) : [ROOT_OVERVIEW_ENTRY]));
       return true;
     }
 
-    if (activeTab !== 'overview') {
-      setActiveTabState('overview');
+    if (currentRoute.id !== 'overview') {
+      void nativeHaptics.selectionChanged();
+      setNavStack([ROOT_OVERVIEW_ENTRY]);
       return true;
     }
 
     return false;
-  }, [activeSheet, stacks, activeTab]);
+  }, [activeSheet, navStack.length, currentRoute.id]);
 
   const openSheet = useCallback((sheetId: string, props?: any) => {
     void nativeHaptics.impact();
     setActiveSheet({ sheetId, props });
+    backHandlerRegistry.ensureHistoryGuard();
   }, []);
 
   const closeSheet = useCallback(() => {
@@ -338,6 +354,8 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [pop]);
 
+  const canPop = navStack.length > 1 || currentRoute.id !== 'overview';
+
   return (
     <NavigationContext.Provider
       value={{
@@ -347,7 +365,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         navigate,
         pop,
         goBack: pop,
-        canPop: currentStack.length > 1,
+        canPop,
         activeSheet,
         openSheet,
         closeSheet,

@@ -5658,9 +5658,11 @@ class AgroDataService {
     collectionMode?: 'ANYTIME' | 'BY_DEADLINE' | 'INSTALMENTS';
     enforcement?: RunwayEnforcement;
     spendEnforcement?: RunwayEnforcement;
+    openingCashAdopted?: number;
+    adoptOpeningCash?: boolean;
     phases?: (RunwayPhase | Omit<RunwayPhase, 'id'>)[];
     plannedFinancing?: { id: string; lenderName: string; amount: number; expectedDate?: string }[];
-    lines?: Omit<RunwayLine, 'id' | 'planId' | 'orgId' | 'createdAt' | 'updatedAt' | 'auditHash' | 'approval' | 'origin'>[];
+    lines?: (Partial<RunwayLine> & { title: string; category: string; qty: number; unitCost: number })[];
     actor: OrgMember;
   }): { plan: RunwayPlan; lines: RunwayLine[] } {
     if (!PERMISSIONS.canCreateRunwayPlan(params.actor.role)) {
@@ -5674,6 +5676,13 @@ class AgroDataService {
     const org = this.getActiveOrganization(targetOrgId);
     const now = new Date().toISOString();
     const planId = `RWY-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    const adoptedCash =
+      typeof params.openingCashAdopted === 'number'
+        ? round2(Math.max(0, params.openingCashAdopted))
+        : params.adoptOpeningCash
+          ? round2(Math.max(0, this.getCurrentOrgLeftMoney(targetOrgId)))
+          : 0;
 
     const newPlan: RunwayPlan = {
       id: planId,
@@ -5694,7 +5703,7 @@ class AgroDataService {
       contingencyFixedAmount: params.contingencyFixedAmount,
       targetBasis: params.targetBasis || 'GROSS',
       activationThresholdPct: params.activationThresholdPct ?? 100,
-      openingCashAdopted: 0,
+      openingCashAdopted: adoptedCash,
       plannedFinancing: params.plannedFinancing || [],
       phases: (params.phases || []).map((p, idx) => ('id' in p ? (p as RunwayPhase) : { ...p, id: `PHASE-${idx + 1}` })),
       showMemberPledges: Boolean(params.showMemberPledges),
@@ -5709,19 +5718,26 @@ class AgroDataService {
     };
 
     const createdLines: RunwayLine[] = (params.lines || []).map((l, index) => {
-      const lineId = `RWL-${Date.now().toString(36).toUpperCase()}-${index}`;
+      const lineId = `RWL-${Date.now().toString(36).toUpperCase()}-${index}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
       const lineCost = round2((l.qty || 1) * (l.unitCost || 0));
       return {
         ...l,
         id: lineId,
         planId,
         orgId: targetOrgId,
+        kind: l.kind || 'COST',
+        title: (l.title || 'Budget Item').trim().slice(0, 140),
+        category: (l.category || 'GENERAL').trim(),
+        qty: Math.max(0.01, Number(l.qty) || 1),
+        unitCost: Math.max(0, Number(l.unitCost) || 0),
+        priority: l.priority || 'ESSENTIAL',
+        excludeFromContingency: Boolean(l.excludeFromContingency),
         origin: 'PLAN',
         approval: 'APPROVED',
         sortOrder: index,
         createdAt: now,
         updatedAt: now,
-        auditHash: computeLedgerRecordHash('RUNWAY_LINE', lineId, now, lineCost, l.title),
+        auditHash: computeLedgerRecordHash('RUNWAY_LINE', lineId, now, lineCost, l.title || 'Budget Item'),
       };
     });
 
@@ -5739,6 +5755,7 @@ class AgroDataService {
 
     const nextState: AgroStateSnapshot = {
       ...this.state,
+      activeOrgId: targetOrgId,
       runwayPlans: [newPlan, ...(this.state.runwayPlans || [])],
       runwayLines: [...(this.state.runwayLines || []), ...createdLines],
       auditNotifications: [audit, ...this.state.auditNotifications],

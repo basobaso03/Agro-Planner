@@ -78,40 +78,40 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   return (
     <div className="space-y-5">
       {/* Live Financial Totals Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xs">
-        <div>
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xs">
+        <div className="min-w-0">
+          <span className="text-[11px] sm:text-xs font-semibold text-gray-500 dark:text-gray-400 block truncate">
             Cost Baseline
           </span>
-          <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5">
-            <CountUp value={totals.costTotal} />
+          <div className="text-base sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5 truncate">
+            <CountUp value={totals.costTotal} decimals={2} />
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-            <ShieldAlert className="w-3.5 h-3.5" /> Contingency
+        <div className="min-w-0">
+          <span className="text-[11px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1 truncate">
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Contingency
           </span>
-          <div className="text-lg sm:text-xl font-bold text-amber-700 dark:text-amber-300 mt-0.5">
-            +<CountUp value={totals.contingencyReserve} />
+          <div className="text-base sm:text-xl font-bold text-amber-700 dark:text-amber-300 mt-0.5 truncate">
+            +<CountUp value={totals.contingencyReserve} decimals={2} />
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
-            Total Capital Target
+        <div className="min-w-0">
+          <span className="text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
+            Total Required (incl. Contingency)
           </span>
-          <div className="text-lg sm:text-xl font-extrabold text-indigo-700 dark:text-indigo-300 mt-0.5">
-            <CountUp value={totals.totalRequirement} />
+          <div className="text-base sm:text-xl font-extrabold text-indigo-700 dark:text-indigo-300 mt-0.5 truncate">
+            <CountUp value={totals.totalRequirement} decimals={2} />
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+        <div className="min-w-0">
+          <span className="text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 block truncate">
             Expected Revenue
           </span>
-          <div className="text-lg sm:text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
-            <CountUp value={totals.expectedIncome} />
+          <div className="text-base sm:text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 truncate">
+            <CountUp value={totals.expectedIncome} decimals={2} />
           </div>
         </div>
       </div>
@@ -131,22 +131,20 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => onUpdateReserve('PERCENT', plan.contingencyPercent ?? 10)}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                  plan.contingencyMode === 'PERCENT'
+                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${plan.contingencyMode === 'PERCENT'
                     ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
                     : 'text-amber-800 dark:text-amber-300'
-                }`}
+                  }`}
               >
                 Percentage (%)
               </button>
               <button
                 type="button"
                 onClick={() => onUpdateReserve('FIXED', plan.contingencyFixedAmount ?? 100)}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                  plan.contingencyMode === 'FIXED'
+                className={`px-2.5 py-1 rounded-md font-semibold transition-all ${plan.contingencyMode === 'FIXED'
                     ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
                     : 'text-amber-800 dark:text-amber-300'
-                }`}
+                  }`}
               >
                 Fixed Dollar ($)
               </button>
@@ -232,12 +230,12 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
               return (
                 <div
                   key={line.id}
-                  className="flex items-center justify-between p-3.5 sm:p-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors gap-3"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:p-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition-colors gap-2.5"
                 >
                   {/* Left: Reorder controls + details */}
-                  <div className="flex items-center space-x-3 min-w-0">
+                  <div className="flex items-start sm:items-center space-x-2.5 min-w-0 flex-1">
                     {isDraft && !readOnly && (
-                      <div className="flex flex-col space-y-0.5">
+                      <div className="flex flex-col space-y-0.5 shrink-0">
                         <button
                           disabled={idx === 0}
                           onClick={() => handleMove(idx, 'UP')}
@@ -255,19 +253,18 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                       </div>
                     )}
 
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center space-x-2">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            isIncome
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${isIncome
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                          }`}
+                            }`}
                         >
                           {isIncome ? 'INFLOW' : 'COST'}
                         </span>
 
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider truncate">
                           {line.category}
                         </span>
 
@@ -276,7 +273,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                         </span>
                       </div>
 
-                      <h5 className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                      <h5 className="text-sm font-bold text-gray-900 dark:text-white break-words">
                         {line.title}
                       </h5>
 
@@ -292,11 +289,10 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                   </div>
 
                   {/* Right: Subtotal & Actions */}
-                  <div className="flex items-center space-x-3 shrink-0">
+                  <div className="flex items-center justify-between sm:justify-end space-x-3 shrink-0 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-800/60">
                     <span
-                      className={`text-sm sm:text-base font-bold ${
-                        isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'
-                      }`}
+                      className={`text-sm sm:text-base font-mono font-bold ${isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'
+                        }`}
                     >
                       {isIncome ? '+' : ''}${lineCost.toFixed(2)}
                     </span>

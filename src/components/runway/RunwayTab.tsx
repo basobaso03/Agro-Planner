@@ -68,7 +68,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
     isFullyFunded,
     isFullyPledged,
     currentOrg,
-  } = useRunway(selectedPlanId || undefined);
+  } = useRunway(selectedPlanId || undefined, orgId);
 
   const [activeSubTab, setActiveSubTab] = useState<
     'PLAN' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT'
@@ -150,17 +150,17 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   // Empty state if no plans exist in the organization
   if (plans.length === 0) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto py-6">
-        <div className="text-center p-10 rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
-          <div className="w-16 h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 shadow-sm">
-            <Compass className="w-8 h-8 animate-pulse" />
+      <div className="space-y-5 w-full max-w-4xl mx-auto px-3.5 sm:px-5 py-4 box-border overflow-x-hidden">
+        <div className="text-center p-6 sm:p-10 rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 shadow-sm">
+            <Compass className="w-7 h-7 sm:w-8 sm:h-8 animate-pulse" />
           </div>
 
           <div className="space-y-1.5 max-w-md mx-auto">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
               No Runway Capital Plans Configured
             </h3>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
               Launch a structured runway plan to align member pledges, map out cycle costs, and protect your cash flow from mid-production overdrafts.
             </p>
           </div>
@@ -168,9 +168,9 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           {canEdit && (
             <button
               onClick={() => setIsWizardOpen(true)}
-              className="inline-flex items-center space-x-2 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-lg transition-all cursor-pointer active:scale-95"
+              className="inline-flex items-center justify-center space-x-2 w-full sm:w-auto px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-lg transition-all cursor-pointer active:scale-95"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 shrink-0" />
               <span>Launch 5-Step Runway Wizard</span>
             </button>
           )}
@@ -204,7 +204,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   ];
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-12">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-5xl mx-auto px-3.5 sm:px-5 py-3 pb-10 box-border overflow-x-hidden">
       {/* Particle Celebration Burst */}
       <MoneyFlowLayer
         active={showCelebration}
@@ -212,12 +212,12 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
       />
 
       {planSuccessBanner && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-between animate-in fade-in">
+        <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
           <span>{planSuccessBanner}</span>
           <button
             type="button"
             onClick={() => setPlanSuccessBanner(null)}
-            className="text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200"
+            className="text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200 shrink-0"
           >
             ✕
           </button>
@@ -225,13 +225,13 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
       )}
 
       {/* Top Header & Plan Switcher */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="relative">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 w-full min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
+          <div className="relative min-w-0 flex-1 sm:flex-initial">
             <select
               value={selectedPlanId}
               onChange={(e) => setSelectedPlanId(e.target.value)}
-              className="appearance-none pl-3.5 pr-8 py-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-sm font-bold text-gray-900 dark:text-white shadow-xs focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              className="w-full max-w-[210px] sm:max-w-xs truncate appearance-none pl-3 pr-7 py-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-xs sm:text-sm font-bold text-gray-900 dark:text-white shadow-xs focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               {(plans || []).map((p: RunwayPlan) => (
                 <option key={p.id} value={p.id}>
@@ -239,12 +239,12 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2.5 top-3 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-2.5 pointer-events-none" />
           </div>
 
           {currentPlan && (
             <span
-              className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${currentPlan.status === 'ACTIVE'
+              className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${currentPlan.status === 'ACTIVE'
                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                 : currentPlan.status === 'PLEDGING'
                   ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
@@ -257,7 +257,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {canEdit && (
             <button
               onClick={() => setIsWizardOpen(true)}
@@ -313,7 +313,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
       )}
 
       {/* Segmented Subtab Navigation Bar */}
-      <div className="flex items-center space-x-1 overflow-x-auto p-1 rounded-2xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-800">
+      <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar w-full max-w-full p-1 rounded-2xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-800">
         {subTabs.map((t) => {
           const Icon = t.icon;
           const isSelected = activeSubTab === t.id;

@@ -90,7 +90,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
   onAddLoanDebt,
   onBroadcast,
 }) => {
-  const { currentRoute, activeTab, navigate } = useNavigation();
+  const { currentRoute, activeTab, navigate, pop } = useNavigation();
 
   // If at root of tab, render the tab root screen
   const routeId = currentRoute.id;
@@ -171,7 +171,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           <SaleDetailScreen
             saleId={currentRoute.params?.id || ''}
             activeMember={activeMember}
-            onBack={() => window.history.back()}
+            onBack={() => pop()}
           />
         );
 
@@ -184,7 +184,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           <LoanDetailScreen
             loanId={currentRoute.params?.id || ''}
             activeMember={activeMember}
-            onBack={() => window.history.back()}
+            onBack={() => pop()}
           />
         );
 
@@ -193,7 +193,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           <DebtDetailScreen
             debtId={currentRoute.params?.id || ''}
             activeMember={activeMember}
-            onBack={() => window.history.back()}
+            onBack={() => pop()}
           />
         );
 
@@ -245,67 +245,75 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
       case 'fixedAssets':
       case 'assets':
         return (
-          <AssetsTab
-            assetGroups={fixedAssetGroups}
-            locations={locations}
-            selectedLocationId={selectedLocationId}
-            activeMember={activeMember}
-            leftMoney={financials.leftMoney}
-            onLogAssetEvent={(data) =>
-              dataService.logFixedAssetEvent({ ...data, actor: activeMember })
-            }
-            onTransferAsset={(data) =>
-              dataService.transferFixedAssetBetweenLocations({
-                ...data,
-                actor: activeMember,
-              })
-            }
-            showNumbers={showNumbers}
-          />
+          <div className="px-3.5 sm:px-5 py-3">
+            <AssetsTab
+              assetGroups={fixedAssetGroups}
+              locations={locations}
+              selectedLocationId={selectedLocationId}
+              activeMember={activeMember}
+              leftMoney={financials.leftMoney}
+              onLogAssetEvent={(data) =>
+                dataService.logFixedAssetEvent({ ...data, actor: activeMember })
+              }
+              onTransferAsset={(data) =>
+                dataService.transferFixedAssetBetweenLocations({
+                  ...data,
+                  actor: activeMember,
+                })
+              }
+              showNumbers={showNumbers}
+            />
+          </div>
         );
 
       case 'capitalPool':
         return (
-          <PoolEquityTab
-            financials={financials}
-            memberEquities={memberEquities}
-            capitalContributions={state.capitalContributions || []}
-            locations={locations}
-            activeMember={activeMember}
-            onAddMember={(data) => dataService.addMember({ ...data, actor: activeMember })}
-            onLogContribution={(data) =>
-              dataService.logCapitalContribution({ ...data, actor: activeMember })
-            }
-            showNumbers={showNumbers}
-          />
+          <div className="px-3.5 sm:px-5 py-3">
+            <PoolEquityTab
+              financials={financials}
+              memberEquities={memberEquities}
+              capitalContributions={state.capitalContributions || []}
+              locations={locations}
+              activeMember={activeMember}
+              onAddMember={(data) => dataService.addMember({ ...data, actor: activeMember })}
+              onLogContribution={(data) =>
+                dataService.logCapitalContribution({ ...data, actor: activeMember })
+              }
+              showNumbers={showNumbers}
+            />
+          </div>
         );
 
       case 'expenses':
         return (
-          <ExpensesFeedTab
-            expenses={state.expenses || []}
-            feedSummaries={feedSummaries}
-            financials={financials}
-            locations={locations}
-            livestockStatuses={livestockStatuses}
-            selectedLocationId={selectedLocationId}
-            activeMember={activeMember}
-            onLogExpense={(data) => dataService.logExpense({ ...data, actor: activeMember })}
-            onApproveMultiSig={(txId) => dataService.approveMultiSigExpense(txId, activeMember)}
-            onLogFeedEvent={(data) => dataService.logFeedEvent({ ...data, actor: activeMember })}
-            showNumbers={showNumbers}
-          />
+          <div className="px-3.5 sm:px-5 py-3">
+            <ExpensesFeedTab
+              expenses={state.expenses || []}
+              feedSummaries={feedSummaries}
+              financials={financials}
+              locations={locations}
+              livestockStatuses={livestockStatuses}
+              selectedLocationId={selectedLocationId}
+              activeMember={activeMember}
+              onLogExpense={(data) => dataService.logExpense({ ...data, actor: activeMember })}
+              onApproveMultiSig={(txId) => dataService.approveMultiSigExpense(txId, activeMember)}
+              onLogFeedEvent={(data) => dataService.logFeedEvent({ ...data, actor: activeMember })}
+              showNumbers={showNumbers}
+            />
+          </div>
         );
 
       case 'helpOnboarding':
         return (
-          <UserSettingsTab
-            activeMember={activeMember}
-            session={null}
-            locations={locations}
-            activeOrg={(state.organizations || [])[0]}
-            onSignOut={onSignOut || (() => { })}
-          />
+          <div className="px-3.5 sm:px-5 py-3">
+            <UserSettingsTab
+              activeMember={activeMember}
+              session={null}
+              locations={locations}
+              activeOrg={(state.organizations || [])[0]}
+              onSignOut={onSignOut || (() => { })}
+            />
+          </div>
         );
 
       default:

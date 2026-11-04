@@ -77,14 +77,14 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
       {/* Break-Even Recovery Hero Badge */}
       <div
         className={`p-5 rounded-2xl border shadow-sm flex items-start space-x-4 ${recovery.isBreakEven
-            ? 'bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-transparent border-emerald-300 dark:border-emerald-800'
-            : 'bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border-indigo-200 dark:border-indigo-800'
+          ? 'bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-transparent border-emerald-300 dark:border-emerald-800'
+          : 'bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border-indigo-200 dark:border-indigo-800'
           }`}
       >
         <div
           className={`p-3 rounded-2xl ${recovery.isBreakEven
-              ? 'bg-emerald-500 text-white shadow-md'
-              : 'bg-indigo-600 text-white shadow-md'
+            ? 'bg-emerald-500 text-white shadow-md'
+            : 'bg-indigo-600 text-white shadow-md'
             }`}
         >
           {recovery.isBreakEven ? (
@@ -98,8 +98,8 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
           <div className="flex items-center space-x-2">
             <span
               className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${recovery.isBreakEven
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                  : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
                 }`}
             >
               {recovery.isBreakEven ? 'Break-Even Milestone Achieved' : 'Capital Recovery in Progress'}
@@ -150,7 +150,63 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
           </h4>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile-First Card List (< sm) */}
+        <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
+          {varianceReport.categories.map((cat) => {
+            const isOver = cat.variance < 0;
+            return (
+              <div key={cat.category} className="p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-gray-900 dark:text-white">{cat.category}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.status === 'UNDER_BUDGET'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : cat.status === 'ON_TRACK'
+                          ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      }`}
+                  >
+                    {cat.status.replace('_', ' ')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl p-2.5">
+                  <div>
+                    <span className="text-[10px] text-gray-500 block">Planned</span>
+                    <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">
+                      ${cat.planned.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500 block">Actual</span>
+                    <span className="font-mono font-bold text-gray-900 dark:text-white">
+                      ${cat.actual.toFixed(2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-gray-500 block">Variance</span>
+                    <span
+                      className={`font-mono font-bold ${isOver ? 'text-rose-600' : 'text-emerald-600'
+                        }`}
+                    >
+                      {cat.variance >= 0
+                        ? `+$${cat.variance.toFixed(2)}`
+                        : `-$${Math.abs(cat.variance).toFixed(2)}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div className="p-3.5 bg-gray-50/90 dark:bg-gray-800/80 text-xs font-bold flex items-center justify-between">
+            <span>Total Planned vs Actual:</span>
+            <span className="font-mono">
+              ${varianceReport.totals.planned.toFixed(2)} / ${varianceReport.totals.actual.toFixed(2)}
+            </span>
+          </div>
+        </div>
+
+        {/* Desktop / Tablet Table (sm+) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 font-semibold border-b border-gray-100 dark:border-gray-800">
               <tr>
@@ -188,10 +244,10 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
                     <td className="py-3 px-4">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${cat.status === 'UNDER_BUDGET'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                            : cat.status === 'ON_TRACK'
-                              ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : cat.status === 'ON_TRACK'
+                            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                           }`}
                       >
                         {cat.status.replace('_', ' ')}
@@ -220,8 +276,8 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
                 <td className="py-3 px-4">
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${varianceReport.totals.status === 'UNDER_BUDGET'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-rose-100 text-rose-800'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-rose-100 text-rose-800'
                       }`}
                   >
                     {varianceReport.totals.status.replace('_', ' ')}

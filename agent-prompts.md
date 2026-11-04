@@ -116,4 +116,13 @@ can you look at the UI, its poorly designed especially on the routing, there is 
 
 
 
-the ob
+the observed issues while testing the app:
+1. the routing is not properly configured, if l click the back button on my phone it will exit the app and it need only work is l click the beck arrow on the page. we need the routing that start from overview to the stack of the opened page
+2. the pages are too high on the phone eg the is extreemly high
+3. when l run the venue wizard still it do not recognise the account type l am logged in with, because it askes me venture type, while l have registerd the business in one account type, we need to fix this such that. on step 3 if l need to add a line, the quantity tab do not delete the 1 it must clear at all if clicked so that the users input the number they want without strugle, same at unit cost, also l am asked the total price and items bought but l am also supposed to put the unit cost which is a redundent filed that can be calculated automatically
+
+l can run the runway wizard steps its no re and put all the lines with their money but l get no total required money inclusing the contigency
+
+4. the following page are either on extreem edges of the phone on height or width:
+- runway wizad the first page that say launch 5 step runway wizard, step 1 its height the lowe part is under the bar, l cannot click the next button or back (l have seen that all steps are behaving the same)
+- the runway page the width is too large need to scrol which is not a good practise on the mobile phones

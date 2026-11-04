@@ -12,23 +12,49 @@ interface RegisteredHandler {
 class BackHandlerRegistry {
   private handlers: RegisteredHandler[] = [];
   private lastExitPress = 0;
+  private lastExecutedAt = 0;
   private isListening = false;
 
   public init() {
     if (this.isListening || typeof window === 'undefined') return;
     this.isListening = true;
 
+    // Seed an initial history guard state so browser/WebView back presses fire popstate instead of exiting immediately
     try {
-      CapacitorApp.addListener('backButton', () => {
-        this.executeBack();
+      if (!window.history.state || !window.history.state.__agroNavGuard) {
+        window.history.replaceState({ __agroNavGuard: true, root: true }, '');
+        window.history.pushState({ __agroNavGuard: true, depth: 1 }, '');
+      }
+    } catch {
+      // Ignore in restricted environments
+    }
+
+    try {
+      void CapacitorApp.addListener('backButton', () => {
+        const handled = this.executeBack();
+        if (handled) {
+          this.ensureHistoryGuard();
+        }
       });
     } catch {
       // Non-native
     }
 
     window.addEventListener('popstate', () => {
-      this.executeBack();
+      const handled = this.executeBack();
+      if (handled) {
+        this.ensureHistoryGuard();
+      }
     });
+  }
+
+  public ensureHistoryGuard() {
+    if (typeof window === 'undefined') return;
+    try {
+      window.history.pushState({ __agroNavGuard: true, ts: Date.now() }, '');
+    } catch {
+      // Ignore
+    }
   }
 
   public register(id: string, priority: number, handler: BackActionHandler): () => void {
@@ -41,13 +67,19 @@ class BackHandlerRegistry {
   }
 
   public executeBack(): boolean {
+    const now = Date.now();
+    // Prevent double-firing when both Capacitor backButton and window.popstate trigger within 180ms
+    if (now - this.lastExecutedAt < 180) {
+      return true;
+    }
+    this.lastExecutedAt = now;
+
     for (const reg of this.handlers) {
       const handled = reg.handler();
       if (handled) return true;
     }
 
-    // Default at root: Double-back to exit
-    const now = Date.now();
+    // Default at root (Overview): Double-back within 2s to exit app
     if (now - this.lastExitPress < 2000) {
       try {
         void CapacitorApp.exitApp();
@@ -58,7 +90,7 @@ class BackHandlerRegistry {
     }
 
     this.lastExitPress = now;
-    return false;
+    return true;
   }
 }
 
@@ -71,4 +103,5 @@ export function useBackHandler(priority: number, handler: BackActionHandler, dep
     return backHandlerRegistry.register(id, priority, handler);
   }, deps);
 }
+
 
