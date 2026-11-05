@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dataService, PRIMARY_ADMIN_EMAIL } from '../src/services/dataService.ts';
+import { dataService } from '../src/services/dataService.ts';
 import { PERMISSIONS } from '../src/utils/permissions.ts';
 import type { OrgMember, Role } from '../src/types/agro.ts';
 import { TEST_ACCOUNTS, toOrgMember } from './helpers/testContext.ts';
@@ -378,25 +378,15 @@ test('WF-GOV-09: Member Permanent Deletion & Founder Account Deletion Protection
     'Deleted member must be removed from state snapshot'
   );
 
-  // 3. Negative Guard: Attempting to delete the Primary Founder Admin MUST FAIL
-  const founderMember = toOrgMember(TEST_ACCOUNTS.founder);
-  // Ensure founder is in state
-  const curState = dataService.getState();
-  if (!curState.members.some((m) => m.id === founderMember.id)) {
-    (dataService as any).saveLocalState({
-      ...curState,
-      members: [...curState.members, founderMember],
-    });
-  }
-
+  // 3. Negative Guard: Attempting to delete one's own administrator account MUST FAIL
   await assert.rejects(
     async () => {
       await dataService.deleteMember({
-        targetMemberId: founderMember.id,
+        targetMemberId: adminActor.id,
         actor: adminActor,
       });
     },
-    /Zero-Trust Protection: The primary Founder Admin account cannot be deleted/
+    /Access Denied: You cannot delete your own administrator account/
   );
 });
 

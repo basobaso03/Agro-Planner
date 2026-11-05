@@ -12,7 +12,6 @@ import type {
 } from './types/agro.ts';
 import {
   dataService,
-  PRIMARY_ADMIN_EMAIL,
   type AuthenticatedSession,
 } from './services/dataService.ts';
 import {
@@ -245,7 +244,6 @@ export default function App() {
   const activeMember: OrgMember | null = useMemo(() => {
     if (!activeSession) return null;
     const normEmail = activeSession.email.trim().toLowerCase();
-    const isPrimaryAdmin = normEmail === PRIMARY_ADMIN_EMAIL;
 
     const matches = state.members.filter(
       (m) =>
@@ -263,22 +261,11 @@ export default function App() {
       matches[0];
 
     if (found) {
-      if (isPrimaryAdmin) {
-        const fallbackOrgId = found.orgId || activeSession.activeOrgId || state.activeOrgId || state.organizations?.[0]?.id;
-        return {
-          ...found,
-          orgId: fallbackOrgId,
-          role: 'ORG_ADMIN',
-          approvalStatus: 'APPROVED',
-          active: true,
-        };
-      }
-      // Non-admin members must only have an orgId if their member profile explicitly has one.
-      // Never inherit a stale session activeOrgId, ensuring fresh onboarding users reach OrgOnboardingModal.
-      const userOrgId = found.orgId || undefined;
+      const userOrgId = found.orgId || activeSession.activeOrgId || undefined;
       return {
         ...found,
         orgId: userOrgId,
+        approvalStatus: found.approvalStatus === 'SUSPENDED' ? 'SUSPENDED' : 'APPROVED',
         active: found.approvalStatus !== 'SUSPENDED',
       };
     }
@@ -290,9 +277,9 @@ export default function App() {
       email: normEmail,
       fullName: activeSession.displayName || normEmail.split('@')[0] || 'Member',
       phoneOrEmail: normEmail,
-      role: isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER',
-      approvalStatus: isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL',
-      orgId: isPrimaryAdmin ? (state.activeOrgId || state.organizations?.[0]?.id) : undefined,
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
+      orgId: activeSession.activeOrgId || undefined,
       authProviders: activeSession.providers,
       hasPasswordSetup: activeSession.providers.includes('password'),
       joinedAt: new Date().toISOString(),
@@ -509,12 +496,6 @@ export default function App() {
     if (!currentOrgId) return [];
     return (state.creditSales || []).filter((s) => s.orgId === currentOrgId);
   }, [state.creditSales, currentOrgId]);
-
-  const pendingUsersCount = useMemo(() => {
-    return orgMembers.filter(
-      (m) => m.approvalStatus === 'PENDING_APPROVAL' || (!m.approvalStatus && !m.active)
-    ).length;
-  }, [orgMembers]);
 
   const selectedLocationName = useMemo(() => {
     if (selectedLocationId === 'ALL') return 'All Locations (Organization-Wide)';

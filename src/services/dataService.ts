@@ -132,8 +132,6 @@ import { outboxService } from './outbox.ts';
 import { appStorage } from './storage.ts';
 import { nativeReminders } from '../native/reminders.ts';
 
-export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
-
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -422,13 +420,6 @@ class AgroDataService {
                 return;
               }
 
-              // STRICT ONLINE VALIDATION ON APP RESTART:
-              // If the user has a Firebase Auth session but their record was wiped/deleted from Cloud Firestore,
-              // immediately terminate the local session and require them to register again.
-              if (!cloudMem && email !== PRIMARY_ADMIN_EMAIL) {
-                await this.signOutCloud();
-                return;
-              }
               const existingMem = cloudMem || this.findMemberByUidOrEmail(user.uid, email);
               const creds = getStoredLocalCredentials();
               const hasLocalCred = Boolean(email && creds[email]);
@@ -1065,7 +1056,6 @@ class AgroDataService {
   }): OrgMember {
     const now = new Date().toISOString();
     const normEmail = params.email.trim().toLowerCase();
-    const isPrimaryAdmin = normEmail === PRIMARY_ADMIN_EMAIL;
 
     const existing = this.findMemberByUidOrEmail(params.uid, normEmail);
     const creds = getStoredLocalCredentials();
@@ -1098,11 +1088,9 @@ class AgroDataService {
         fullName: existing.fullName || params.fullName.trim().slice(0, 120),
         phone: params.phone || existing.phone,
         jobTitle: params.jobTitle || existing.jobTitle,
-        role: isPrimaryAdmin ? 'ORG_ADMIN' : existing.role,
-        approvalStatus: isPrimaryAdmin
-          ? 'APPROVED'
-          : existing.approvalStatus || (existing.active ? 'APPROVED' : 'PENDING_APPROVAL'),
-        active: isPrimaryAdmin ? true : existing.approvalStatus !== 'SUSPENDED',
+        role: existing.role || 'MEMBER',
+        approvalStatus: existing.approvalStatus === 'SUSPENDED' ? 'SUSPENDED' : 'APPROVED',
+        active: existing.approvalStatus !== 'SUSPENDED',
         authProviders: mergedProviders,
         hasPasswordSetup: hasPassword,
         passwordVerifierHash,
@@ -1134,10 +1122,8 @@ class AgroDataService {
       return updatedMember;
     }
 
-    // Create brand new member profile
+    // Create brand new member profile (immediate access, no approval gate required)
     const memberId = params.uid || `mem-${Date.now().toString(36)}`;
-    const initialRole: Role = isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER';
-    const initialApproval: MemberApprovalStatus = isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
     const hasPwd = Boolean(
       params.passwordVerifierHash || params.providers.includes('password')
     );
@@ -1149,10 +1135,10 @@ class AgroDataService {
       fullName: (params.fullName || normEmail.split('@')[0] || 'Organization User').trim().slice(0, 120),
       phoneOrEmail: (params.phone?.trim() || normEmail).slice(0, 160),
       phone: params.phone?.trim().slice(0, 60),
-      jobTitle: params.jobTitle?.trim().slice(0, 120) || (isPrimaryAdmin ? 'Managing Organization Founder' : 'Member'),
+      jobTitle: params.jobTitle?.trim().slice(0, 120) || 'Member',
       preferredContact: 'EMAIL',
-      role: initialRole,
-      approvalStatus: initialApproval,
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
       authProviders: params.providers,
       hasPasswordSetup: hasPwd,
       passwordVerifierHash: params.passwordVerifierHash,
@@ -1165,15 +1151,11 @@ class AgroDataService {
     const audit = this.createChainedAuditEvent({
       actor: newMember,
       locationId: 'ALL',
-      locationName: 'All Locations (Master Organization)',
+      locationName: 'All Locations',
       eventType: 'MEMBER_ADDED',
-      severity: isPrimaryAdmin ? 'MILESTONE' : 'URGENT_GROUND',
-      title: isPrimaryAdmin
-        ? `Primary Farm Admin Initialized: ${newMember.fullName}`
-        : `New Member Awaiting Approval: ${newMember.fullName}`,
-      message: isPrimaryAdmin
-        ? `${newMember.fullName} (${normEmail}) initialized as Farm Administrator.`
-        : `${newMember.fullName} (${normEmail}) registered via ${params.providers.join(', ')} and is awaiting admin approval.`,
+      severity: 'INFO',
+      title: `Member Profile Initialized: ${newMember.fullName}`,
+      message: `${newMember.fullName} (${normEmail}) initialized account via ${params.providers.join(', ')}.`,
       referenceEntityId: newMember.id,
       timestamp: now,
     });
@@ -1338,9 +1320,6 @@ class AgroDataService {
     }
 
     const now = new Date().toISOString();
-    const isPrimaryAdmin = cleanEmail === PRIMARY_ADMIN_EMAIL;
-    const initialRole: Role = isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER';
-    const initialApproval: MemberApprovalStatus = isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
 
     const newMember: OrgMember = {
       id: resolvedUid,
@@ -1349,17 +1328,17 @@ class AgroDataService {
       fullName: cleanName,
       phoneOrEmail: (params.phone?.trim() || cleanEmail).slice(0, 160),
       phone: params.phone?.trim().slice(0, 60),
-      jobTitle: params.jobTitle?.trim().slice(0, 120) || (isPrimaryAdmin ? 'Managing Organization Founder' : 'Member'),
+      jobTitle: params.jobTitle?.trim().slice(0, 120) || 'Member',
       preferredContact: 'EMAIL',
-      role: initialRole,
-      approvalStatus: initialApproval,
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
       authProviders: ['password'],
       hasPasswordSetup: true,
       joinedAt: now,
       updatedAt: now,
       lastLoginAt: now,
-      active: isPrimaryAdmin,
-      // orgId is undefined so user encounters Gate 2 OrgOnboardingModal
+      active: true,
+      // orgId is undefined so user encounters Gate 2 OrgOnboardingModal (Create Org or Join with Code)
     };
 
     // STRICTLY ONLINE WRITE: Directly write to Cloud Firestore without local queueing
@@ -1382,7 +1361,7 @@ class AgroDataService {
       uid: resolvedUid,
       email: cleanEmail,
       displayName: cleanName,
-      emailVerified: cleanEmail === PRIMARY_ADMIN_EMAIL || isCloudUser,
+      emailVerified: isCloudUser,
       providers: ['password'],
       isCloudAuth: true,
     };
@@ -1714,8 +1693,7 @@ class AgroDataService {
     note?: string;
     actor: OrgMember;
   }): Promise<OrgMember> {
-    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
-    const isPrivilegedAdmin = actorEmail === PRIMARY_ADMIN_EMAIL || PERMISSIONS.canManageMemberCRUD(params.actor);
+    const isPrivilegedAdmin = PERMISSIONS.canManageMemberCRUD(params.actor);
     if (!isPrivilegedAdmin) {
       throw new Error('Access Denied: Only Organization Admins can modify member roles, clearances, or suspensions.');
     }
@@ -1727,13 +1705,12 @@ class AgroDataService {
       throw new Error('Access Denied: You cannot modify members belonging to another organization.');
     }
 
-    // Protect primary bootstrapped admin from accidental self-lockout
+    // Protect administrator from accidental self-demotion or self-suspension
     if (
-      (target.email || target.phoneOrEmail || '').toLowerCase() === PRIMARY_ADMIN_EMAIL &&
       target.id === params.actor.id &&
       (params.role !== 'ORG_ADMIN' || params.approvalStatus !== 'APPROVED')
     ) {
-      throw new Error('The primary Founder Admin account cannot be demoted or suspended.');
+      throw new Error('You cannot demote or suspend your own administrator account.');
     }
 
     const now = new Date().toISOString();
@@ -1832,8 +1809,7 @@ class AgroDataService {
     actor: OrgMember;
     reason?: string;
   }): Promise<void> {
-    const actorEmail = (params.actor.email || params.actor.phoneOrEmail || '').trim().toLowerCase();
-    const isPrivilegedAdmin = actorEmail === PRIMARY_ADMIN_EMAIL || PERMISSIONS.canManageMemberCRUD(params.actor);
+    const isPrivilegedAdmin = PERMISSIONS.canManageMemberCRUD(params.actor);
     if (!isPrivilegedAdmin) {
       throw new Error('Access Denied: Only Organization Admins can delete members.');
     }
@@ -1843,9 +1819,9 @@ class AgroDataService {
     );
     if (!target) throw new Error('Target member record not found.');
 
-    const targetEmail = (target.email || target.phoneOrEmail || '').trim().toLowerCase();
-    if (targetEmail === PRIMARY_ADMIN_EMAIL) {
-      throw new Error('Zero-Trust Protection: The primary Founder Admin account cannot be deleted.');
+    // Protect administrator from accidental self-deletion
+    if (target.id === params.actor.id || (target.uid && target.uid === params.actor.uid)) {
+      throw new Error('Access Denied: You cannot delete your own administrator account.');
     }
 
     // Multi-tenant boundary check: Admin of Org A cannot delete members of Org B
@@ -2182,23 +2158,16 @@ class AgroDataService {
         ])
       );
 
-      // Preserve APPROVED status and assigned role if either cloud or local record was approved
-      const resolvedApproval: MemberApprovalStatus =
-        email === PRIMARY_ADMIN_EMAIL ||
-          cloudM.approvalStatus === 'APPROVED' ||
-          localM?.approvalStatus === 'APPROVED' ||
-          cloudM.active
-          ? 'APPROVED'
-          : cloudM.approvalStatus || localM?.approvalStatus || 'PENDING_APPROVAL';
+      // Preserve status and assigned role
+      const isSuspended = cloudM.approvalStatus === 'SUSPENDED' || localM?.approvalStatus === 'SUSPENDED';
+      const resolvedApproval: MemberApprovalStatus = isSuspended ? 'SUSPENDED' : 'APPROVED';
 
       const resolvedRole: Role =
-        email === PRIMARY_ADMIN_EMAIL
-          ? 'ORG_ADMIN'
-          : cloudM.role && cloudM.role !== 'REMOTE_INVESTOR'
-            ? cloudM.role
-            : localM?.role && localM.role !== 'REMOTE_INVESTOR'
-              ? localM.role
-              : cloudM.role || localM?.role || 'REMOTE_INVESTOR';
+        cloudM.role && cloudM.role !== 'REMOTE_INVESTOR'
+          ? cloudM.role
+          : localM?.role && localM.role !== 'REMOTE_INVESTOR'
+            ? localM.role
+            : cloudM.role || localM?.role || 'MEMBER';
 
       return {
         ...localM,
@@ -2791,10 +2760,9 @@ class AgroDataService {
     const resolvedOrgId =
       targetOrgId ||
       localMember?.orgId ||
-      this.activeSession?.activeOrgId ||
-      (sessionEmail === PRIMARY_ADMIN_EMAIL ? (this.state.activeOrgId || 'org-master') : undefined);
+      this.activeSession?.activeOrgId;
 
-    if (!resolvedOrgId && sessionEmail !== PRIMARY_ADMIN_EMAIL) {
+    if (!resolvedOrgId) {
       // Do not synthesize or force a default organization on a member who is onboarding
       return;
     }
@@ -2803,18 +2771,15 @@ class AgroDataService {
       ...(localMember || {
         fullName: firebaseAuth?.currentUser?.displayName || 'Member',
         phoneOrEmail: sessionEmail || 'member@venture.local',
-        role: sessionEmail === PRIMARY_ADMIN_EMAIL ? 'ORG_ADMIN' : 'MEMBER',
+        role: 'MEMBER',
         joinedAt: new Date().toISOString(),
       }),
       id: authUid,
       uid: authUid,
       orgId: resolvedOrgId,
-      role:
-        sessionEmail === PRIMARY_ADMIN_EMAIL
-          ? 'ORG_ADMIN'
-          : localMember?.role || 'MEMBER',
-      approvalStatus: localMember?.approvalStatus || (sessionEmail === PRIMARY_ADMIN_EMAIL ? 'APPROVED' : 'PENDING_APPROVAL'),
-      active: sessionEmail === PRIMARY_ADMIN_EMAIL ? true : Boolean(localMember?.active),
+      role: localMember?.role || 'MEMBER',
+      approvalStatus: localMember?.approvalStatus === 'SUSPENDED' ? 'SUSPENDED' : 'APPROVED',
+      active: localMember?.approvalStatus !== 'SUSPENDED',
     };
 
     try {
@@ -5627,8 +5592,8 @@ class AgroDataService {
       id: targetId,
       name: 'CapitaSeed Master Syndicate',
       type: 'AGRO_FARMING',
-      adminMemberId: 'mem-chipo',
-      adminEmail: PRIMARY_ADMIN_EMAIL,
+      adminMemberId: 'mem-admin',
+      adminEmail: 'admin@capitaseed.local',
       createdAt: new Date(now - 30 * 86400000).toISOString(),
       updatedAt: new Date(now).toISOString(),
       currentInviteCode: 'SEED-8492',

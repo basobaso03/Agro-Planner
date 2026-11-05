@@ -11,13 +11,13 @@ service cloud.firestore {
     }
 
     // MULTI-TENANT ORGANIZATIONAL PERMISSION GUARDS
-    // ZERO SUPER-ADMIN MONEY BACKDOOR: Every user (including founders) must belong to the organization
+    // ZERO SUPER-ADMIN BACKDOOR: Every user belongs strictly to their own organization
     function isApprovedMemberOfOrg(orgId) {
       return isAuthenticated()
              && (
                (exists(/databases/$(database)/documents/members/$(request.auth.uid))
                 && (getMemberData().approvalStatus == 'APPROVED' || !('approvalStatus' in getMemberData()) || getMemberData().active == true)
-                && (orgId == null || orgId == 'org-master' || !('orgId' in getMemberData()) || getMemberData().orgId == null || getMemberData().orgId == orgId || getMemberData().role in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN']))
+                && (orgId == null || !('orgId' in getMemberData()) || getMemberData().orgId == null || getMemberData().orgId == orgId))
                || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
                    && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
                        || (request.auth.token.email != null
@@ -31,6 +31,7 @@ service cloud.firestore {
       return isAuthenticated()
              && (
                (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                && (getMemberData().orgId == orgId || !('orgId' in getMemberData()) || getMemberData().orgId == null)
                 && getMemberData().role in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN', 'TREASURER'])
                || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
                    && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
@@ -112,25 +113,13 @@ service cloud.firestore {
                       (exists(/databases/$(database)/documents/members/$(request.auth.uid))
                        && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
                        && getMemberData().orgId == resource.data.orgId)
-                      // Self update of personal profile or initial organization onboarding (when not suspended)
+                      // Self update of personal profile or initial/switch organization onboarding (when not suspended)
                       || (request.auth.uid == memberId
-                          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])
-                              || resource.data.approvalStatus == 'PENDING_APPROVAL'
-                              || !('orgId' in resource.data)
-                              || resource.data.orgId == null
-                              || (request.resource.data.orgId != null
-                                  && exists(/databases/$(database)/documents/organizations/$(request.resource.data.orgId))
-                                  && (get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminMemberId == request.auth.uid
-                                      || (request.auth.token.email != null
-                                          && get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminEmail != null
-                                          && get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))))
+                          && resource.data.approvalStatus != 'SUSPENDED')
                       || (request.auth.token.email != null
                           && resource.data.email != null
                           && request.auth.token.email.lower() == resource.data.email.lower()
-                          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])
-                              || resource.data.approvalStatus == 'PENDING_APPROVAL'
-                              || !('orgId' in resource.data)
-                              || resource.data.orgId == null))
+                          && resource.data.approvalStatus != 'SUSPENDED')
                     );
       allow delete: if exists(/databases/$(database)/documents/members/$(request.auth.uid))
                     && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')

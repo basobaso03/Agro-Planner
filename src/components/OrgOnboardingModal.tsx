@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Wheat,
   Briefcase,
+  X,
 } from 'lucide-react';
 import type { OrgMember } from '../types/agro.ts';
 import type { Organization, OrganizationType } from '../types/organization.ts';
@@ -19,12 +20,14 @@ interface OrgOnboardingModalProps {
   activeMember: OrgMember;
   onOrganizationSelected: (org: Organization) => void;
   onSignOut: () => void;
+  onClose?: () => void;
 }
 
 export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
   activeMember,
   onOrganizationSelected,
   onSignOut,
+  onClose,
 }) => {
   const [selectedPath, setSelectedPath] = useState<'CREATE' | 'JOIN'>('CREATE');
   const [showCreateInfo, setShowCreateInfo] = useState(false);
@@ -115,7 +118,17 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
         className="w-full max-w-lg bg-white border border-[#E8DFCE] rounded-3xl p-5 sm:p-7 shadow-2xl text-slate-950 space-y-4 overflow-y-auto overscroll-contain pb-6"
       >
         {/* Header */}
-        <div className="text-center space-y-1.5 pb-2 border-b border-[#F0EBE1]">
+        <div className="relative text-center space-y-1.5 pb-2 border-b border-[#F0EBE1]">
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-0 top-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-900 cursor-pointer transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black">
             <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
             <span>CapitaSeed Workspace Onboarding</span>
@@ -124,7 +137,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
             Welcome, {activeMember.fullName}
           </h2>
           <p className="text-xs text-slate-600 font-medium">
-            To begin using CapitaSeed, create a new workspace or join an existing organization.
+            Create your own independent organization or join an existing organization with an invitation code.
           </p>
         </div>
 
@@ -374,6 +387,15 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
           >
             Sign Out of Account
           </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-xs text-slate-600 hover:text-slate-900 font-bold transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </div>
     </div>

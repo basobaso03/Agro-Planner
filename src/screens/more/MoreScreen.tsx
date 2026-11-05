@@ -6,6 +6,7 @@ import { isPrivacyMasked, togglePrivacyMask } from '../../utils/currency.ts';
 import { InviteCodeSheet } from '../../sheets/common/InviteCodeSheet.tsx';
 import { SiteSheet } from '../../sheets/common/SiteSheet.tsx';
 import { BroadcastSheet } from '../../sheets/common/BroadcastSheet.tsx';
+import { OrgOnboardingModal } from '../../components/OrgOnboardingModal.tsx';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface MoreScreenProps {
@@ -26,6 +27,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
   const [showInviteSheet, setShowInviteSheet] = useState(false);
   const [showSiteSheet, setShowSiteSheet] = useState(false);
   const [showBroadcastSheet, setShowBroadcastSheet] = useState(false);
+  const [showOrgModal, setShowOrgModal] = useState(false);
 
   const org = (dataService.getState().organizations || []).find(
     (o) => o.id === (activeMember.orgId || 'org-master')
@@ -93,6 +95,12 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
             title="Team Broadcasts & Dispatches"
             subtitle="Urgent notifications, field dispatches & alerts"
             onClick={() => navigate('broadcasts')}
+          />
+          <ListRow
+            icon="🏢"
+            title="Create / Switch Organisation"
+            subtitle={`Current: ${org?.name || 'Workspace'} · Create new or join with code`}
+            onClick={() => setShowOrgModal(true)}
           />
         </div>
       </div>
@@ -182,6 +190,15 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         onClose={() => setShowBroadcastSheet(false)}
         activeMember={activeMember}
       />
+
+      {showOrgModal && (
+        <OrgOnboardingModal
+          activeMember={activeMember}
+          onOrganizationSelected={() => setShowOrgModal(false)}
+          onSignOut={() => setShowOrgModal(false)}
+          onClose={() => setShowOrgModal(false)}
+        />
+      )}
     </div>
   );
 };

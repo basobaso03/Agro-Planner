@@ -1,7 +1,5 @@
 import type { Role, OrgMember } from '../types/agro.ts';
 
-export const PRIMARY_ADMIN_EMAIL = 'baseramarlvin@gmail.com';
-
 /**
  * Role-Based Access Control (RBAC) & Data Redaction Engine
  * Defines security boundaries between Organization Admin, Treasurer, Member, and Ground Operator.

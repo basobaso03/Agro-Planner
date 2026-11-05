@@ -97,7 +97,6 @@ export const MemberRoleSheet: React.FC<MemberRoleSheetProps> = ({
             className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
           >
             <option value="APPROVED">✅ Active / Approved</option>
-            <option value="PENDING_CLEARANCE">⏳ Pending Clearance</option>
             <option value="SUSPENDED">🚫 Suspended (Access Revoked)</option>
           </select>
         </Field>
