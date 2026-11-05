@@ -25,6 +25,7 @@ export interface OverviewScreenProps {
   onAddLoanDebt: () => void;
   onBroadcast: () => void;
   runwayMonthsRemaining?: number;
+  onOpenSiteManager?: () => void;
 }
 
 export const OverviewScreen: React.FC<OverviewScreenProps> = ({
@@ -42,6 +43,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
   onAddLoanDebt,
   onBroadcast,
   runwayMonthsRemaining,
+  onOpenSiteManager,
 }) => {
   const { navigate } = useNavigation();
   const { isRefreshing, pullDistance, handlers } = usePullToRefresh(onRefresh);
@@ -53,6 +55,10 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
   const creditOverdueCount = activeCreditSales.filter(
     (s) => new Date(s.agreedSettlementDate).getTime() < Date.now()
   ).length;
+  const creditSalesOutstanding = activeCreditSales.reduce(
+    (acc, s) => acc + (s.creditBalanceRemaining ?? (s.totalSaleAmount - (s.depositPaidCash || 0))),
+    0
+  );
 
   const totalPool = (state.capitalContributions || []).reduce((acc, c) => acc + c.amount, 0);
 
@@ -102,7 +108,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         activeMember={activeMember}
         showNumbers={showNumbers}
         poolContributed={totalPool}
-        creditOutstanding={totalReceivables}
+        creditOutstanding={creditSalesOutstanding}
         creditOverdueCount={creditOverdueCount}
         debtOutstanding={totalDebt}
         loansGivenOutstanding={totalLoansGiven}
@@ -112,6 +118,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         livestockValuation={livestockValuation}
         generalStockValue={fixedAssetsVal}
         unreadBroadcastsCount={0}
+        onOpenSiteManager={onOpenSiteManager}
       />
 
       {/* 5. Recent Activity Feed */}

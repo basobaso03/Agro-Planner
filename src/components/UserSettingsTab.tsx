@@ -501,7 +501,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 <div className="min-w-0">
                   <h3 className="text-sm font-black text-slate-950">About CapitaSeed &amp; Support</h3>
                   <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                    Release notes, SHA-256 verifier, and developer contact
+                    Release notes, security ledger verifier, and developer contact
                   </p>
                 </div>
               </div>
@@ -671,7 +671,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-black text-slate-950 mb-1">
-                        Organization Name *
+                        Organization Name <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -685,7 +685,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-black text-slate-950 mb-1">
-                        Workspace Operating Mode *
+                        Workspace Operating Mode <span className="text-rose-500">*</span>
                       </label>
                       <select
                         value={editOrgType}
@@ -699,7 +699,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-black text-slate-950 mb-1">
-                        Default Target Capital ($) *
+                        Default Target Capital ($) <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -713,7 +713,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-black text-slate-950 mb-1">
-                        Contribution Pace *
+                        Contribution Pace <span className="text-rose-500">*</span>
                       </label>
                       <select
                         value={editOrgPace}
@@ -804,7 +804,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-black text-slate-950 mb-1">Full Name *</label>
+                  <label className="block text-xs font-black text-slate-950 mb-1">Full Name <span className="text-rose-500">*</span></label>
                   <input
                     type="text"
                     required
@@ -1000,7 +1000,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-black text-slate-950 mb-1">
-                      New Password (min 8 chars) *
+                      New Password (min 8 chars) <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type={showPassword ? 'text' : 'password'}
@@ -1014,7 +1014,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
 
                   <div>
                     <label className="block text-xs font-black text-slate-950 mb-1">
-                      Confirm Password *
+                      Confirm Password <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type={showPassword ? 'text' : 'password'}

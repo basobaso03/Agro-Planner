@@ -68,6 +68,7 @@ export interface RouteRendererProps {
   onRecordSale: () => void;
   onAddLoanDebt: () => void;
   onBroadcast: () => void;
+  onOpenSiteManager?: () => void;
 }
 
 export const RouteRenderer: React.FC<RouteRendererProps> = ({
@@ -89,6 +90,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
   onRecordSale,
   onAddLoanDebt,
   onBroadcast,
+  onOpenSiteManager,
 }) => {
   const { currentRoute, activeTab, navigate, pop } = useNavigation();
 
@@ -106,8 +108,11 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             state={state}
             activeMember={activeMember}
             leftMoney={financials.leftMoney}
-            totalNav={financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0)}
-            totalReceivables={financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0}
+            totalNav={financials.totalNav ?? (financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0))}
+            totalReceivables={
+              (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) +
+              (financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0)
+            }
             totalDebt={financials.debtLiabilitiesOwed ?? financials.totalBorrowedDebtOutstanding ?? 0}
             totalLoansGiven={financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0}
             showNumbers={showNumbers}
@@ -116,13 +121,14 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             onRecordSale={onRecordSale}
             onAddLoanDebt={onAddLoanDebt}
             onBroadcast={onBroadcast}
+            onOpenSiteManager={onOpenSiteManager}
           />
         }
         operationsContent={
           isAgroEnabled ? (
-            <BatchListScreen activeMember={activeMember} onRefresh={onRefresh} />
+            <BatchListScreen activeMember={activeMember} onRefresh={onRefresh} onOpenSiteManager={onOpenSiteManager} />
           ) : (
-            <OperationsHubScreen activeMember={activeMember} />
+            <OperationsHubScreen activeMember={activeMember} onOpenSiteManager={onOpenSiteManager} />
           )
         }
         moneyContent={<MoneyScreen activeMember={activeMember} />}
@@ -130,6 +136,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           <MoreScreen
             activeMember={activeMember}
             onSignOut={onSignOut}
+            onOpenSiteManager={onOpenSiteManager}
           />
         }
       />
@@ -151,7 +158,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
 
       case 'siteCompare':
       case 'site-compare':
-        return <SiteCompareScreen activeMember={activeMember} />;
+        return <SiteCompareScreen activeMember={activeMember} onOpenSiteManager={onOpenSiteManager} />;
 
       case 'stockInventory':
       case 'operations-inventory':
@@ -322,8 +329,11 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             state={state}
             activeMember={activeMember}
             leftMoney={financials.leftMoney}
-            totalNav={financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0)}
-            totalReceivables={financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0}
+            totalNav={financials.totalNav ?? (financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0))}
+            totalReceivables={
+              (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) +
+              (financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0)
+            }
             totalDebt={financials.debtLiabilitiesOwed ?? financials.totalBorrowedDebtOutstanding ?? 0}
             totalLoansGiven={financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0}
             showNumbers={showNumbers}

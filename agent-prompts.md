@@ -126,3 +126,125 @@ l can run the runway wizard steps its no re and put all the lines with their mon
 4. the following page are either on extreem edges of the phone on height or width:
 - runway wizad the first page that say launch 5 step runway wizard, step 1 its height the lowe part is under the bar, l cannot click the next button or back (l have seen that all steps are behaving the same)
 - the runway page the width is too large need to scrol which is not a good practise on the mobile phones
+
+
+
+the credit sales page is overflowing its not fully responsive on small screens.
+
+- need you to go on record credit sale we need to select an available animal, and it must be match the available number of them, some may sale more than one type of animal on one sale 
+
+
+in the record credit sale page l face the "livestockEntry is not defined error" can you fix this
+- on the audit security ledger, remove the sha 256 wording, the curr, and prev, on each audit users do not want them
+- on register livestock, the species field on top of the fixed ones l need myself to type lf l have a different one that l need to register. the headcount, target weight, age on entry and target duration must clear the existing number if l click it when l want to edit their value, not that l must clear first
+- on register live stock can you replace the age on entry with movein date so that the system can automatically detect the age and the left days of the animal and also  the stage of the protocol we are now
+on the register live stock again the protocol must not be fixed, l may have my own protocols as a famer different from the ones we have so l may need to start from scretch, ir select the templates (but on templates l must have a full CRUD features on everything, a can delete others or very exible to edit them ), so add this to the register livestock page.
+
+on the register live stock page also remove the find souce selection, all money is from the left, and is its in sufficient then no payment or registration can be done
+
+
+
+the receivables on overview page, is not recording the oustanding loan given
+
+-in organisation capital pool, remove add member as every member must have their own account and invided through the code
+
+the following pages have a dark colors that contradict with the theme of the app
+- team broadcast
+- capital contribution
+- transfere fixed asset
+- livestock page (also the site dropdown is overflowing)
+- broadcast center
+- audit security ledger
+- members and permissions
+- the money tab
+- the runway pages all os them
+- financial stateents page
+- all more tab pages and 
+
+and make sure the text will be black on light theme of the app
+
+
+on the livestock page and the livestock detail page the ---days left to sale element is being displayed ugly with two rows fix this
+- also once the animal is created, l can no longer edit it at all any mistack during creation is not resolved
+- on the feed tab in animal detail page, there is no log feed button to add the feed
+- remove the existance of gumboro word in all app its an explicity word in shona
+-the overview, protocols.... bar is not covering all buttons even it is now scrollable
+- the log livestock event
+- also male sure that the photos tab the photos can be clicked and displayed nicely
+
+
+can we find all the places where a picture is uploaded in the whole system and make sure that:
+1. the file is compressed, before upload to avoid: livestock_entries
+Document 'projects/gen-lang-client-0801418948/databases/ai-studio-agroplanner-a7a9f5e5-7236-4070-af61-204fcbb6c3e8/documents/livestock_entries/LSTK-MW292K88'
+ cannot be written because its size (1,364,461 bytes) exceeds the maximum allowed size of 1,048,576 bytes.
+
+ 2. also solve the permssion denied for livestock_entries
+
+
+
+ do you see that on protocles, there are some infomation that only appears on temolates and is not allowed users to input when editing or creating anew checkpoint, eg there is a certain description that is not on any new or edit ceckpoint, there is also a brown test that is only on templates checkpoints we need these to be available for users to addit or add them on their new checkpoints
+ - also the checkpoint category is hardcoded and the user cannot add their own categories, plus on the checkpoin card it is displayed with underscores
+ - the checkpoint and protocles are used interchably in the page so lets standadise it to checkpoints
+ - when l click the edit batch button l face an error :"PRESET_SPECIES is not defined in Registerbatchsheet file"
+ - in livestock each detail page the fund method is dicplayed with underscores, this page also contains the valuation button but no section displayes the purpose of this button in this page
+ - when loging feed if l add 10 kgs the log will display -10 bags
+
+
+- when l click the edit batch button l face an error: "form.setvalues is not a function in registerbatchsheet file"
+- on overview page remove the text "live solora book"
+
+in money tab under budget plan tab the expected revenue section ia always zer and you have to style the title properly, also the remaining cost bas... is cut on small screens as well as its line explaining it, we need to fix that
+- on the expected revenue tab the, projected sales..., budget capital..., projected sales.... and its sub text are cut and we need to make sure that they are well styled without two rows of text on small text
+- on the pladges tab the member drop down is diaplaying roles with underscored fix this also
+
+in money tab under budget under the payin tab the new payin page asks for receipt but the image ia shown nowhere in the system on the app it must be displayed and can be clicked to view in full screen
+- how can we also make the infomation on timeline tab more userstandable to general users this time its just a graphs with just lines and numbers without labled and explanations and fix any bugs if you find one
+- does the sales on credits have the notification on due date and we must see the remind in [days left] at [time]
+
+- scan all the * in the system they must be red in color
+- add the same reminder workflow to loan both borrowed and lend to others, all including the credit on sale add the notify og button as in checkpoint
+
+- on the acquire fixed asset page the category is fixed list and users cannot add their own categories
+- on capital contribution page on the member filed the role is appearing with underscore
+- on thelog cash expenditure page the attach picture is not previwing the picture it shows alt text and mke sure we can view it in the system because we cant upload picture that we cant view on the log
+
+
+- on the broad cast and the audit security logs add the flexible search bar o filter the content
+
+in the more tab we have the following issues:
+- on the syndicate members and equity, remove the pledged infomation text at completely
+- remove the cryptographic and leave the audit trails 
+- make sure that the device storage manager correctly calculate the space taken by app data and can wipe it all as expected
+- also make sure that the notifications and haptic surely controls the respective functionalities
+
+
+
+
+
+
+
+
+
+now it automatically shows the dashboard, l dont know the organisation l am registered to and its type, l think we need to add this to the app again after fixing this
+
+
+- add a welcome note to the new invited users with their organisation details used during org registration by owner
+
+- the header is stack on top of the displayed page name and its back arrow of every page and on the overview page the text capita... is cut let it be fill one row text
+
+- on more tab, the user can configure their own profile details, the biometric authentication, font type and delete my account (were these code completely removed from the app? or they are just not wired on the UI)
+
+- the hide/show is supposed to make sure that when the app is opened using local autication, the numbers must be hidden automatically, unless it was google or email/password login, and l see it only hide the numbers in the overview page alone all other page infomation is opened, it must completely hide all other pages numbers in the sustem to the user untill the verification is inserted
+
+
+
+- does the registration and invitations still stants ad documented in plans\redesign plan\financial-and-dashboard-redesign-plan.md focuing on registration and invitation workflow alone, because l registered without any asked the org type and automatically to agro
+
+
+
+
+
+
+remove my email now from every app, as primary admin
+
+remove the seed data now we need to go in production, leave all the tests and plans

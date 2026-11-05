@@ -101,8 +101,19 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in select-none">
-      <div className="w-full max-w-lg bg-white border border-[#E8DFCE] rounded-3xl p-6 sm:p-7 shadow-2xl text-slate-950 space-y-5 max-h-[92vh] overflow-y-auto">
+    <div
+      style={{
+        top: 'var(--vvo, 0px)',
+        height: 'var(--vvh, 100dvh)',
+      }}
+      className="fixed left-0 right-0 z-[9999] bg-black/70 backdrop-blur-md flex items-end sm:items-center justify-center p-2.5 sm:p-4 animate-fade-in select-none overflow-hidden"
+    >
+      <div
+        style={{
+          maxHeight: 'calc(var(--vvh, 100dvh) - var(--sat, 0px) - 10px)',
+        }}
+        className="w-full max-w-lg bg-white border border-[#E8DFCE] rounded-3xl p-5 sm:p-7 shadow-2xl text-slate-950 space-y-4 overflow-y-auto overscroll-contain pb-6"
+      >
         {/* Header */}
         <div className="text-center space-y-1.5 pb-2 border-b border-[#F0EBE1]">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black">
@@ -218,7 +229,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
           <form onSubmit={handleCreateSubmit} className="space-y-3.5 pt-1">
             <div>
               <label className="block text-xs font-black text-slate-950 mb-1">
-                Organization or Farm Name *
+                Organization or Farm Name <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
@@ -331,7 +342,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
           <form onSubmit={handleJoinSubmit} className="space-y-4 pt-1">
             <div>
               <label className="block text-xs font-black text-slate-950 mb-1">
-                Invitation Code *
+                Invitation Code <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"

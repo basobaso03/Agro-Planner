@@ -155,6 +155,27 @@ export class OutboxService {
     void this.flush();
   }
 
+  public retryItem(id: string): void {
+    const item = this.queue.find((i) => i.id === id);
+    if (item) {
+      item.status = 'PENDING';
+      item.attempts = 0;
+      item.nextRetryAt = Date.now();
+      this.saveQueue();
+      void this.flush();
+    }
+  }
+
+  public clearFailed(): void {
+    this.queue = this.queue.filter((i) => i.status !== 'FAILED');
+    this.saveQueue();
+  }
+
+  public removeItem(id: string): void {
+    this.queue = this.queue.filter((i) => i.id !== id);
+    this.saveQueue();
+  }
+
   public getPendingDocIds(collectionPath: string): Set<string> {
     const set = new Set<string>();
     for (const item of this.queue) {

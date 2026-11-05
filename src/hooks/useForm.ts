@@ -6,8 +6,8 @@ import { getFriendlyErrorMessage } from '../utils/errors.ts';
 export interface UseFormOptions<T> {
   initial: T;
   draftKey?: string;
-  validate: (values: T) => Partial<Record<keyof T, string | null>>;
-  crossValidate?: (values: T) => Partial<Record<keyof T, string | null>> | null;
+  validate: (values: T) => Partial<Record<keyof T | string, string | null>>;
+  crossValidate?: (values: T) => Partial<Record<keyof T | string, string | null>> | null;
   onSubmit: (values: T, idempotencyKey: string) => Promise<void>;
   onSuccess?: () => void;
 }
@@ -15,11 +15,30 @@ export interface UseFormOptions<T> {
 export function useForm<T extends Record<string, any>>(options: UseFormOptions<T>) {
   const [draft, setDraft, clearDraft] = useFormDraft<T>(options.draftKey, options.initial);
   const [values, setValuesState] = useState<T>(draft);
-  const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof T | string, string>>>({});
   const [stickyError, setStickyError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const idempotencyKeyRef = useRef<string>(`IDEM_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
+
+  const setValues = useCallback(
+    (newValues: Partial<T> | ((prev: T) => T), markDirty = false) => {
+      setValuesState((prev) => {
+        const next =
+          typeof newValues === 'function'
+            ? (newValues as (prev: T) => T)(prev)
+            : { ...prev, ...newValues };
+        setDraft(next);
+        return next;
+      });
+      setIsDirty(markDirty);
+      setErrors({});
+      if (stickyError) {
+        setStickyError(null);
+      }
+    },
+    [stickyError, setDraft]
+  );
 
   const setFieldValue = useCallback(
     <K extends keyof T>(field: K, value: T[K]) => {
@@ -110,8 +129,8 @@ export function useForm<T extends Record<string, any>>(options: UseFormOptions<T
     }
   };
 
-  const reset = () => {
-    setValuesState(options.initial);
+  const reset = (newValues?: T) => {
+    setValuesState(newValues ?? options.initial);
     clearDraft();
     setErrors({});
     setStickyError(null);
@@ -122,6 +141,8 @@ export function useForm<T extends Record<string, any>>(options: UseFormOptions<T
     values,
     setFieldValue,
     setValue: setFieldValue,
+    setValues,
+    setvalues: setValues,
     errors,
     stickyError,
     setStickyError,

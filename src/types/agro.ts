@@ -282,6 +282,7 @@ export interface FeedLedgerEvent {
   linkedLivestockId?: string;
   referenceTransactionId?: string;
   note: string;
+  photoUrl?: string;
   loggedByMemberId?: string;
   loggedByName: string;
   createdAt: string;

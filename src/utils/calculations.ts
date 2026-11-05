@@ -325,17 +325,17 @@ export function computeLivestockStatus(
   );
 
   let countdownUrgency: CountdownUrgency = 'NORMAL';
-  let countdownBadgeText = `${daysLeftUntilSale} Days Left to Sale`;
+  let countdownBadgeText = `${daysLeftUntilSale}d to Sale`;
 
   if (daysLeftUntilSale <= 0) {
     countdownUrgency = 'READY_FOR_SALE';
     countdownBadgeText =
       daysLeftUntilSale === 0
-        ? 'READY FOR SALE (Target Reached)'
-        : `READY FOR SALE (+${Math.abs(daysLeftUntilSale)}d Past Target)`;
+        ? 'Ready for Sale'
+        : `Ready (+${Math.abs(daysLeftUntilSale)}d)`;
   } else if (daysLeftUntilSale <= 7) {
     countdownUrgency = 'PREPARE_MARKET';
-    countdownBadgeText = `${daysLeftUntilSale} Day${daysLeftUntilSale === 1 ? '' : 's'} Left — Prepare Market!`;
+    countdownBadgeText = `${daysLeftUntilSale}d Left (Prep Market)`;
   }
 
   const eventsForLivestock = allLifecycleEvents

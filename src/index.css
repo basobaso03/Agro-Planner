@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 @import "./design/tokens.css";
 @import "./design/animations.css";
 
@@ -394,4 +395,22 @@ textarea.bg-slate-900 {
 
 .animate-coin-arc {
   animation: coinArc 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Mobile Keyboard & Input Ergonomics */
+input,
+textarea,
+select {
+  scroll-margin-top: 84px;
+  scroll-margin-bottom: 120px;
+}
+
+textarea {
+  min-height: 76px;
+  line-height: 1.45;
+}
+
+/* When soft keyboard is open on mobile, reclaim bottom nav padding for inline screen forms */
+html[data-keyboard-open="true"] main {
+  padding-bottom: 1.5rem !important;
 }

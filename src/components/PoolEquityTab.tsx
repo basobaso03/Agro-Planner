@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  UserPlus,
   DollarSign,
   RotateCcw,
   Calculator,
@@ -28,7 +27,6 @@ import { computeDividendDistribution } from '../utils/calculations.ts';
 import { PERMISSIONS, maskContact } from '../utils/permissions.ts';
 import { dataService } from '../services/dataService.ts';
 import { useRunway } from '../hooks/useRunway.ts';
-import { AddMemberSheet } from '../sheets/pool/AddMemberSheet.tsx';
 import { ContributionSheet } from '../sheets/pool/ContributionSheet.tsx';
 import { TargetFundraisingSheet } from '../sheets/pool/TargetFundraisingSheet.tsx';
 
@@ -78,16 +76,6 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
   const [simulatedProfit, setSimulatedProfit] = useState('2500');
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Add Member Modal State
-  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [memName, setMemName] = useState('');
-  const [memContact, setMemContact] = useState('');
-  const [memRole, setMemRole] = useState<Role>('MEMBER');
-  const [memLocationId, setMemLocationId] = useState('');
-  const [memInitDeposit, setMemInitDeposit] = useState('500');
-  const [memNote, setMemNote] = useState('');
-  const [memError, setMemError] = useState('');
-
   // Log Contribution / Contra Modal State
   const [contribModal, setContribModal] = useState<{
     mode: 'ADDITION' | 'CONTRA_REVERSAL';
@@ -121,33 +109,6 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2500);
-  };
-
-  const handleAddMemberSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (memName.trim().length < 2 || memContact.trim().length < 3) {
-      setMemError('Please enter the member full name and phone/email.');
-      return;
-    }
-    const initUsd = parseFloat(memInitDeposit) || 0;
-    try {
-      onAddMember({
-        fullName: memName.trim(),
-        phoneOrEmail: memContact.trim(),
-        role: memRole,
-        assignedLocationId: memLocationId || undefined,
-        initialContributionUsd: initUsd > 0 ? initUsd : undefined,
-        contributionNote:
-          memNote.trim() || `Initial equity contribution by ${memName.trim()}`,
-      });
-      setMemName('');
-      setMemContact('');
-      setMemNote('');
-      setMemError('');
-      setShowAddMemberModal(false);
-    } catch (err) {
-      setMemError(err instanceof Error ? err.message : 'Failed to add member.');
-    }
   };
 
   const handleOpenContribModal = (
@@ -310,16 +271,6 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {canCreateMembers && (
-              <button
-                type="button"
-                onClick={() => setShowAddMemberModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-[#E0D7C6] text-xs font-black text-slate-950 flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-emerald-700" />
-                Add Member
-              </button>
-            )}
             {canLogCapital && memberEquities.length > 0 && (
               <button
                 type="button"
@@ -650,12 +601,6 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
       </section>
 
       {/* Bottom Sheets */}
-      <AddMemberSheet
-        isOpen={showAddMemberModal}
-        onClose={() => setShowAddMemberModal(false)}
-        activeMember={activeMember}
-      />
-
       {contribModal && (
         <ContributionSheet
           isOpen={Boolean(contribModal)}

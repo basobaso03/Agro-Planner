@@ -223,6 +223,81 @@ test('Organization Governance: Admin updates organization settings and member ca
   assert.equal(updatedMember.contributionPace, 'FLEXIBLE');
 });
 
+test('Runway Pledges and Member Targets: Synchronized to the same unified source of truth', () => {
+  const adminActor: any = {
+    id: 'admin-sync-test',
+    orgId: 'org-sync-test',
+    fullName: 'Admin Sync',
+    phoneOrEmail: 'admin@sync.test',
+    role: 'ORG_ADMIN',
+    approvalStatus: 'APPROVED',
+    active: true,
+    joinedAt: new Date().toISOString(),
+  };
+
+  const memberActor: any = {
+    id: 'mem-sync-test',
+    orgId: 'org-sync-test',
+    fullName: 'Member Sync',
+    phoneOrEmail: 'member@sync.test',
+    role: 'MEMBER',
+    targetContributionUsd: 1000,
+    contributionPace: 'MONTHLY',
+    approvalStatus: 'APPROVED',
+    active: true,
+    joinedAt: new Date().toISOString(),
+  };
+
+  const planId = 'plan-sync-test';
+  const plan: any = {
+    id: planId,
+    orgId: 'org-sync-test',
+    name: 'Sync Test Runway Plan',
+    cycleDays: 42,
+    startDate: '2026-11-01',
+    targetBasis: 'GROSS',
+    contingencyReserveType: 'NONE',
+    contingencyReserveValue: 0,
+    status: 'ACTIVE',
+    lines: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const curState = dataService.getState();
+  (dataService as any).saveLocalState({
+    ...curState,
+    members: [...curState.members, adminActor, memberActor],
+    runwayPlans: [...(curState.runwayPlans || []), plan],
+    runwayPledges: curState.runwayPledges || [],
+  });
+
+  // 1. Pledging to runway plan updates member target
+  dataService.pledgeToRunwayPlan({
+    planId,
+    memberId: memberActor.id,
+    amount: 2500,
+    pace: 'MONTHLY',
+    actor: memberActor,
+  });
+
+  const memberAfterPledge = dataService.getState().members.find((m) => m.id === memberActor.id)!;
+  assert.equal(memberAfterPledge.targetContributionUsd, 2500);
+
+  // 2. Updating capital target updates the active runway plan's pledge
+  dataService.updateMemberCapitalTarget({
+    memberId: memberActor.id,
+    targetContributionUsd: 3200,
+    contributionPace: 'MILESTONE',
+    actor: adminActor,
+  });
+
+  const pledgeAfterTargetUpdate = (dataService.getState().runwayPledges || []).find(
+    (p) => p.planId === planId && p.memberId === memberActor.id
+  )!;
+  assert.equal(pledgeAfterTargetUpdate.amount, 3200);
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

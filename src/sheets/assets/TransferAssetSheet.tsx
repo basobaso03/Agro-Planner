@@ -98,12 +98,12 @@ export const TransferAssetSheet: React.FC<TransferAssetSheetProps> = ({
     >
       <div className="space-y-4">
         {/* Source info pill */}
-        <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-xs text-slate-500 font-medium">Origin Location</div>
-          <div className="text-sm font-semibold text-slate-900 dark:text-white mt-0.5">
+        <div className="bg-[#FAF8F5] p-3 rounded-xl border border-[#E8DFCE]">
+          <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Origin Location</div>
+          <div className="text-sm font-black text-slate-950 mt-0.5">
             {locations.find((l) => l.id === asset.locationId)?.name || asset.locationId}
           </div>
-          <div className="text-xs text-slate-400 mt-1">
+          <div className="text-xs text-slate-600 font-medium mt-1">
             Current Recorded Value: {formatMoney(asset.valueDelta)} · Qty: {asset.quantityDelta}
           </div>
         </div>
@@ -111,14 +111,14 @@ export const TransferAssetSheet: React.FC<TransferAssetSheetProps> = ({
         {/* Destination Location */}
         <Field label="Destination Location" required error={form.errors.toLocationId}>
           {locations.length === 0 ? (
-            <div className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+            <div className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-300 font-medium">
               No alternate locations registered for this organization. Create a new site first.
             </div>
           ) : (
             <select
               value={form.values.toLocationId}
               onChange={(e) => form.setValue('toLocationId', e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm font-medium focus:ring-2 focus:ring-emerald-500"
             >
               {locations.map((loc) => (
                 <option key={loc.id} value={loc.id}>
@@ -136,7 +136,7 @@ export const TransferAssetSheet: React.FC<TransferAssetSheetProps> = ({
               min={1}
               value={form.values.quantity}
               onChange={(e) => form.setValue('quantity', e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+              className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm font-medium"
             />
           </Field>
 
@@ -144,7 +144,7 @@ export const TransferAssetSheet: React.FC<TransferAssetSheetProps> = ({
             <select
               value={form.values.condition}
               onChange={(e) => form.setValue('condition', e.target.value as AssetCondition)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+              className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm font-medium"
             >
               <option value="EXCELLENT">Excellent</option>
               <option value="GOOD">Good</option>
@@ -174,25 +174,25 @@ export const TransferAssetSheet: React.FC<TransferAssetSheetProps> = ({
             value={form.values.note}
             onChange={(e) => form.setValue('note', e.target.value)}
             placeholder="e.g. Relocated diesel water pump to Site B for irrigation overhaul"
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+            className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm"
           />
         </Field>
 
         {/* Optional photo attachment */}
         <div>
-          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+          <label className="block text-xs font-bold text-slate-800 mb-1.5">
             Verification Photo (Optional)
           </label>
           <button
             type="button"
             onClick={handleCapturePhoto}
-            className="w-full py-2 px-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-3 border border-dashed border-[#E0D7C6] rounded-xl text-xs font-bold text-slate-800 hover:bg-[#FAF8F5] flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             <span>📷</span>
             {photoUrl ? 'Retake Site Transfer Photo' : 'Attach Transfer Condition Photo'}
           </button>
           {photoUrl && (
-            <div className="mt-2 relative rounded-lg overflow-hidden h-24 border border-slate-200 dark:border-slate-700">
+            <div className="mt-2 relative rounded-lg overflow-hidden h-24 border border-[#E8DFCE]">
               <img src={photoUrl} alt="Transfer verification" className="w-full h-full object-cover" />
             </div>
           )}

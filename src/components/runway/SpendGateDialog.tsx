@@ -58,19 +58,30 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-5 sm:p-6 space-y-5">
+    <div
+      style={{
+        top: 'var(--vvo, 0px)',
+        height: 'var(--vvh, 100dvh)',
+      }}
+      className="fixed left-0 right-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-2.5 sm:p-4 animate-in fade-in overflow-hidden"
+    >
+      <div
+        style={{
+          maxHeight: 'calc(var(--vvh, 100dvh) - var(--sat, 0px) - 12px)',
+        }}
+        className="w-full max-w-lg rounded-3xl bg-white border border-[#E8DFCE] shadow-2xl p-4 sm:p-6 space-y-4 overflow-y-auto overscroll-contain"
+      >
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+            <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600">
               <ShieldAlert className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
+              <h3 className="text-base sm:text-lg font-black text-slate-950">
                 Runway Spend Gate Enforcement
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-slate-600 font-medium">
                 Active plan is locked under STRICT enforcement. All capital disbursements must be accounted for.
               </p>
             </div>
@@ -78,24 +89,24 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Amount to be allocated */}
-        <div className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
           <div>
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+            <span className="text-xs font-semibold text-slate-600">
               Outflow Disbursement:
             </span>
-            <div className="text-lg font-extrabold text-gray-900 dark:text-white">
+            <div className="text-lg font-black text-slate-950">
               ${amount.toFixed(2)}
             </div>
           </div>
           {category && (
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 uppercase">
+            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase">
               {category}
             </span>
           )}
@@ -103,7 +114,7 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
 
         {/* Allocation Mode Tabs */}
         <div className="space-y-3">
-          <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
             Select Allocation Path:
           </label>
 
@@ -111,35 +122,33 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
             <button
               type="button"
               onClick={() => setMode('LINE')}
-              className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                mode === 'LINE'
-                  ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
-                  : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
-              }`}
+              className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${mode === 'LINE'
+                ? 'border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-500'
+                : 'border-[#E8DFCE] hover:border-slate-300 bg-white'
+                }`}
             >
               <div className="flex items-center space-x-2 mb-1">
-                <Layers className="w-4 h-4 text-indigo-600" />
-                <span className="text-xs font-bold text-gray-900 dark:text-white">Plan Line</span>
+                <Layers className="w-4 h-4 text-emerald-700" />
+                <span className="text-xs font-black text-slate-950">Plan Line</span>
               </div>
-              <div className="text-[11px] text-gray-500">Charge to pre-planned budget step</div>
+              <div className="text-[11px] text-slate-600 font-medium">Charge to pre-planned budget step</div>
             </button>
 
             <button
               type="button"
               onClick={() => setMode('CONTINGENCY')}
-              className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                mode === 'CONTINGENCY'
-                  ? 'border-amber-600 bg-amber-50/50 dark:bg-amber-950/40 ring-2 ring-amber-500'
-                  : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
-              }`}
+              className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${mode === 'CONTINGENCY'
+                ? 'border-amber-600 bg-amber-50/50 ring-2 ring-amber-500'
+                : 'border-[#E8DFCE] hover:border-slate-300 bg-white'
+                }`}
             >
               <div className="flex items-center space-x-2 mb-1">
                 <ShieldAlert className="w-4 h-4 text-amber-600" />
-                <span className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                <span className="text-xs font-black text-amber-950">
                   Contingency Draw
                 </span>
               </div>
-              <div className="text-[11px] text-amber-700/80 dark:text-amber-400">
+              <div className="text-[11px] text-amber-800 font-semibold">
                 ${reserveLeft.toFixed(2)} reserve available
               </div>
             </button>
@@ -149,13 +158,13 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
         {/* Mode Dependent Controls */}
         {mode === 'LINE' && (
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+            <label className="block text-xs font-bold text-slate-950">
               Target Budget Step Line:
             </label>
             <select
               value={selectedLineId}
               onChange={(e) => setSelectedLineId(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-semibold text-gray-900 dark:text-white"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950"
             >
               {costLines.map((l) => (
                 <option key={l.id} value={l.id}>
@@ -168,8 +177,8 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
 
         {mode === 'CONTINGENCY' && (
           <div className="space-y-2">
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-              Mandatory Emergency Reason Note *
+            <label className="block text-xs font-bold text-slate-950">
+              Mandatory Emergency Reason Note <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -177,10 +186,10 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
               value={reserveReason}
               onChange={(e) => setReserveReason(e.target.value)}
               placeholder="e.g. Unexpected replacement generator fuel"
-              className="w-full px-3.5 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
+              className="w-full px-3.5 py-2 rounded-xl border border-[#E8DFCE] bg-white text-xs font-medium text-slate-950"
             />
             {amount > reserveLeft && (
-              <p className="text-xs text-rose-600 font-semibold flex items-center gap-1">
+              <p className="text-xs text-rose-600 font-bold flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" /> Requested draw exceeds available reserve (${reserveLeft.toFixed(2)}).
               </p>
             )}
@@ -189,15 +198,15 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
 
         {/* Propose Amendment Shortcut */}
         {onProposeAmendment && (
-          <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs">
-            <span className="text-gray-500">Unbudgeted item or need additional funds?</span>
+          <div className="pt-2 border-t border-[#E8DFCE] flex items-center justify-between text-xs">
+            <span className="text-slate-600 font-medium">Unbudgeted item or need additional funds?</span>
             <button
               type="button"
               onClick={() => {
                 onClose();
                 onProposeAmendment();
               }}
-              className="font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+              className="font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
             >
               <FileEdit className="w-3.5 h-3.5" /> Propose Amendment
             </button>
@@ -209,7 +218,7 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-stone-100 cursor-pointer"
           >
             Cancel Outflow
           </button>
@@ -217,7 +226,7 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
             type="button"
             onClick={handleConfirm}
             disabled={mode === 'CONTINGENCY' && (!reserveReason.trim() || amount > reserveLeft)}
-            className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer active:scale-95"
+            className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer active:scale-95"
           >
             Confirm Allocation
           </button>

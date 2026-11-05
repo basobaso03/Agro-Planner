@@ -29,23 +29,23 @@ class BackHandlerRegistry {
       // Ignore in restricted environments
     }
 
+    const onBackTrigger = () => {
+      const now = Date.now();
+      if (now - this.lastExecutedAt < 180) return;
+      this.lastExecutedAt = now;
+      const handled = this.executeBack(true);
+      if (handled) {
+        this.ensureHistoryGuard();
+      }
+    };
+
     try {
-      void CapacitorApp.addListener('backButton', () => {
-        const handled = this.executeBack();
-        if (handled) {
-          this.ensureHistoryGuard();
-        }
-      });
+      void CapacitorApp.addListener('backButton', onBackTrigger);
     } catch {
       // Non-native
     }
 
-    window.addEventListener('popstate', () => {
-      const handled = this.executeBack();
-      if (handled) {
-        this.ensureHistoryGuard();
-      }
-    });
+    window.addEventListener('popstate', onBackTrigger);
   }
 
   public ensureHistoryGuard() {
@@ -66,10 +66,10 @@ class BackHandlerRegistry {
     };
   }
 
-  public executeBack(): boolean {
+  public executeBack(force = false): boolean {
     const now = Date.now();
     // Prevent double-firing when both Capacitor backButton and window.popstate trigger within 180ms
-    if (now - this.lastExecutedAt < 180) {
+    if (!force && this.isListening && now - this.lastExecutedAt < 180) {
       return true;
     }
     this.lastExecutedAt = now;

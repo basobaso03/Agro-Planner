@@ -288,7 +288,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Full Name *
+                  Full Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -417,7 +417,15 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {member.hasPasswordSetup ? 'New Password *' : 'Create Password (min 8 chars) *'}
+                    {member.hasPasswordSetup ? (
+                      <>
+                        New Password <span className="text-rose-500">*</span>
+                      </>
+                    ) : (
+                      <>
+                        Create Password (min 8 chars) <span className="text-rose-500">*</span>
+                      </>
+                    )}
                   </label>
                   <div className="relative flex items-center">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -441,7 +449,7 @@ export const PendingApprovalLobby: React.FC<PendingApprovalLobbyProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Confirm Password *
+                    Confirm Password <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative flex items-center">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />

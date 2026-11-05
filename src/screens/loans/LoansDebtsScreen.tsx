@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Scale, Plus, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { Scale, Plus, ArrowDownLeft, ArrowUpRight, Bell } from 'lucide-react';
 import { SegmentedControl } from '../../components/ui/SegmentedControl.tsx';
 import { Chip } from '../../components/ui/Chip.tsx';
 import { Fab } from '../../components/ui/Fab.tsx';
@@ -118,6 +118,21 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
           <div className="space-y-3">
             {debts.map((debt) => {
               const isSettled = debt.status === 'SETTLED';
+              const isOverdue = !isSettled && debt.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
+              const daysDiff = debt.dueDate
+                ? Math.ceil((new Date(debt.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                : null;
+              const overdueDays = daysDiff != null ? Math.abs(daysDiff) : 0;
+              const dueReminderText = isSettled
+                ? 'Settled'
+                : !debt.dueDate
+                  ? 'Terms'
+                  : isOverdue
+                    ? `Overdue by ${overdueDays}d`
+                    : daysDiff === 0
+                      ? 'Remind today at 09:00 AM'
+                      : `Remind in ${daysDiff}d at 09:00 AM`;
+
               return (
                 <div
                   key={debt.id}
@@ -126,8 +141,8 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
                     }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-black text-sm text-slate-900 group-hover:text-rose-600 transition-colors">
                           {debt.creditorName}
                         </h3>
@@ -135,12 +150,23 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
                           {debt.category.replace('_', ' ')}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500 mt-1 font-medium">
-                        Due: {debt.dueDate ? new Date(debt.dueDate).toLocaleDateString() : 'Agreed Terms'}
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-medium flex-wrap">
+                        <span>Due: {debt.dueDate ? new Date(debt.dueDate).toLocaleDateString() : 'Agreed Terms'}</span>
+                        {!isSettled && debt.dueDate && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${isOverdue
+                                ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                                : 'bg-amber-50 text-amber-900 border-amber-300'
+                              }`}
+                          >
+                            <Bell className={`w-2.5 h-2.5 ${isOverdue ? 'text-rose-600' : 'text-amber-600 animate-pulse'}`} />
+                            <span>{dueReminderText}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">Balance Owed</span>
                       <span
                         className={`text-base font-black font-mono ${isSettled ? 'text-slate-400' : 'text-rose-600'}`}
@@ -166,6 +192,21 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
         <div className="space-y-3">
           {loansGiven.map((loan) => {
             const isRecovered = loan.status === 'RECOVERED';
+            const isOverdue = !isRecovered && loan.agreedReturnDate ? new Date(loan.agreedReturnDate).getTime() < Date.now() : false;
+            const daysDiff = loan.agreedReturnDate
+              ? Math.ceil((new Date(loan.agreedReturnDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+              : null;
+            const overdueDays = daysDiff != null ? Math.abs(daysDiff) : 0;
+            const dueReminderText = isRecovered
+              ? 'Recovered'
+              : !loan.agreedReturnDate
+                ? 'Terms'
+                : isOverdue
+                  ? `Overdue by ${overdueDays}d`
+                  : daysDiff === 0
+                    ? 'Remind today at 09:00 AM'
+                    : `Remind in ${daysDiff}d at 09:00 AM`;
+
             return (
               <div
                 key={loan.id}
@@ -174,8 +215,8 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
                   }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-black text-sm text-slate-900 group-hover:text-emerald-700 transition-colors">
                         {loan.borrowerName}
                       </h3>
@@ -183,12 +224,23 @@ export const LoansDebtsScreen: React.FC<LoansDebtsScreenProps> = ({
                         {loan.category.replace('_', ' ')}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-1 font-medium">
-                      Return: {loan.agreedReturnDate ? new Date(loan.agreedReturnDate).toLocaleDateString() : 'Terms'}
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-medium flex-wrap">
+                      <span>Return: {loan.agreedReturnDate ? new Date(loan.agreedReturnDate).toLocaleDateString() : 'Terms'}</span>
+                      {!isRecovered && loan.agreedReturnDate && (
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${isOverdue
+                              ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                              : 'bg-amber-50 text-amber-900 border-amber-300'
+                            }`}
+                        >
+                          <Bell className={`w-2.5 h-2.5 ${isOverdue ? 'text-rose-600' : 'text-amber-600 animate-pulse'}`} />
+                          <span>{dueReminderText}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <span className="text-[10px] text-slate-400 font-bold uppercase block">Unreturned Balance</span>
                     <span
                       className={`text-base font-black font-mono ${isRecovered ? 'text-slate-400' : 'text-emerald-700'}`}

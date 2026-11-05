@@ -453,8 +453,7 @@ export function deriveLineStatuses(
 
     for (const exp of expenses) {
       if (exp.runwayLineId === line.id) {
-        const reserveDraw = exp.runwayReserveDraw ? Math.abs(exp.runwayReserveDraw) : 0;
-        const linePortion = Math.max(0, Math.abs(exp.amount) - reserveDraw);
+        const linePortion = Math.abs(exp.amount);
 
         if (exp.approvalStatus === 'APPROVED') {
           if (exp.direction === 'CONTRA_REVERSAL') {
@@ -830,6 +829,9 @@ export function findOffPlanSpend(
 
   return expenses.filter((e) => {
     if (e.approvalStatus !== 'APPROVED') return false;
+    if (e.direction === 'CONTRA_REVERSAL') return false;
+    if (e.orgId && plan.orgId && e.orgId !== plan.orgId) return false;
+    if (plan.locationId && plan.locationId !== 'ALL' && e.locationId && e.locationId !== plan.locationId) return false;
     const t = new Date(e.createdAt).getTime();
     return t >= start && t <= end && !e.runwayPlanId;
   });
@@ -923,7 +925,7 @@ export function buildVarianceReport(
 
   const categories: RunwayVarianceCategory[] = Array.from(catMap.entries()).map(([category, c]) => {
     const variance = round2(c.planned - c.actual);
-    const varPct = c.planned > 0 ? round2(((c.actual - c.planned) / c.planned) * 100) : 0;
+    const varPct = c.planned > 0 ? round2(((c.planned - c.actual) / c.planned) * 100) : 0;
     const status: 'UNDER_BUDGET' | 'ON_TRACK' | 'OVER_BUDGET' =
       variance > 0 ? 'UNDER_BUDGET' : variance === 0 ? 'ON_TRACK' : 'OVER_BUDGET';
     return {
@@ -940,7 +942,7 @@ export function buildVarianceReport(
     planned: totals.costTotal,
     actual: layers.executed,
     variance: round2(totals.costTotal - layers.executed),
-    variancePct,
+    variancePct: totals.costTotal > 0 ? round2(((totals.costTotal - layers.executed) / totals.costTotal) * 100) : 0,
     status: totals.costTotal >= layers.executed ? 'UNDER_BUDGET' : 'OVER_BUDGET',
   };
 

@@ -66,8 +66,12 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
     lines,
     pledges,
     claims,
+    contributions,
+    expenses,
+    orgMembers,
     fundingLayers,
     totals,
+    availableCash,
     runwayMonths,
     isFullyFunded,
     isFullyPledged,
@@ -156,16 +160,16 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   if (plans.length === 0) {
     return (
       <div className="space-y-5 w-full max-w-4xl mx-auto px-3.5 sm:px-5 py-4 box-border overflow-x-hidden">
-        <div className="text-center p-6 sm:p-10 rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-900 flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 shadow-sm">
+        <div className="text-center p-6 sm:p-10 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs space-y-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
             <Compass className="w-7 h-7 sm:w-8 sm:h-8 animate-pulse" />
           </div>
 
           <div className="space-y-1.5 max-w-md mx-auto">
-            <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
+            <h3 className="text-base sm:text-lg font-black text-slate-950">
               No Runway Capital Plans Configured
             </h3>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
               Launch a structured runway plan to align member pledges, map out cycle costs, and protect your cash flow from mid-production overdrafts.
             </p>
           </div>
@@ -237,7 +241,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <select
               value={selectedPlanId}
               onChange={(e) => setSelectedPlanId(e.target.value)}
-              className="w-full max-w-[210px] sm:max-w-xs truncate appearance-none pl-3 pr-7 py-2 rounded-xl bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 text-xs sm:text-sm font-bold text-gray-900 dark:text-white shadow-xs focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              className="w-full max-w-[210px] sm:max-w-xs truncate appearance-none pl-3 pr-7 py-2 rounded-xl bg-white border border-[#E8DFCE] text-xs sm:text-sm font-bold text-slate-950 shadow-xs focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               {(plans || []).map((p: RunwayPlan) => (
                 <option key={p.id} value={p.id}>
@@ -245,16 +249,16 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-2 top-2.5 pointer-events-none" />
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2 top-2.5 pointer-events-none" />
           </div>
 
           {currentPlan && (
             <span
               className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${currentPlan.status === 'ACTIVE'
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                 : currentPlan.status === 'PLEDGING'
-                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                  : 'bg-slate-100 text-slate-800 border border-slate-300'
                 }`}
             >
               {currentPlan.status}
@@ -267,9 +271,9 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           {canEdit && (
             <button
               onClick={() => setIsWizardOpen(true)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-[#E0D7C6] bg-[#FAF8F5] hover:bg-[#F0EBE1] text-xs font-bold text-slate-800 transition-colors cursor-pointer shadow-xs"
             >
-              <Plus className="w-3.5 h-3.5 text-indigo-500" />
+              <Plus className="w-3.5 h-3.5 text-indigo-600" />
               <span>New Plan</span>
             </button>
           )}
@@ -298,7 +302,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           {currentPlan?.status === 'ACTIVE' && canClose && (
             <button
               onClick={handleClosePlan}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-bold transition-colors cursor-pointer"
             >
               <Archive className="w-3.5 h-3.5" />
               <span>Close Plan</span>
@@ -319,7 +323,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
       )}
 
       {/* Segmented Subtab Navigation Bar */}
-      <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar w-full max-w-full p-1 rounded-2xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200/60 dark:border-gray-800">
+      <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar w-full max-w-full p-1 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]">
         {subTabs.map((t) => {
           const Icon = t.icon;
           const isSelected = activeSubTab === t.id;
@@ -328,14 +332,14 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               key={t.id}
               onClick={() => setActiveSubTab(t.id as any)}
               className={`flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${isSelected
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                ? 'bg-white text-indigo-700 shadow-xs border border-[#E0D7C6]'
+                : 'text-slate-700 hover:text-slate-950'
                 }`}
             >
               <Icon className="w-4 h-4" />
               <span>{t.label}</span>
               {t.badge !== undefined && t.badge > 0 && (
-                <span className="w-4 h-4 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] flex items-center justify-center font-bold">
+                <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-800 text-[10px] flex items-center justify-center font-bold">
                   {t.badge}
                 </span>
               )}
@@ -351,6 +355,8 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <RunwayBudgetBuilder
               plan={currentPlan}
               lines={planLines}
+              layers={fundingLayers}
+              totals={totals}
               currentMember={currentMember}
               pastExpenses={dataService.getState().expenses}
               readOnly={currentPlan.status !== 'DRAFT'}
@@ -411,8 +417,8 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <PledgePanel
               plan={currentPlan}
               pledges={planPledges}
-              contributions={dataService.getState().capitalContributions}
-              members={dataService.getState().members}
+              contributions={contributions}
+              members={orgMembers}
               currentMember={currentMember}
               layers={fundingLayers}
               onPledge={(p) =>
@@ -431,15 +437,22 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <PayInPanel
               plan={currentPlan}
               claims={claims}
+              pledges={planPledges}
+              contributions={contributions}
+              layers={fundingLayers}
               currentMember={currentMember}
-              members={dataService.getState().members}
+              members={orgMembers}
               onSubmitClaim={(c) =>
                 dataService.submitRunwayPaymentClaim({
                   planId: c.planId,
+                  memberId: c.memberId,
+                  pledgeId: c.pledgeId,
                   amount: c.amount,
                   method: c.method,
                   reference: c.reference,
+                  note: c.note,
                   proofPhotoDataUrl: c.receiptPhotoDataUrl,
+                  autoConfirm: c.autoConfirm,
                   actor: currentMember,
                 })
               }
@@ -458,9 +471,11 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <SpendPanel
               plan={currentPlan}
               lines={planLines}
-              expenses={dataService.getState().expenses}
+              expenses={expenses}
               layers={fundingLayers}
               currentMember={currentMember}
+              locations={locations && locations.length > 0 ? locations : dataService.getState().locations}
+              availableCash={availableCash}
               onRecordExpense={() => onOpenExpenseModal?.()}
               onProposeAmendment={() => setIsAmendmentOpen(true)}
             />
@@ -478,9 +493,9 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             <RunwayReport
               plan={currentPlan}
               lines={planLines}
-              expenses={dataService.getState().expenses}
-              livestockEvents={dataService.getState().livestockEvents}
-              creditSales={dataService.getState().creditSales}
+              expenses={dataService.getState().expenses.filter((e) => !e.orgId || e.orgId === currentPlan.orgId)}
+              livestockEvents={dataService.getState().livestockEvents.filter((l) => !l.orgId || l.orgId === currentPlan.orgId)}
+              creditSales={(dataService.getState().creditSales || []).filter((c) => !c.orgId || c.orgId === currentPlan.orgId)}
               layers={fundingLayers}
             />
           )}

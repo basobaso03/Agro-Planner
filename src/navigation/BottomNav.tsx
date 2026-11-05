@@ -2,6 +2,7 @@ import React from 'react';
 import { Home, Layers, DollarSign, Menu, Package } from 'lucide-react';
 import { TabId } from './routes.ts';
 import { useNavigation } from './useNavigation.ts';
+import { useKeyboardOpen } from '../hooks/useKeyboardInset.ts';
 
 export interface BottomNavProps {
   isAgroEnabled: boolean;
@@ -9,6 +10,11 @@ export interface BottomNavProps {
 
 export const BottomNav: React.FC<BottomNavProps> = ({ isAgroEnabled }) => {
   const { activeTab, switchTab } = useNavigation();
+  const isKeyboardOpen = useKeyboardOpen();
+
+  if (isKeyboardOpen) {
+    return null;
+  }
 
   return (
     <nav

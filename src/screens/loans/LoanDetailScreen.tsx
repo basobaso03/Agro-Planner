@@ -1,8 +1,9 @@
 import React from 'react';
-import { Phone, Calendar, Scale, ArrowUpRight, DollarSign } from 'lucide-react';
+import { Phone, Calendar, Scale, ArrowUpRight, DollarSign, Bell, Clock, Users, Radio } from 'lucide-react';
 import { formatMoney } from '../../utils/currency.ts';
 import { nativeAppLauncher } from '../../native/appLauncher.ts';
 import { dataService } from '../../services/dataService.ts';
+import { useToast } from '../../components/ui/Toast.tsx';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { RecoverLoanSheet } from '../../sheets/loans/RecoverLoanSheet.tsx';
 import type { LoanGivenEvent, OrgMember } from '../../types/agro.ts';
@@ -25,7 +26,36 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
   onBack,
 }) => {
   const [showRecoverSheet, setShowRecoverSheet] = React.useState(false);
+  const { showToast } = useToast();
   const loan = propLoan || (dataService.getState().loansGiven || []).find((l) => l.id === loanId);
+
+  const isRecovered = loan ? loan.status === 'RECOVERED' : false;
+  const isOverdue = !isRecovered && loan?.agreedReturnDate ? new Date(loan.agreedReturnDate).getTime() < Date.now() : false;
+  const daysDiff = loan?.agreedReturnDate
+    ? Math.ceil((new Date(loan.agreedReturnDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : 0;
+  const overdueDays = Math.abs(daysDiff);
+  const dueRelativeText = isRecovered
+    ? 'Fully Recovered'
+    : isOverdue
+      ? `Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}`
+      : daysDiff === 0
+        ? `Remind today at 09:00 AM`
+        : `Remind in ${daysDiff} day${daysDiff === 1 ? '' : 's'} at 09:00 AM`;
+
+  const handleBroadcastOrgAlert = () => {
+    if (!loan || !loan.agreedReturnDate) return;
+    dataService.broadcastFinancialDueAlert({
+      entityType: 'LOAN_GIVEN',
+      entityId: loan.id,
+      partyName: loan.borrowerName,
+      amount: loan.remainingBalance,
+      dueDate: loan.agreedReturnDate,
+      customNote: `Loan advance alert for ${loan.borrowerName}. Balance receivable: $${loan.remainingBalance.toFixed(2)}.`,
+      actor: activeMember,
+    });
+    showToast(`Broadcast alert for ${loan.borrowerName} sent to all org members.`);
+  };
 
   if (!loan) {
     return (
@@ -41,8 +71,6 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
     );
   }
 
-  const isRecovered = loan.status === 'RECOVERED';
-
   return (
     <div className="p-4 sm:p-5 space-y-4 max-w-xl mx-auto pb-28">
       {/* 1. Header Borrower Card */}
@@ -56,8 +84,8 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
 
           <span
             className={`text-xs font-black px-2.5 py-1 rounded-full border ${isRecovered
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border-amber-300'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-amber-50 text-amber-800 border-amber-300'
               }`}
           >
             {isRecovered ? 'Fully Recovered ✓' : 'Active Loan'}
@@ -77,6 +105,80 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Due Date & Active Reminder Schedule Card */}
+      {loan.agreedReturnDate && (
+        <div className="p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`p-2.5 rounded-2xl shrink-0 ${isRecovered
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : isOverdue
+                      ? 'bg-rose-50 text-rose-600'
+                      : 'bg-amber-50 text-amber-700'
+                  }`}
+              >
+                <Bell className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Agreed Return Date
+                </span>
+                <h4 className="text-sm font-black text-slate-900 truncate">
+                  {new Date(loan.agreedReturnDate).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </h4>
+              </div>
+            </div>
+
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${isRecovered
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : isOverdue
+                    ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                    : 'bg-amber-100 text-amber-900 border-amber-300 font-black'
+                }`}
+            >
+              {dueRelativeText}
+            </span>
+          </div>
+
+          {!isRecovered && (
+            <>
+              <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] text-xs text-slate-600 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="text-[11px] leading-tight">
+                    {isOverdue
+                      ? `Alert passed on agreed return date at 09:00 AM. Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}.`
+                      : `Active morning notification scheduled for 2 days prior and on return date at 09:00 AM.`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#F0EBE1]">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                  <Users className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Notify Entire Team</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBroadcastOrgAlert}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition-all cursor-pointer"
+                >
+                  <Radio className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+                  <span>Broadcast Alert to Org</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 2. Financial Balance Breakdown */}
       <div className="grid grid-cols-3 gap-2 p-4 rounded-3xl bg-white border border-[#E8DFCE] text-center shadow-xs">

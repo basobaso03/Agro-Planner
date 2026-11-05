@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Plus,
   ArrowUp,
@@ -11,20 +11,29 @@ import {
   BookmarkPlus,
   Layers,
   ChevronDown,
+  CheckCircle2,
+  Building2,
+  TrendingUp,
+  ArrowRight,
 } from 'lucide-react';
 import type {
   RunwayPlan,
   RunwayLine,
   ContingencyMode,
+  RunwayFundingLayers,
+  RunwayPlanTotals,
 } from '../../types/runway';
 import type { ExpenseLedgerEvent, OrgMember } from '../../types/agro';
-import { computePlanTotals } from '../../utils/runway';
+import { computePlanTotals, round2 } from '../../utils/runway';
+import { dataService } from '../../services/dataService';
 import { RunwayLineSheet } from './RunwayLineSheet';
 import { CountUp } from './CountUp';
 
 interface RunwayBudgetBuilderProps {
   plan: RunwayPlan;
   lines: RunwayLine[];
+  layers?: RunwayFundingLayers;
+  totals?: RunwayPlanTotals;
   currentMember: OrgMember;
   pastExpenses?: ExpenseLedgerEvent[];
   onUpsertLine: (line: Partial<RunwayLine> & {
@@ -45,6 +54,8 @@ interface RunwayBudgetBuilderProps {
 export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   plan,
   lines,
+  layers,
+  totals: propTotals,
   currentMember,
   pastExpenses = [],
   onUpsertLine,
@@ -61,8 +72,47 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   const [templateModalOpen, setTemplateModalOpen] = useState<boolean>(false);
   const [templateName, setTemplateName] = useState<string>('');
 
-  const totals = computePlanTotals(plan, lines);
+  const fallbackLivestockRevenue = useMemo(() => {
+    try {
+      const allStatuses = dataService.computeLivestockStatuses();
+      const relevant = allStatuses.filter((st) => {
+        if (!plan.locationId || plan.locationId === 'ALL') return true;
+        return st.entry.locationId === plan.locationId;
+      });
+      const pricings = plan.livestockRevenuePricings || {};
+      let rev = 0;
+      for (const st of relevant) {
+        const cfg = pricings[st.entry.id];
+        const price =
+          cfg?.sellingPricePerUnit && cfg.sellingPricePerUnit > 0
+            ? cfg.sellingPricePerUnit
+            : st.entry.configuredSalePricePerUnit && st.entry.configuredSalePricePerUnit > 0
+              ? st.entry.configuredSalePricePerUnit
+              : (st.entry.species || '').toLowerCase().includes('goat')
+                ? 75
+                : (st.entry.species || '').toLowerCase().includes('layer')
+                  ? 8
+                  : (st.entry.species || '').toLowerCase().includes('pig')
+                    ? 180
+                    : 6.5;
+        rev += st.currentLiveHeadcount * price;
+      }
+      return rev;
+    } catch {
+      return 0;
+    }
+  }, [plan]);
+
+  const totals = propTotals ?? computePlanTotals(plan, lines, round2(fallbackLivestockRevenue));
   const isDraft = plan.status === 'DRAFT';
+
+  const executedLinesTotal = lines
+    .filter((l) => l.kind === 'COST')
+    .reduce((acc, l) => acc + ((l as any).actual || 0), 0);
+  const executedSpend = layers ? layers.executed : executedLinesTotal;
+  const remainingCostBaseline = Math.max(0, totals.costTotal - executedLinesTotal);
+  const remainingContingency = layers ? layers.reserveLeft : totals.contingencyReserve;
+  const remainingTotalRequired = Math.max(0, totals.totalRequirement - executedSpend);
 
   const handleMove = (index: number, direction: 'UP' | 'DOWN') => {
     if (readOnly || !isDraft) return;
@@ -80,46 +130,96 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   return (
     <div className="space-y-5">
       {/* Live Financial Totals Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white border border-[#E8DFCE] shadow-xs">
         <div className="min-w-0">
-          <span className="text-[11px] sm:text-xs font-semibold text-gray-500 dark:text-gray-400 block truncate">
-            Cost Baseline
+          <span className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider block leading-tight">
+            {executedSpend > 0 ? (
+              <>
+                <span className="sm:hidden">Remaining Cost</span>
+                <span className="hidden sm:inline">Remaining Cost Baseline</span>
+              </>
+            ) : (
+              'Cost Baseline'
+            )}
           </span>
-          <div className="text-base sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5 truncate">
-            <CountUp value={totals.costTotal} decimals={2} />
+          <div className="text-base sm:text-xl font-black text-slate-950 mt-0.5 truncate">
+            <CountUp value={executedSpend > 0 ? remainingCostBaseline : totals.costTotal} decimals={2} />
           </div>
+          {executedSpend > 0 && (
+            <span className="text-[10px] text-slate-500 font-medium block leading-tight mt-0.5 break-words">
+              <span className="sm:hidden">${executedLinesTotal.toFixed(2)} of ${totals.costTotal.toFixed(2)} spent</span>
+              <span className="hidden sm:inline">Planned: ${totals.costTotal.toFixed(2)} (${executedLinesTotal.toFixed(2)} spent)</span>
+            </span>
+          )}
         </div>
 
         <div className="min-w-0">
-          <span className="text-[11px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1 truncate">
-            <ShieldAlert className="w-3.5 h-3.5 shrink-0" /> Contingency
+          <span className="text-[10px] sm:text-xs font-bold text-amber-700 flex items-center gap-1 uppercase tracking-wider leading-tight">
+            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+            <span>{executedSpend > 0 ? 'Contingency Left' : 'Contingency'}</span>
           </span>
-          <div className="text-base sm:text-xl font-bold text-amber-700 dark:text-amber-300 mt-0.5 truncate">
-            +<CountUp value={totals.contingencyReserve} decimals={2} />
+          <div className="text-base sm:text-xl font-black text-amber-800 mt-0.5 truncate">
+            +<CountUp value={executedSpend > 0 ? remainingContingency : totals.contingencyReserve} decimals={2} />
           </div>
+          {executedSpend > 0 && (
+            <span className="text-[10px] text-slate-500 font-medium block leading-tight mt-0.5">
+              Initial buffer: ${totals.contingencyReserve.toFixed(2)}
+            </span>
+          )}
         </div>
 
         <div className="min-w-0">
-          <span className="text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
-            Total Required (incl. Contingency)
+          <span className="text-[10px] sm:text-xs font-bold text-indigo-700 block uppercase tracking-wider leading-tight">
+            {executedSpend > 0 ? (
+              <>
+                <span className="sm:hidden">Remaining Req.</span>
+                <span className="hidden sm:inline">Remaining Required</span>
+              </>
+            ) : (
+              'Total Required'
+            )}
           </span>
-          <div className="text-base sm:text-xl font-extrabold text-indigo-700 dark:text-indigo-300 mt-0.5 truncate">
-            <CountUp value={totals.totalRequirement} decimals={2} />
+          <div className="text-base sm:text-xl font-black text-indigo-900 mt-0.5 truncate">
+            <CountUp value={executedSpend > 0 ? remainingTotalRequired : totals.totalRequirement} decimals={2} />
           </div>
+          {executedSpend > 0 && (
+            <span className="text-[10px] text-emerald-700 font-bold block leading-tight mt-0.5 break-words">
+              <span className="sm:hidden">${executedSpend.toFixed(2)} of ${totals.totalRequirement.toFixed(2)} done</span>
+              <span className="hidden sm:inline">${executedSpend.toFixed(2)} of ${totals.totalRequirement.toFixed(2)} executed</span>
+            </span>
+          )}
         </div>
 
         <div
           onClick={onNavigateToRevenue}
-          className={`min-w-0 ${onNavigateToRevenue ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+          className={`min-w-0 ${onNavigateToRevenue ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
           title={onNavigateToRevenue ? 'Open Live Livestock Revenue & Yield Tab' : undefined}
         >
-          <span className="text-[11px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 block truncate flex items-center justify-between">
-            <span>Expected Revenue</span>
-            {onNavigateToRevenue && <span className="text-[9px] underline font-normal">Live Yield →</span>}
-          </span>
-          <div className="text-base sm:text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 truncate">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] sm:text-xs font-bold text-emerald-700 flex items-center gap-1 uppercase tracking-wider leading-tight">
+              <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+              <span>Expected Rev.</span>
+              <span className="hidden sm:inline">enue</span>
+            </span>
+            {onNavigateToRevenue && (
+              <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-0.5">
+                <span>Live</span>
+                <ArrowRight className="w-2.5 h-2.5" />
+              </span>
+            )}
+          </div>
+          <div className="text-base sm:text-xl font-black text-emerald-800 mt-0.5 truncate">
             <CountUp value={totals.expectedIncome} decimals={2} />
           </div>
+          {totals.expectedIncome > 0 ? (
+            <span className="text-[10px] text-emerald-600 font-medium block leading-tight mt-0.5 truncate">
+              Live ground forecast
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 font-medium block leading-tight mt-0.5">
+              No batches projected
+            </span>
+          )}
         </div>
       </div>
 
@@ -139,8 +239,8 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                 type="button"
                 onClick={() => onUpdateReserve('PERCENT', plan.contingencyPercent ?? 10)}
                 className={`px-2.5 py-1 rounded-md font-semibold transition-all ${plan.contingencyMode === 'PERCENT'
-                    ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
-                    : 'text-amber-800 dark:text-amber-300'
+                  ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
+                  : 'text-amber-800 dark:text-amber-300'
                   }`}
               >
                 Percentage (%)
@@ -149,8 +249,8 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                 type="button"
                 onClick={() => onUpdateReserve('FIXED', plan.contingencyFixedAmount ?? 100)}
                 className={`px-2.5 py-1 rounded-md font-semibold transition-all ${plan.contingencyMode === 'FIXED'
-                    ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
-                    : 'text-amber-800 dark:text-amber-300'
+                  ? 'bg-white dark:bg-gray-800 text-amber-900 dark:text-amber-100 shadow-xs'
+                  : 'text-amber-800 dark:text-amber-300'
                   }`}
               >
                 Fixed Dollar ($)
@@ -196,11 +296,11 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
       )}
 
       {/* Lines Table / List */}
-      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xs overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
+      <div className="rounded-2xl bg-white border border-[#E8DFCE] shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-[#F0EBE1]">
           <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+            <Layers className="w-4 h-4 text-indigo-600" />
+            <h4 className="text-sm font-black text-slate-950">
               Budget Steps & Capital Lines ({lines.length})
             </h4>
           </div>
@@ -264,8 +364,8 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${isIncome
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                             }`}
                         >
                           {isIncome ? 'INFLOW' : 'COST'}
@@ -278,6 +378,30 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-medium">
                           {line.priority}
                         </span>
+
+                        {Boolean(line.excludeFromContingency || line.category === 'EQUIPMENT') && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 border border-indigo-200/50 dark:border-indigo-800">
+                            <Building2 className="w-3 h-3" />
+                            CAPEX
+                          </span>
+                        )}
+
+                        {plan.status === 'ACTIVE' && (line as any).actual !== undefined && (
+                          (line as any).actual >= lineCost ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-0.5">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Purchased
+                            </span>
+                          ) : (line as any).actual > 0 ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
+                              ${(line as any).actual.toFixed(2)} spent
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">
+                              Pending Purchase
+                            </span>
+                          )
+                        )}
                       </div>
 
                       <h5 className="text-sm font-bold text-gray-900 dark:text-white break-words">
@@ -367,8 +491,19 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
 
       {/* Save Template Modal */}
       {templateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-4 shadow-2xl">
+        <div
+          style={{
+            top: 'var(--vvo, 0px)',
+            height: 'var(--vvh, 100dvh)',
+          }}
+          className="fixed left-0 right-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-2.5 sm:p-4 animate-in fade-in overflow-hidden"
+        >
+          <div
+            style={{
+              maxHeight: 'calc(var(--vvh, 100dvh) - var(--sat, 0px) - 12px)',
+            }}
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-4 shadow-2xl overflow-y-auto overscroll-contain"
+          >
             <h4 className="text-base font-bold text-gray-900 dark:text-white">
               Save Plan as Organization Template
             </h4>

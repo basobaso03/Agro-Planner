@@ -53,13 +53,13 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Mobile Banking Balance Hero */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm space-y-4">
+      <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs space-y-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400 font-medium">Liquid Left Money</span>
+          <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">Liquid Left Money</span>
           <button
             type="button"
             onClick={handleToggleMask}
-            className="text-xs px-2.5 py-1 rounded-full bg-slate-800 dark:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1.5"
+            className="text-xs px-3 py-1 rounded-full bg-[#FAF8F5] border border-[#E0D7C6] text-slate-700 hover:text-slate-950 hover:bg-[#F0EBE1] flex items-center gap-1.5 font-bold cursor-pointer transition-colors shadow-xs"
           >
             <span>{masked ? '👁️' : '🔒'}</span>
             <span>{masked ? 'Show' : 'Hide'}</span>
@@ -67,31 +67,31 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
         </div>
 
         <div>
-          <div className="text-3xl font-extrabold tracking-tight">
+          <div className="text-3xl font-black font-mono text-slate-950 tracking-tight">
             {formatMoney(finSummary.leftMoney, { mask: masked })}
           </div>
-          <div className="text-xs text-emerald-400 mt-1 font-medium">
+          <div className="text-xs text-emerald-700 mt-1 font-bold">
             Net Capital Position: {formatMoney(netWorth, { mask: masked })}
           </div>
         </div>
 
         {/* 3 Secondary Mini-Balances */}
-        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-800 dark:border-slate-700 text-center text-xs">
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#F0EBE1] text-center text-xs">
           <div>
-            <div className="text-[11px] text-slate-400">Total Pool</div>
-            <div className="font-bold text-slate-200 mt-0.5">
+            <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Total Pool</div>
+            <div className="font-black font-mono text-slate-950 mt-0.5">
               {formatMoney(finSummary.totalPool, { mask: masked })}
             </div>
           </div>
           <div>
-            <div className="text-[11px] text-slate-400">Receivables</div>
-            <div className="font-bold text-emerald-400 mt-0.5">
-              {formatMoney(totalCreditReceivables, { mask: masked })}
+            <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Receivables</div>
+            <div className="font-black font-mono text-emerald-700 mt-0.5">
+              {formatMoney(totalCreditReceivables + totalLoansLent, { mask: masked })}
             </div>
           </div>
           <div>
-            <div className="text-[11px] text-slate-400">Liabilities</div>
-            <div className="font-bold text-amber-400 mt-0.5">
+            <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Liabilities</div>
+            <div className="font-black font-mono text-amber-700 mt-0.5">
               {formatMoney(totalDebtsOwed, { mask: masked })}
             </div>
           </div>
@@ -103,50 +103,50 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
         <button
           type="button"
           onClick={() => setShowDepositSheet(true)}
-          className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5"
+          className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center font-bold text-base">
+          <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-base border border-emerald-200">
             📥
           </div>
-          <div className="text-xs font-bold text-slate-900 dark:text-white">Deposit</div>
+          <div className="text-xs font-black text-slate-950">Deposit</div>
         </button>
 
         <button
           type="button"
           onClick={() => setShowExpenseSheet(true)}
-          className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5"
+          className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center font-bold text-base">
+          <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-700 flex items-center justify-center font-bold text-base border border-rose-200">
             🧾
           </div>
-          <div className="text-xs font-bold text-slate-900 dark:text-white">Expense</div>
+          <div className="text-xs font-black text-slate-950">Expense</div>
         </button>
 
         <button
           type="button"
           onClick={() => setShowCreditSaleSheet(true)}
-          className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5"
+          className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center font-bold text-base">
+          <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base border border-blue-200">
             📋
           </div>
-          <div className="text-xs font-bold text-slate-900 dark:text-white">Credit Sale</div>
+          <div className="text-xs font-black text-slate-950">Credit Sale</div>
         </button>
 
         <button
           type="button"
           onClick={() => setShowDebtSheet(true)}
-          className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5"
+          className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center font-bold text-base">
+          <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center font-bold text-base border border-amber-200">
             💳
           </div>
-          <div className="text-xs font-bold text-slate-900 dark:text-white">Borrow</div>
+          <div className="text-xs font-black text-slate-950">Borrow</div>
         </button>
       </div>
 
       {/* Financial Banking Modules */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden">
+      <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
         <ListRow
           icon="📋"
           title="Sales on Credit & Receivables"

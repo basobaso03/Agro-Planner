@@ -29,6 +29,7 @@ import type {
 import { dataService } from '../../services/dataService';
 import { getAvailableTemplates } from '../../utils/runwayTemplates';
 import { useBackHandler } from '../../navigation/useBackHandler';
+import { useKeyboardOpen } from '../../hooks/useKeyboardInset';
 
 interface RunwayWizardProps {
   isOpen: boolean;
@@ -58,6 +59,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   onPlanCreated,
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
+  const isKeyboardOpen = useKeyboardOpen();
 
   const orgId = currentMember.orgId || dataService.getActiveOrgId() || 'org-master';
   const resolvedOrg =
@@ -345,21 +347,39 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
       data-prevent-swipe="true"
       onTouchStart={(e) => e.stopPropagation()}
       onTouchEnd={(e) => e.stopPropagation()}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-xs px-3 py-3 sm:p-6 pt-safe pb-safe animate-in fade-in"
+      style={{
+        top: 'var(--vvo, 0px)',
+        height: 'var(--vvh, 100dvh)',
+      }}
+      className={`fixed left-0 right-0 z-[100] flex ${isKeyboardOpen ? 'items-end sm:items-center px-2 py-1' : 'items-center px-3 py-3 sm:p-6 pt-safe pb-safe'
+        } justify-center bg-black/65 backdrop-blur-xs animate-in fade-in overflow-hidden`}
     >
-      <div className="w-full max-w-2xl max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[88dvh] rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col overflow-hidden">
+      <div
+        style={{
+          maxHeight: isKeyboardOpen
+            ? 'calc(var(--vvh, 100dvh) - var(--sat, 0px) - 6px)'
+            : 'min(88dvh, calc(var(--vvh, 100dvh) - var(--sat, 0px) - var(--sab, 0px) - 20px))',
+        }}
+        className={`w-full max-w-2xl bg-white border border-[#E8DFCE] shadow-2xl flex flex-col overflow-hidden ${isKeyboardOpen ? 'rounded-2xl' : 'rounded-3xl'
+          }`}
+      >
         {/* Wizard Header & Stepper */}
-        <div className="shrink-0 p-3.5 sm:p-5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/30">
-          <div className="flex items-center justify-between mb-2.5 sm:mb-3.5">
+        <div
+          className={`shrink-0 border-b border-[#E8DFCE] bg-[#FAF8F5] ${isKeyboardOpen ? 'px-3.5 py-2' : 'p-3.5 sm:p-5'
+            }`}
+        >
+          <div className={`flex items-center justify-between ${isKeyboardOpen ? '' : 'mb-2.5 sm:mb-3.5'}`}>
             <div className="flex items-center space-x-2.5 min-w-0">
-              <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
-                <Compass className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
+              {!isKeyboardOpen && (
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800 shrink-0">
+                  <Compass className="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+              )}
               <div className="min-w-0">
-                <h3 className="text-sm sm:text-lg font-bold text-gray-900 dark:text-white truncate">
+                <h3 className="text-sm sm:text-lg font-black text-slate-950 truncate">
                   New Runway Capital Plan
                 </h3>
-                <span className="text-[11px] text-gray-500 dark:text-gray-400 block truncate">
+                <span className="text-[11px] text-slate-600 font-semibold block truncate">
                   {resolvedOrg?.name ? `${resolvedOrg.name} • ` : ''}Step {currentStep} of 5: {steps[currentStep - 1].title}
                 </span>
               </div>
@@ -367,67 +387,72 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Stepper bubbles */}
-          <div className="flex items-center justify-between">
-            {steps.map((s, idx) => (
-              <React.Fragment key={s.num}>
-                <div className="flex items-center space-x-1.5">
-                  <div
-                    className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-bold transition-all ${currentStep === s.num
-                        ? 'bg-indigo-600 text-white shadow-sm ring-2 sm:ring-4 ring-indigo-100 dark:ring-indigo-950'
+          {/* Stepper bubbles (hidden while keyboard is open to maximize typing area) */}
+          {!isKeyboardOpen && (
+            <div className="flex items-center justify-between">
+              {steps.map((s, idx) => (
+                <React.Fragment key={s.num}>
+                  <div className="flex items-center space-x-1.5">
+                    <div
+                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-bold transition-all ${currentStep === s.num
+                        ? 'bg-emerald-600 text-white shadow-xs ring-2 sm:ring-4 ring-emerald-100'
                         : currentStep > s.num
                           ? 'bg-emerald-500 text-white'
-                          : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
-                      }`}
-                  >
-                    {currentStep > s.num ? <Check className="w-3.5 h-3.5" /> : s.num}
+                          : 'bg-stone-200 text-slate-700'
+                        }`}
+                    >
+                      {currentStep > s.num ? <Check className="w-3.5 h-3.5" /> : s.num}
+                    </div>
+                    <span
+                      className={`text-xs hidden sm:inline font-bold ${currentStep === s.num
+                        ? 'text-emerald-700'
+                        : 'text-slate-500'
+                        }`}
+                    >
+                      {s.title}
+                    </span>
                   </div>
-                  <span
-                    className={`text-xs hidden sm:inline font-semibold ${currentStep === s.num
-                        ? 'text-indigo-600 dark:text-indigo-400'
-                        : 'text-gray-400'
-                      }`}
-                  >
-                    {s.title}
-                  </span>
-                </div>
-                {idx < steps.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-1.5 sm:mx-2 ${currentStep > s.num ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-800'
-                      }`}
-                  />
-                )}
-              </React.Fragment>
-            ))}
-          </div>
+                  {idx < steps.length - 1 && (
+                    <div
+                      className={`flex-1 h-0.5 mx-1.5 sm:mx-2 ${currentStep > s.num ? 'bg-emerald-500' : 'bg-stone-200'
+                        }`}
+                    />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Persistent Live Total Required Strip on Steps 3, 4, and 5 */}
         {currentStep >= 3 && (
-          <div className="shrink-0 px-3.5 sm:px-5 py-2.5 bg-indigo-50/90 dark:bg-indigo-950/60 border-b border-indigo-200/80 dark:border-indigo-900 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div
+            className={`shrink-0 px-3.5 sm:px-5 bg-[#FAF8F5] border-b border-[#E8DFCE] flex flex-wrap items-center justify-between gap-2 text-xs ${isKeyboardOpen ? 'py-1.5' : 'py-2.5'
+              }`}
+          >
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-gray-600 dark:text-gray-300">
+              <span className="text-slate-600 font-semibold">
                 Items Cost:{' '}
-                <strong className="font-mono text-gray-900 dark:text-white">
+                <strong className="font-mono text-slate-950 font-bold">
                   ${baselineCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
               </span>
-              <span className="text-amber-700 dark:text-amber-300">
+              <span className="text-amber-800 font-semibold">
                 + Contingency:{' '}
-                <strong className="font-mono">
+                <strong className="font-mono font-bold">
                   ${calculatedContingencyDollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </strong>
               </span>
             </div>
-            <div className="font-bold text-indigo-900 dark:text-indigo-200">
+            <div className="font-bold text-slate-950">
               Total Required:{' '}
-              <span className="font-mono text-sm sm:text-base font-black text-indigo-700 dark:text-indigo-300">
+              <span className="font-mono text-sm sm:text-base font-black text-emerald-700">
                 ${totalCapitalRequirement.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -435,7 +460,10 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
         )}
 
         {/* Wizard Step Content Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div
+          className={`flex-1 min-h-[110px] overflow-y-auto overscroll-contain ${isKeyboardOpen ? 'p-3.5 space-y-3 pb-6' : 'p-4 sm:p-6 space-y-4'
+            }`}
+        >
           {finishError && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-950 font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -447,39 +475,39 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
           {currentStep === 1 && (
             <div className="space-y-4">
               {/* Recognized Registered Business Account Banner (Auto-Detected, No Redundant Question) */}
-              <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 flex items-center justify-between gap-2">
+              <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] flex items-center justify-between gap-2">
                 <div className="flex items-center space-x-3 min-w-0">
-                  <div className="p-2 rounded-xl bg-white dark:bg-gray-800 shadow-xs border border-indigo-100 dark:border-indigo-900 shrink-0">
+                  <div className="p-2 rounded-xl bg-white shadow-xs border border-[#E8DFCE] shrink-0">
                     {registeredOrgType === 'AGRO_FARMING' ? (
                       <Wheat className="w-5 h-5 text-emerald-600" />
                     ) : (
-                      <Building2 className="w-5 h-5 text-indigo-600" />
+                      <Building2 className="w-5 h-5 text-emerald-700" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
                       Registered Business Account Type
                     </span>
-                    <div className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
+                    <div className="text-xs sm:text-sm font-bold text-slate-950 truncate">
                       {registeredOrgType === 'AGRO_FARMING'
                         ? 'Agro-Farming & Livestock Enterprise'
                         : 'Commercial & General Business Venture'}
                     </div>
                     {resolvedOrg?.name && (
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                      <div className="text-[11px] text-slate-600 font-medium truncate">
                         Workspace: {resolvedOrg.name}
                       </div>
                     )}
                   </div>
                 </div>
-                <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0">
+                <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 shrink-0">
                   Auto-Linked
                 </span>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Plan Name *
+                <label className="block text-xs font-bold text-slate-950 mb-1">
+                  Plan Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -491,19 +519,19 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                       ? 'e.g. Q1 Broiler Expansion (Batch 12)'
                       : 'e.g. Q1 Retail Restock & Operations'
                   }
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-semibold text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-sm font-bold text-slate-950 focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               {locations.length > 0 && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-950 mb-1">
                     Operating Site
                   </label>
                   <select
                     value={locationId}
                     onChange={(e) => setLocationId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-sm font-semibold text-slate-950"
                   >
                     {locations.map((l) => (
                       <option key={l.id} value={l.id}>
@@ -515,14 +543,14 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-bold text-slate-950 mb-1">
                   Target Start Date
                 </label>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-sm font-semibold text-slate-950"
                 />
               </div>
             </div>
@@ -546,8 +574,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                 <div
                   onClick={() => applyTemplateById('BLANK', registeredOrgType)}
                   className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${selectedTemplateId === 'BLANK'
-                      ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
-                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
+                    ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
+                    : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
                     }`}
                 >
                   <div className="flex items-center justify-between mb-1">
@@ -557,7 +585,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                     <Sparkles className="w-4 h-4 text-indigo-500" />
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Build your custom lines from scratch with automatic unit cost calculation.
+                    Build your custom planned lines from scratch.
                   </p>
                 </div>
 
@@ -570,8 +598,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                       key={tpl.id}
                       onClick={() => applyTemplateById(tpl.id, registeredOrgType)}
                       className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${isSelected
-                          ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
-                          : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
+                        ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
+                        : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
                         }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
@@ -603,9 +631,6 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                   <h4 className="text-xs font-bold text-gray-900 dark:text-white">
                     Planned Line Items ({customLines.length})
                   </h4>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Enter items bought &amp; total price — unit cost is calculated automatically.
-                  </p>
                 </div>
 
                 <button
@@ -640,7 +665,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                        Item Description / Title *
+                        Item Description / Title <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -693,7 +718,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                        Items Bought (Quantity) *
+                        Planned Quantity <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -710,7 +735,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
 
                     <div>
                       <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
-                        Total Price ($) *
+                        Estimated Total ($) <span className="text-rose-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -729,7 +754,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <span className="text-xs font-mono text-gray-600 dark:text-gray-300 flex items-center gap-1">
                       <Calculator className="w-3.5 h-3.5 text-indigo-500" />
-                      Auto Unit Cost:{' '}
+                      Unit Cost:{' '}
                       <strong className="text-emerald-600 dark:text-emerald-400">
                         ${autoNewUnitCost.toFixed(2)} / {newLineUnitLabel || 'unit'}
                       </strong>
@@ -764,7 +789,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                       No Budget Lines Added Yet
                     </h5>
                     <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto mt-0.5">
-                      Tap &quot;Add Line Item&quot; to enter your items bought and total price.
+                      Tap &quot;Add Line Item&quot; to enter your planned quantity and estimated cost.
                     </p>
                   </div>
                   <button
@@ -806,7 +831,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                               {l.title}
                             </div>
                             <span className="text-[10px] text-gray-400 uppercase font-semibold">
-                              {l.category} • Auto Unit Cost: ${unitCostAuto.toFixed(2)}/{l.unitLabel || 'unit'}
+                              {l.category} • Unit Cost: ${unitCostAuto.toFixed(2)}/{l.unitLabel || 'unit'}
                             </span>
                           </div>
                           <button
@@ -885,8 +910,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                     type="button"
                     onClick={() => setContingencyMode('PERCENT')}
                     className={`py-2 px-2.5 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${contingencyMode === 'PERCENT'
-                        ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-400'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-800'
+                      ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-400'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-800'
                       }`}
                   >
                     <Percent className="w-3.5 h-3.5 shrink-0" />
@@ -896,8 +921,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                     type="button"
                     onClick={() => setContingencyMode('FIXED')}
                     className={`py-2 px-2.5 rounded-xl font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${contingencyMode === 'FIXED'
-                        ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-400'
-                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-800'
+                      ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-400'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-800'
                       }`}
                   >
                     <DollarSign className="w-3.5 h-3.5 shrink-0" />
@@ -937,8 +962,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                           type="button"
                           onClick={() => setContingencyPercentStr(String(pct))}
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${contingencyPercent === pct
-                              ? 'bg-amber-600 text-white'
-                              : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
                             }`}
                         >
                           {pct}%
@@ -980,8 +1005,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                           type="button"
                           onClick={() => setContingencyFixedStr(String(amt))}
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${contingencyFixed === amt
-                              ? 'bg-amber-600 text-white'
-                              : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
                             }`}
                         >
                           ${amt}
@@ -1084,8 +1109,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                     type="button"
                     onClick={() => setEnforcement('STRICT')}
                     className={`p-3 rounded-xl border text-left cursor-pointer ${enforcement === 'STRICT'
-                        ? 'border-indigo-600 bg-white dark:bg-gray-800 ring-2 ring-indigo-500'
-                        : 'border-transparent text-gray-500'
+                      ? 'border-indigo-600 bg-white dark:bg-gray-800 ring-2 ring-indigo-500'
+                      : 'border-transparent text-gray-500'
                       }`}
                   >
                     <div className="text-xs font-bold text-indigo-950 dark:text-indigo-100">
@@ -1100,8 +1125,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                     type="button"
                     onClick={() => setEnforcement('ADVISORY')}
                     className={`p-3 rounded-xl border text-left cursor-pointer ${enforcement === 'ADVISORY'
-                        ? 'border-indigo-600 bg-white dark:bg-gray-800 ring-2 ring-indigo-500'
-                        : 'border-transparent text-gray-500'
+                      ? 'border-indigo-600 bg-white dark:bg-gray-800 ring-2 ring-indigo-500'
+                      : 'border-transparent text-gray-500'
                       }`}
                   >
                     <div className="text-xs font-bold text-gray-900 dark:text-white">
@@ -1136,12 +1161,15 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
         </div>
 
         {/* Wizard Footer Nav Buttons (shrink-0 & safe-area-aware so never hidden under mobile bar) */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-3.5 sm:px-5 sm:py-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/90 dark:bg-gray-950/80">
+        <div
+          className={`shrink-0 flex items-center justify-between border-t border-[#E8DFCE] bg-[#FAF8F5] ${isKeyboardOpen ? 'px-3.5 py-2' : 'px-4 py-3.5 sm:px-5 sm:py-4'
+            }`}
+        >
           <button
             type="button"
             disabled={currentStep === 1}
             onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
-            className="inline-flex items-center space-x-1 px-4 py-2.5 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-200/70 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 cursor-pointer"
+            className="inline-flex items-center space-x-1 px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:bg-stone-200/70 disabled:opacity-30 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back</span>
@@ -1152,7 +1180,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
               type="button"
               disabled={currentStep === 1 && !name.trim()}
               onClick={() => setCurrentStep((prev) => Math.min(5, prev + 1))}
-              className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
             >
               <span>Next Step</span>
               <ArrowRight className="w-4 h-4" />

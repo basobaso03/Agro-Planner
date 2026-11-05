@@ -20,6 +20,7 @@ import {
   Maximize2,
   Upload,
   Image as ImageIcon,
+  Eye,
 } from 'lucide-react';
 import type {
   ExpenseCategory,
@@ -626,6 +627,34 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 )}
 
                 <p className="text-xs sm:text-sm text-slate-800 font-medium leading-relaxed break-words">{exp.note}</p>
+
+                {exp.receiptPhotoDataUrl && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReceiptLightbox({
+                          url: exp.receiptPhotoDataUrl!,
+                          title: `Expense Receipt #${exp.id.slice(-6).toUpperCase()} · $${Math.abs(exp.amount).toFixed(2)} (${exp.category.replace('_', ' ')})`,
+                        })
+                      }
+                      className="group flex items-center gap-2.5 p-1.5 pr-3 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 transition-all text-left cursor-pointer"
+                    >
+                      <img
+                        src={exp.receiptPhotoDataUrl}
+                        alt="Receipt thumbnail"
+                        className="w-12 h-12 rounded-lg object-cover border border-emerald-300 shadow-xs group-hover:scale-105 transition-transform"
+                      />
+                      <div>
+                        <div className="text-[11px] font-bold text-emerald-900 flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-emerald-700" />
+                          <span>Receipt Attached</span>
+                        </div>
+                        <div className="text-[10px] text-emerald-700 font-medium">Click to view full screen</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
 
                 <div className="pt-2.5 border-t border-[#F0EBE1] flex flex-wrap items-center justify-between gap-3">
                   <div className="text-[11px] text-slate-500 space-y-1 min-w-0">

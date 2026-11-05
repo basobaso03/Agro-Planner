@@ -37,6 +37,23 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     dataService.getActiveOrganization(activeOrgId);
   const isEnabled = Boolean(currentOrg?.features?.runwayModule);
 
+  const orgMembers = useMemo(() => {
+    const raw = (state.members || []).filter((m) => m.orgId === activeOrgId);
+    const seenIds = new Set<string>();
+    const seenUids = new Set<string>();
+    const seenEmails = new Set<string>();
+    return raw.filter((m) => {
+      if (seenIds.has(m.id)) return false;
+      if (m.uid && seenUids.has(m.uid)) return false;
+      const email = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+      if (email && seenEmails.has(email)) return false;
+      seenIds.add(m.id);
+      if (m.uid) seenUids.add(m.uid);
+      if (email) seenEmails.add(email);
+      return true;
+    });
+  }, [state.members, activeOrgId]);
+
   const orgPlans = useMemo(() => {
     return (state.runwayPlans || []).filter((p) => p.orgId === activeOrgId);
   }, [state.runwayPlans, activeOrgId]);
@@ -78,7 +95,7 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     const plgList = (state.runwayPledges || []).filter((p) => p.planId === plan.id);
     return plgList.map((p) => {
       const paid = (state.capitalContributions || [])
-        .filter((c) => c.pledgeId === p.id && c.runwayPlanId === plan.id)
+        .filter((c) => c.runwayPlanId === plan.id && (c.pledgeId === p.id || c.memberId === p.memberId))
         .reduce((acc, c) => acc + (c.direction === 'CONTRA_REVERSAL' ? -Math.abs(c.amount) : c.amount), 0);
       return {
         ...p,
@@ -121,8 +138,25 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
         continue;
       }
       const cfg = pricings[st.entry.id];
-      if (cfg && cfg.sellingPricePerUnit > 0) {
+      if (cfg && typeof cfg.sellingPricePerUnit === 'number' && cfg.sellingPricePerUnit > 0) {
         total += st.currentLiveHeadcount * cfg.sellingPricePerUnit;
+      } else if (typeof st.entry.configuredSalePricePerUnit === 'number' && st.entry.configuredSalePricePerUnit > 0) {
+        total += st.currentLiveHeadcount * st.entry.configuredSalePricePerUnit;
+      } else if (typeof st.totalExpectedRevenueUsd === 'number' && st.totalExpectedRevenueUsd > 0) {
+        total += st.totalExpectedRevenueUsd;
+      } else {
+        const sp = (st.entry.species || '').toLowerCase();
+        const defaultPrice =
+          sp.includes('broiler') || sp.includes('poultry') || sp.includes('chicken')
+            ? 6.5
+            : sp.includes('layer')
+              ? 8.0
+              : sp.includes('goat') || sp.includes('sheep')
+                ? 75.0
+                : sp.includes('pig') || sp.includes('swine')
+                  ? 180.0
+                  : 10.0;
+        total += st.currentLiveHeadcount * defaultPrice;
       }
     }
     return round2(total);
@@ -194,17 +228,40 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
   }, [availableCash, state.expenses]);
 
   const salesRevenue = useMemo(() => {
+    if (!plan) return 0;
+    const planStart = new Date(plan.activatedAt || plan.startDate).getTime();
+    const planEnd = plan.completedAt ? new Date(plan.completedAt).getTime() : Infinity;
+
     return (state.livestockEvents || [])
-      .filter((e) => e.eventType === 'SALE_DISPATCH')
+      .filter((e) => {
+        if (e.eventType !== 'SALE_DISPATCH' || !(e.saleRevenueAmount && e.saleRevenueAmount > 0)) return false;
+        if (e.orgId && plan.orgId && e.orgId !== plan.orgId) return false;
+        if (plan.locationId && plan.locationId !== 'ALL' && e.locationId && e.locationId !== plan.locationId) return false;
+        const t = new Date(e.createdAt || (e as any).timestamp).getTime();
+        return t >= planStart && t <= planEnd;
+      })
       .reduce((acc, e) => acc + (e.saleRevenueAmount || 0), 0);
-  }, [state.livestockEvents]);
+  }, [state.livestockEvents, plan]);
 
   const creditSaleReceipts = useMemo(() => {
+    if (!plan) return 0;
+    const planStart = new Date(plan.activatedAt || plan.startDate).getTime();
+    const planEnd = plan.completedAt ? new Date(plan.completedAt).getTime() : Infinity;
+
     return (state.creditSales || []).reduce((acc, cs) => {
-      const repSum = (cs.paymentLogs || []).reduce((pAcc: number, p) => pAcc + (p.amount || 0), 0);
+      if (cs.orgId && plan.orgId && cs.orgId !== plan.orgId) return acc;
+      if (plan.locationId && plan.locationId !== 'ALL' && cs.locationId && cs.locationId !== plan.locationId) return acc;
+
+      const repSum = (cs.paymentLogs || [])
+        .filter((p) => {
+          const t = new Date(p.paidAt).getTime();
+          return t >= planStart && t <= planEnd;
+        })
+        .reduce((pAcc: number, p) => pAcc + (p.amount || 0), 0);
+
       return acc + repSum;
     }, 0);
-  }, [state.creditSales]);
+  }, [state.creditSales, plan]);
 
   const recovery = useMemo(() => {
     return computeRecovery(layers.executed, salesRevenue, creditSaleReceipts);
@@ -223,6 +280,8 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
   return {
     state,
     isEnabled,
+    orgMembers,
+    members: orgMembers,
     orgPlans,
     plans: orgPlans,
     plan,

@@ -24,9 +24,9 @@
       ]
     },
     "Keyboard": {
-      "resize": "none",
+      "resize": "body",
       "style": "light",
-      "resizeOnFullScreen": false
+      "resizeOnFullScreen": true
     },
     "StatusBar": {
       "overlaysWebView": false,

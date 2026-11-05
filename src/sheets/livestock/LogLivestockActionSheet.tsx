@@ -79,6 +79,20 @@ export const LogLivestockActionSheet: React.FC<LogLivestockActionSheetProps> = (
           actor: activeMember,
         });
 
+        // If photo attached, also add to livestock gallery
+        if (photoUrl) {
+          try {
+            dataService.addLivestockGalleryPhoto({
+              livestockId: batch.id,
+              photoUrl,
+              caption: values.note.trim() || `${values.actionType.replace(/_/g, ' ')} photo`,
+              actor: activeMember,
+            });
+          } catch {
+            // Ignore if already in gallery
+          }
+        }
+
         showToast({
           type: 'success',
           title: 'Livestock Event Logged',

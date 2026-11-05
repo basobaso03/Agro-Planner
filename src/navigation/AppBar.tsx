@@ -14,6 +14,7 @@ export interface AppBarProps {
   unreadNotificationsCount?: number;
   onOpenNotifications?: () => void;
   onOpenSyncStatus?: () => void;
+  onOpenSiteManager?: () => void;
 }
 
 export const AppBar: React.FC<AppBarProps> = ({
@@ -26,8 +27,9 @@ export const AppBar: React.FC<AppBarProps> = ({
   unreadNotificationsCount = 0,
   onOpenNotifications,
   onOpenSyncStatus,
+  onOpenSiteManager,
 }) => {
-  const { currentRoute, canPop, pop } = useNavigation();
+  const { currentRoute, canPop, pop, navigate } = useNavigation();
 
   const selectedLocName =
     selectedLocationId === 'ALL'
@@ -59,27 +61,61 @@ export const AppBar: React.FC<AppBarProps> = ({
 
       {/* Right Column: Site Chip + SyncChip + Privacy Eye + Bell */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {locations.length > 1 && onSelectLocation && (
-          <div className="relative">
-            <select
-              aria-label="Select Farm Site"
-              value={selectedLocationId}
-              onChange={(e) => onSelectLocation(e.target.value)}
-              className="appearance-none pl-6 pr-5 py-1 rounded-full bg-[#FAF8F5] border border-slate-200 text-[10px] font-bold text-slate-700 focus:outline-hidden cursor-pointer"
-            >
-              <option value="ALL">All Sites</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
-            <MapPin className="w-3 h-3 text-amber-500 absolute left-2 top-2 pointer-events-none" />
-            <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+        {onSelectLocation && (
+          <div className="flex items-center gap-1">
+            {locations.length === 0 ? (
+              <button
+                type="button"
+                onClick={onOpenSiteManager}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-[10px] font-bold text-amber-900 transition-colors cursor-pointer shadow-xs"
+                title="Add your farm location"
+              >
+                <MapPin className="w-3 h-3 text-amber-600" />
+                <span>＋ Add Site</span>
+              </button>
+            ) : (
+              <>
+                <div className="relative">
+                  <select
+                    aria-label="Select Farm Site"
+                    value={selectedLocationId}
+                    onChange={(e) => {
+                      if (e.target.value === '__MANAGE_SITES__') {
+                        onOpenSiteManager?.();
+                      } else {
+                        onSelectLocation(e.target.value);
+                      }
+                    }}
+                    className="appearance-none pl-6 pr-5 py-1 rounded-full bg-[#FAF8F5] border border-slate-200 text-[10px] font-bold text-slate-700 hover:border-amber-400 focus:outline-hidden cursor-pointer max-w-[120px] sm:max-w-[150px] truncate"
+                  >
+                    <option value="ALL">All Sites ({locations.length})</option>
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                    <option value="__MANAGE_SITES__">📍 ＋ Add / Manage Sites...</option>
+                  </select>
+                  <MapPin className="w-3 h-3 text-amber-500 absolute left-2 top-2 pointer-events-none" />
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+                </div>
+
+                {onOpenSiteManager && (
+                  <button
+                    type="button"
+                    onClick={onOpenSiteManager}
+                    title="Add or manage sites"
+                    className="p-1 rounded-full bg-[#FAF8F5] hover:bg-amber-100 border border-slate-200 text-amber-800 transition-colors cursor-pointer"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        <SyncChip onClick={onOpenSyncStatus} />
+        <SyncChip onClick={onOpenSyncStatus || (() => navigate('syncStatus'))} />
 
         {onToggleShowNumbers && (
           <button

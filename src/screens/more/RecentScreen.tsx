@@ -24,14 +24,14 @@ export const RecentScreen: React.FC<RecentScreenProps> = ({
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-bold text-slate-900 dark:text-white">Opened Pages & Recents</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Quickly resume recently visited records</p>
+          <h1 className="text-base font-black text-slate-950">Opened Pages & Recents</h1>
+          <p className="text-xs text-slate-600 font-medium mt-0.5">Quickly resume recently visited records</p>
         </div>
         {recents.length > 0 && (
           <button
             type="button"
             onClick={handleClear}
-            className="text-xs font-semibold text-rose-600 dark:text-rose-400 p-1"
+            className="text-xs font-bold text-rose-600 hover:text-rose-700 p-1 cursor-pointer"
           >
             Clear All
           </button>
@@ -45,26 +45,26 @@ export const RecentScreen: React.FC<RecentScreenProps> = ({
           message="Pages and detail sheets you open will appear here for fast multitasking."
         />
       ) : (
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden">
+        <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
           {recents.map((item) => (
             <div
               key={item.id}
               onClick={() => navigate(item.routeId, item.params)}
-              className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer active:scale-[0.99] transition-all"
+              className="p-3.5 flex items-center justify-between gap-3 hover:bg-[#FAF8F5] cursor-pointer active:scale-[0.99] transition-all"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-lg shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-[#FAF8F5] border border-[#E8DFCE] flex items-center justify-center text-lg shrink-0">
                   {item.icon || '📄'}
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  <div className="text-sm font-bold text-slate-950">
                     {item.title}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5">{item.subtitle}</div>
+                  <div className="text-xs text-slate-600 font-medium mt-0.5">{item.subtitle}</div>
                 </div>
               </div>
 
-              <div className="text-[11px] text-slate-400 shrink-0">
+              <div className="text-[11px] text-slate-600 font-mono font-medium shrink-0">
                 {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FormSheet } from '../../components/ui/FormSheet.tsx';
 import { Field } from '../../components/ui/Field.tsx';
 import { MoneyInput } from '../../components/ui/MoneyInput.tsx';
@@ -8,6 +8,7 @@ import { formatMoney } from '../../utils/currency.ts';
 import { dataService } from '../../services/dataService.ts';
 import { useToast } from '../../components/ui/Toast.tsx';
 import { PERMISSIONS } from '../../utils/permissions.ts';
+import { Bell, Calendar, Users, Radio } from 'lucide-react';
 import type { LoanCategory, OrgMember } from '../../types/agro.ts';
 import type { RunwayAllocation } from '../../types/runway.ts';
 
@@ -31,6 +32,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
   onRequestSpendGate,
 }) => {
   const { showToast } = useToast();
+  const [broadcastNow, setBroadcastNow] = useState(false);
 
   const form = useForm({
     initial: {
@@ -69,7 +71,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
       const p = parseFloat(values.principal);
 
       try {
-        dataService.recordLoanGiven({
+        const created = dataService.recordLoanGiven({
           borrowerName: values.borrowerName.trim(),
           borrowerContact: values.borrowerContact.trim(),
           category: values.category,
@@ -80,6 +82,18 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
           actor: activeMember,
           runwayAllocation,
         });
+
+        if (broadcastNow && created.agreedReturnDate) {
+          dataService.broadcastFinancialDueAlert({
+            entityType: 'LOAN_GIVEN',
+            entityId: created.id,
+            partyName: created.borrowerName,
+            amount: created.principalAmount,
+            dueDate: created.agreedReturnDate,
+            customNote: created.purposeNote,
+            actor: activeMember,
+          });
+        }
 
         showToast(`Disbursed loan advance of ${formatMoney(p)} to ${values.borrowerName}.`);
         if (onLoanCreated) onLoanCreated();
@@ -181,6 +195,48 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
             />
           </Field>
         </div>
+
+        {/* Morning Notification Schedule & Member Scope Preview */}
+        {form.values.agreedReturnDate && (
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-950 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <Bell className="w-4 h-4 text-amber-600" />
+                <span>Morning Dispatch Notification</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">
+                09:00 AM Alert
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-slate-800 font-semibold">
+              <Calendar className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>
+                Agreed Return Date: {new Date(form.values.agreedReturnDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            </div>
+
+            <div className="flex items-start gap-2 text-amber-800 text-[11px] leading-relaxed pt-1.5 border-t border-amber-200/60">
+              <Users className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+              <span>
+                <strong>Org-Wide Reach:</strong> When the return date arrives in the morning, alerts notify the team so this advance is tracked and collected on time.
+              </span>
+            </div>
+
+            <label className="flex items-center gap-2 pt-1 text-xs font-bold text-amber-900 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={broadcastNow}
+                onChange={(e) => setBroadcastNow(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
+              />
+              <span className="flex items-center gap-1">
+                <Radio className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                Dispatch immediate broadcast to all org members right now
+              </span>
+            </label>
+          </div>
+        )}
 
         <Field label="Collateral / Guarantee Note" hint="Optional">
           <input

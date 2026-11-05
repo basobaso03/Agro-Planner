@@ -30,9 +30,6 @@ export const BalanceCard: React.FC<BalanceCardProps> = ({
           <TrendingUp className="w-3.5 h-3.5" />
           <span>Consolidated Net Worth (NAV)</span>
         </span>
-        <span className="text-[10px] font-mono font-bold text-slate-400 bg-white/10 px-2 py-0.5 rounded-full border border-white/10">
-          Live Solora Book
-        </span>
       </div>
 
       {/* Main Big Number */}

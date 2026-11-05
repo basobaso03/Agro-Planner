@@ -108,6 +108,15 @@ export interface CreditSaleDateExtensionLog {
   authorizedByName: string;
 }
 
+export interface CreditSaleItem {
+  id?: string;
+  livestockId?: string;
+  livestockName?: string;
+  quantitySold: number;
+  unitPrice: number;
+  totalAmount?: number;
+}
+
 export interface CreditSaleEvent {
   id: string; // e.g. CSALE-XXXX
   orgId: string;
@@ -121,6 +130,7 @@ export interface CreditSaleEvent {
   quantitySold: number;
   unitPrice: number;
   totalSaleAmount: number;
+  items?: CreditSaleItem[]; // Optional multi-item / multi-animal breakdown
   totalSaleAmountUsd?: number; // Alias
   depositPaidCash: number; // Down payment received immediately in liquid cash
   upfrontDepositUsd?: number; // Alias

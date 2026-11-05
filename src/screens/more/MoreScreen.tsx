@@ -11,11 +11,13 @@ import type { OrgMember } from '../../types/agro.ts';
 export interface MoreScreenProps {
   activeMember: OrgMember;
   onSignOut?: () => void;
+  onOpenSiteManager?: () => void;
 }
 
 export const MoreScreen: React.FC<MoreScreenProps> = ({
   activeMember,
   onSignOut,
+  onOpenSiteManager,
 }) => {
   const { navigate } = useNavigation();
   const [masked, setMasked] = useState(isPrivacyMasked());
@@ -37,16 +39,16 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Profile Card */}
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs flex items-center justify-between gap-3">
+      <div className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center text-lg">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold flex items-center justify-center text-lg">
             {activeMember.fullName?.charAt(0) || 'U'}
           </div>
           <div>
-            <div className="text-sm font-bold text-slate-900 dark:text-white">
+            <div className="text-sm font-black text-slate-950">
               {activeMember.fullName}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5">
+            <div className="text-xs text-slate-600 font-medium mt-0.5">
               {activeMember.role} · {org?.name || 'Venture'}
             </div>
           </div>
@@ -55,7 +57,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         <button
           type="button"
           onClick={handleToggleMask}
-          className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 flex items-center gap-1.5"
+          className="px-3 py-1.5 rounded-xl border border-[#E0D7C6] bg-[#FAF8F5] text-xs font-bold text-slate-800 hover:bg-[#F0EBE1] flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
         >
           <span>{masked ? '👁️' : '🔒'}</span>
           <span>{masked ? 'Unmask' : 'Mask'}</span>
@@ -64,10 +66,10 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
 
       {/* Enterprise & Team Governance */}
       <div className="space-y-1">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-600 px-2">
           Organization & Team
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden">
+        <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
           <ListRow
             icon="👥"
             title="Syndicate Members & Equity"
@@ -83,8 +85,8 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
           <ListRow
             icon="📍"
             title="Enterprise Sites & Branches"
-            subtitle="Register new farm paddocks or branch depots"
-            onClick={() => setShowSiteSheet(true)}
+            subtitle="Register new farm paddocks, kraals or branch depots"
+            onClick={() => (onOpenSiteManager ? onOpenSiteManager() : setShowSiteSheet(true))}
           />
           <ListRow
             icon="📢"
@@ -97,14 +99,14 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
 
       {/* Security & Audit Ledger */}
       <div className="space-y-1">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-600 px-2">
           Ledger & System Integrity
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden">
+        <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
           <ListRow
             icon="🛡️"
             title="Cryptographic Audit Trail"
-            subtitle="SHA-256 tamper-evident verification engine"
+            subtitle="Tamper-evident verification engine"
             onClick={() => navigate('audit-ledger')}
           />
           <ListRow
@@ -124,10 +126,10 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
 
       {/* Preferences & Navigation */}
       <div className="space-y-1">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-600 px-2">
           Preferences & Navigation
         </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden">
+        <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
           <ListRow
             icon="🕒"
             title="Opened Pages / Recents"
@@ -155,7 +157,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
           <button
             type="button"
             onClick={onSignOut}
-            className="w-full py-3 px-4 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold text-xs text-center active:scale-[0.99] transition-all"
+            className="w-full py-3 px-4 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-xs text-center active:scale-[0.99] transition-all cursor-pointer shadow-xs"
           >
             Sign Out of Account
           </button>

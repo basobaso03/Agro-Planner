@@ -1,8 +1,9 @@
 import React from 'react';
-import { Phone, Calendar, Scale, ArrowDownLeft, CreditCard } from 'lucide-react';
+import { Phone, Calendar, Scale, ArrowDownLeft, CreditCard, Bell, Clock, Users, Radio } from 'lucide-react';
 import { formatMoney } from '../../utils/currency.ts';
 import { nativeAppLauncher } from '../../native/appLauncher.ts';
 import { dataService } from '../../services/dataService.ts';
+import { useToast } from '../../components/ui/Toast.tsx';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { RepayDebtSheet } from '../../sheets/loans/RepayDebtSheet.tsx';
 import type { DebtLiabilityEvent, OrgMember } from '../../types/agro.ts';
@@ -25,7 +26,36 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
   onBack,
 }) => {
   const [showRepaySheet, setShowRepaySheet] = React.useState(false);
+  const { showToast } = useToast();
   const debt = propDebt || (dataService.getState().debtLiabilities || []).find((d) => d.id === debtId);
+
+  const isSettled = debt ? debt.status === 'SETTLED' : false;
+  const isOverdue = !isSettled && debt?.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
+  const daysDiff = debt?.dueDate
+    ? Math.ceil((new Date(debt.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : 0;
+  const overdueDays = Math.abs(daysDiff);
+  const dueRelativeText = isSettled
+    ? 'Fully Settled'
+    : isOverdue
+      ? `Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}`
+      : daysDiff === 0
+        ? `Remind today at 09:00 AM`
+        : `Remind in ${daysDiff} day${daysDiff === 1 ? '' : 's'} at 09:00 AM`;
+
+  const handleBroadcastOrgAlert = () => {
+    if (!debt || !debt.dueDate) return;
+    dataService.broadcastFinancialDueAlert({
+      entityType: 'DEBT_LIABILITY',
+      entityId: debt.id,
+      partyName: debt.creditorName,
+      amount: debt.remainingBalance,
+      dueDate: debt.dueDate,
+      customNote: `Debt liability alert for ${debt.creditorName}. Balance remaining: $${debt.remainingBalance.toFixed(2)}.`,
+      actor: activeMember,
+    });
+    showToast(`Broadcast alert for ${debt.creditorName} sent to all org members.`);
+  };
 
   if (!debt) {
     return (
@@ -40,8 +70,6 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
       </div>
     );
   }
-
-  const isSettled = debt.status === 'SETTLED';
 
   return (
     <div className="p-4 sm:p-5 space-y-4 max-w-xl mx-auto pb-28">
@@ -77,6 +105,82 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
           </div>
         )}
       </div>
+
+      {/* Due Date & Active Reminder Schedule Card */}
+      {debt.dueDate && (
+        <div className="p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`p-2.5 rounded-2xl shrink-0 ${
+                  isSettled
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : isOverdue
+                      ? 'bg-rose-50 text-rose-600'
+                      : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                <Bell className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Liability Due Date
+                </span>
+                <h4 className="text-sm font-black text-slate-900 truncate">
+                  {new Date(debt.dueDate).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </h4>
+              </div>
+            </div>
+
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                isSettled
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : isOverdue
+                    ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                    : 'bg-amber-100 text-amber-900 border-amber-300 font-black'
+              }`}
+            >
+              {dueRelativeText}
+            </span>
+          </div>
+
+          {!isSettled && (
+            <>
+              <div className="p-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] text-xs text-slate-600 flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="text-[11px] leading-tight">
+                    {isOverdue
+                      ? `Alert passed on due date at 09:00 AM. Overdue by ${overdueDays} day${overdueDays === 1 ? '' : 's'}.`
+                      : `Active morning notification scheduled for 2 days prior and on due date at 09:00 AM.`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-between gap-2 border-t border-[#F0EBE1]">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                  <Users className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Notify Entire Team</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBroadcastOrgAlert}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition-all cursor-pointer"
+                >
+                  <Radio className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+                  <span>Broadcast Alert to Org</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* 2. Financial Balance Breakdown */}
       <div className="grid grid-cols-3 gap-2 p-4 rounded-3xl bg-white border border-[#E8DFCE] text-center shadow-xs">

@@ -11,10 +11,12 @@ import type { OrgMember } from '../../types/agro.ts';
 
 export interface OperationsHubScreenProps {
   activeMember: OrgMember;
+  onOpenSiteManager?: () => void;
 }
 
 export const OperationsHubScreen: React.FC<OperationsHubScreenProps> = ({
   activeMember,
+  onOpenSiteManager,
 }) => {
   const { navigate } = useNavigation();
 
@@ -33,18 +35,18 @@ export const OperationsHubScreen: React.FC<OperationsHubScreenProps> = ({
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Metric Header Card */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm space-y-3">
-        <div className="text-xs text-slate-400 font-medium">Enterprise Operations Hub</div>
+      <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs space-y-3">
+        <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Enterprise Operations Hub</div>
         <div className="grid grid-cols-2 gap-4 pt-1">
           <div>
-            <div className="text-xs text-slate-400">Available Liquid Cash</div>
-            <div className="text-xl font-bold tracking-tight text-emerald-400 mt-0.5">
+            <div className="text-xs text-slate-600 font-medium">Available Liquid Cash</div>
+            <div className="text-xl font-black tracking-tight text-emerald-700 mt-0.5">
               {formatMoney(finSummary.leftMoney)}
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-400">Fixed Assets NAV</div>
-            <div className="text-xl font-bold tracking-tight mt-0.5">
+            <div className="text-xs text-slate-600 font-medium">Fixed Assets NAV</div>
+            <div className="text-xl font-black tracking-tight text-slate-950 mt-0.5">
               {formatMoney(totalAssetValue)}
             </div>
           </div>
@@ -121,6 +123,12 @@ export const OperationsHubScreen: React.FC<OperationsHubScreenProps> = ({
           title="Fixed Assets & Equipment"
           subtitle={`${assets.length} equipment items registered`}
           onClick={() => navigate('assets')}
+        />
+        <ListRow
+          icon="📍"
+          title="Enterprise Sites & Branches"
+          subtitle="Manage farm sites, paddocks, station GPS & branch depots"
+          onClick={() => (onOpenSiteManager ? onOpenSiteManager() : navigate('siteCompare'))}
         />
         <ListRow
           icon="🤝"

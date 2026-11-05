@@ -96,46 +96,58 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
   return (
     <div className="space-y-5">
       {/* Overview Metric Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xs">
-        <div>
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 block truncate">
-            Surviving Live Stock
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 sm:p-4 rounded-2xl bg-white border border-[#E8DFCE] shadow-xs">
+        <div className="min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap block truncate">
+            <span className="sm:hidden">Live Stock</span>
+            <span className="hidden sm:inline">Surviving Live Stock</span>
           </span>
-          <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5 truncate flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <div className="text-base sm:text-xl font-black font-mono text-slate-950 mt-0.5 truncate flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <span>{totalLiveAnimals.toLocaleString()} head</span>
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 block truncate">
-            Projected Sales Revenue
+        <div className="min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-700 whitespace-nowrap block truncate">
+            <span className="sm:hidden">Sales Revenue</span>
+            <span className="hidden sm:inline">Projected Sales Revenue</span>
           </span>
-          <div className="text-lg sm:text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">
+          <div className="text-base sm:text-xl font-black font-mono text-emerald-700 mt-0.5 truncate">
             <CountUp value={totalProjectedRevenue} decimals={2} />
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 block truncate">
-            Budget Capital Required
+        <div className="min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-600 whitespace-nowrap block truncate">
+            <span className="sm:hidden">Budget Capital</span>
+            <span className="hidden sm:inline">Budget Capital Required</span>
           </span>
-          <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-0.5 truncate font-mono">
+          <div className="text-base sm:text-xl font-black font-mono text-slate-950 mt-0.5 truncate">
             ${costBase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
 
-        <div>
-          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 block truncate">
-            Projected Net Return (ROI)
+        <div className="min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-indigo-700 whitespace-nowrap block truncate">
+            <span className="sm:hidden">Net Return (ROI)</span>
+            <span className="hidden sm:inline">Projected Net Return (ROI)</span>
           </span>
-          <div
-            className={`text-lg sm:text-xl font-black mt-0.5 truncate ${
-              isProfitable ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
-            }`}
-          >
-            {isProfitable ? '+' : ''}${projectedNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            <span className="text-xs font-semibold ml-1">({roiPct >= 0 ? '+' : ''}{roiPct.toFixed(1)}%)</span>
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-1.5 min-w-0">
+            <span
+              className={`text-base sm:text-xl font-black font-mono truncate ${isProfitable ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+            >
+              {isProfitable ? '+' : ''}${projectedNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span
+              className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${isProfitable
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                }`}
+            >
+              {roiPct >= 0 ? '+' : ''}{roiPct.toFixed(1)}%
+            </span>
           </div>
         </div>
       </div>
@@ -306,11 +318,10 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                               key={p}
                               type="button"
                               onClick={() => handlePriceChange(st.entry.id, String(p))}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${
-                                parseFloat(priceStr) === p
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
-                              }`}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${parseFloat(priceStr) === p
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                                }`}
                             >
                               ${p.toFixed(2)}
                             </button>
@@ -321,7 +332,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
 
                     {/* Batch Revenue Result */}
                     <div className="sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-800/60">
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase block flex items-center sm:justify-end gap-1">
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase flex items-center sm:justify-end gap-1">
                         <Calculator className="w-3 h-3" /> Batch Projected Revenue
                       </span>
                       <span className="text-base sm:text-xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">

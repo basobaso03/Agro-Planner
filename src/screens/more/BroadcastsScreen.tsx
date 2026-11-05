@@ -27,9 +27,9 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Header */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
-        <h1 className="text-base font-bold">Team Broadcast Stream</h1>
-        <p className="text-xs text-slate-400 mt-1">
+      <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs">
+        <h1 className="text-base font-black text-slate-950">Team Broadcast Stream</h1>
+        <p className="text-xs text-slate-600 mt-1 font-medium">
           Operational alerts, emergency notices, and harvest milestones dispatched by farm operators and executives.
         </p>
       </div>
@@ -48,7 +48,7 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
           {filtered.map((item) => (
             <div
               key={item.id}
-              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs space-y-3 text-xs"
+              className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs space-y-3 text-xs"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -56,41 +56,41 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                         item.severity === 'URGENT_GROUND'
-                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                          ? 'bg-rose-100 text-rose-900 border border-rose-300'
                           : item.severity === 'WARNING_CONTRA'
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
                           : item.severity === 'MILESTONE'
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          : 'bg-slate-100 text-slate-800 border border-slate-300'
                       }`}
                     >
                       {item.severity.replace(/_/g, ' ')}
                     </span>
-                    <span className="text-slate-400 font-medium">· {item.locationName}</span>
+                    <span className="text-slate-600 font-semibold">· {item.locationName}</span>
                   </div>
-                  <h2 className="text-sm font-bold text-slate-900 dark:text-white mt-1.5">
+                  <h2 className="text-sm font-bold text-slate-950 mt-1.5">
                     {item.title}
                   </h2>
                 </div>
 
-                <span className="text-[11px] text-slate-400 shrink-0">
+                <span className="text-[11px] text-slate-600 font-medium shrink-0">
                   {new Date(item.timestamp).toLocaleDateString()}
                 </span>
               </div>
 
-              <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">
+              <p className="text-slate-800 text-sm leading-relaxed">
                 {item.message}
               </p>
 
               {item.photoUrl && (
-                <div className="rounded-xl overflow-hidden max-h-48 border border-slate-200 dark:border-slate-700">
+                <div className="rounded-xl overflow-hidden max-h-48 border border-[#E8DFCE]">
                   <img src={item.photoUrl} alt="Broadcast Attachment" className="w-full h-full object-cover" />
                 </div>
               )}
 
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-400">
-                <span>By {item.actorName} ({item.actorRole})</span>
-                <span className="font-mono">Block #{item.sequenceNumber}</span>
+              <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between text-[11px] text-slate-600">
+                <span>By <strong className="text-slate-950">{item.actorName}</strong> ({item.actorRole})</span>
+                <span className="font-mono font-bold text-slate-800">Block #{item.sequenceNumber}</span>
               </div>
             </div>
           ))}

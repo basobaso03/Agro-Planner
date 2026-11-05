@@ -48,19 +48,19 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = () => {
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Storage Hero */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm space-y-3">
-        <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold">
+      <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs space-y-3">
+        <div className="text-[11px] uppercase tracking-wider text-slate-600 font-bold">
           High-Capacity IndexedDB Storage
         </div>
-        <div className="text-2xl font-bold">{usageMb} MB Used</div>
-        <div className="text-xs text-slate-400">
+        <div className="text-2xl font-black font-mono text-slate-950">{usageMb} MB Used</div>
+        <div className="text-xs text-slate-600 font-medium">
           Device Available Quota: ~{quotaMb} MB (IndexedDB replaces 5MB localStorage)
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs space-y-3 text-xs">
-        <div className="font-bold text-slate-900 dark:text-white text-sm">Storage Maintenance</div>
-        <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+      <div className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs space-y-3 text-xs">
+        <div className="font-black text-slate-950 text-sm">Storage Maintenance</div>
+        <p className="text-slate-800 leading-relaxed font-normal">
           The app stores cryptographic blocks, livestock photos, and offline journals locally. Pruning temporary cache will free storage while preserving all ledgers.
         </p>
 
@@ -68,7 +68,7 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = () => {
           <button
             type="button"
             onClick={handleClearCache}
-            className="w-full py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs text-center hover:bg-slate-50 active:scale-95 transition-all"
+            className="w-full py-2.5 px-3 rounded-xl border border-[#E0D7C6] bg-[#FAF8F5] text-slate-900 font-bold text-xs text-center hover:bg-[#F0EBE1] active:scale-95 transition-all shadow-xs cursor-pointer"
           >
             Prune Temporary Image Cache
           </button>

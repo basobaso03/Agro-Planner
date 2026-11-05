@@ -196,7 +196,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-black text-slate-950 mb-1">
-                  Site Name *
+                  Site Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -210,7 +210,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-black text-slate-950 mb-1">
-                  Region / District *
+                  Region / District <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -224,7 +224,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-black text-slate-950 mb-1">
-                  Primary Operator Name *
+                  Primary Operator Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -278,7 +278,7 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
         )}
 
         {/* Existing Sites List */}
-        <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+        <div className="space-y-2.5 pr-1">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black text-slate-950">
               Registered Sites ({locations.length})
@@ -294,6 +294,28 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
               </button>
             )}
           </div>
+
+          {locations.length === 0 && !isCreatingNew && (
+            <div className="p-6 text-center border-2 border-dashed border-[#E8DFCE] rounded-2xl space-y-3 bg-[#FAF8F5]">
+              <Building className="w-8 h-8 text-amber-600 mx-auto" />
+              <div>
+                <h4 className="text-sm font-black text-slate-950">No Farm Sites Registered</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                  Register your primary farm, kraal, station, or operational branch to begin managing livestock, inventory, and sales.
+                </p>
+              </div>
+              {canAdd && (
+                <button
+                  type="button"
+                  onClick={startCreate}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs cursor-pointer shadow-md inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>＋ Register First Site</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {locations.map((loc) => (
             <div

@@ -58,32 +58,32 @@ export const CreditSalesScreen: React.FC<CreditSalesScreenProps> = ({
       : settledSales;
 
   return (
-    <div className="p-4 sm:p-5 space-y-4 max-w-xl mx-auto pb-28">
+    <div className="w-full max-w-full sm:max-w-xl mx-auto px-3.5 sm:px-5 py-3.5 sm:py-5 space-y-4 pb-28 box-border overflow-x-hidden min-w-0">
       {/* 1. Compact Summary Strip */}
-      <div className="grid grid-cols-2 gap-3 p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs">
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 p-3.5 sm:p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs w-full box-border min-w-0">
+        <div className="min-w-0">
+          <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-amber-700 block truncate">
             Outstanding Receivables
           </span>
-          <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-1">
+          <div className="text-lg sm:text-2xl font-black font-mono text-slate-900 mt-1 truncate">
             {formatMoney(totalOutstanding, showNumbers)}
           </div>
-          <span className="text-[10px] text-slate-400 font-medium">Owed by customers</span>
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">Owed by customers</span>
         </div>
 
-        <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+        <div className="min-w-0">
+          <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-emerald-700 block truncate">
             Total Cash Collected
           </span>
-          <div className="text-xl sm:text-2xl font-black font-mono text-slate-900 mt-1">
+          <div className="text-lg sm:text-2xl font-black font-mono text-slate-900 mt-1 truncate">
             {formatMoney(totalCollected, showNumbers)}
           </div>
-          <span className="text-[10px] text-slate-400 font-medium">Deposits &amp; payments</span>
+          <span className="text-[9px] sm:text-[10px] text-slate-400 font-medium block truncate">Deposits &amp; payments</span>
         </div>
       </div>
 
       {/* 2. Filter Segment Chips (Neutral Muted when Count is 0 - Fixes B21) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none w-full min-w-0">
         <Chip
           label="Outstanding"
           count={outstandingSales.length}
@@ -129,7 +129,7 @@ export const CreditSalesScreen: React.FC<CreditSalesScreenProps> = ({
           onAction={handleOpenRecord}
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 w-full min-w-0">
           {filteredSales.map((sale) => (
             <SaleCard
               key={sale.id}

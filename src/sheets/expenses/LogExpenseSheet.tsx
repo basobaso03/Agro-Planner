@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FormSheet } from '../../components/ui/FormSheet.tsx';
 import { Field } from '../../components/ui/Field.tsx';
 import { MoneyInput } from '../../components/ui/MoneyInput.tsx';
@@ -9,7 +9,8 @@ import { dataService } from '../../services/dataService.ts';
 import { useToast } from '../../components/ui/Toast.tsx';
 import { nativeCamera } from '../../native/camera.ts';
 import { nativeFiles } from '../../native/files.ts';
-import { Camera, Image as ImageIcon, MapPin, X } from 'lucide-react';
+import { ImageViewerSheet } from '../../components/ui/ImageViewerSheet.tsx';
+import { Camera, Image as ImageIcon, MapPin, X, Eye, Upload } from 'lucide-react';
 import type { ExpenseCategory, FarmLocation, LivestockEntry, OrgMember } from '../../types/agro.ts';
 import type { RunwayAllocation } from '../../types/runway.ts';
 
@@ -38,6 +39,8 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
 }) => {
   const { showToast } = useToast();
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm({
     initial: {
@@ -97,21 +100,41 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
   });
 
   const handleCapturePhoto = async () => {
-    const photo = await nativeCamera.takePhoto();
-    if (photo?.dataUrl) {
-      const filename = `receipt_${Date.now()}.jpg`;
-      const saved = await nativeFiles.saveImageFile(photo.dataUrl, filename);
-      setPhotoDataUrl(saved || photo.dataUrl);
+    try {
+      const photo = await nativeCamera.takePhoto();
+      if (photo?.dataUrl) {
+        setPhotoDataUrl(photo.dataUrl);
+        const filename = `receipt_${Date.now()}.jpg`;
+        nativeFiles.saveImageFile(photo.dataUrl, filename).catch(() => { });
+      }
+    } catch {
+      fileInputRef.current?.click();
     }
   };
 
   const handlePickGallery = async () => {
-    const photo = await nativeCamera.pickFromGallery();
-    if (photo?.dataUrl) {
-      const filename = `receipt_${Date.now()}.jpg`;
-      const saved = await nativeFiles.saveImageFile(photo.dataUrl, filename);
-      setPhotoDataUrl(saved || photo.dataUrl);
+    try {
+      const photo = await nativeCamera.pickFromGallery();
+      if (photo?.dataUrl) {
+        setPhotoDataUrl(photo.dataUrl);
+        const filename = `receipt_${Date.now()}.jpg`;
+        nativeFiles.saveImageFile(photo.dataUrl, filename).catch(() => { });
+      }
+    } catch {
+      fileInputRef.current?.click();
     }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPhotoDataUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const amtNum = parseFloat(form.values.amount) || 0;
@@ -198,34 +221,78 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
         <div>
           <label className="text-xs font-bold text-slate-700 block mb-1.5">Receipt Attachment (Optional)</label>
           {photoDataUrl ? (
-            <div className="relative inline-block rounded-2xl overflow-hidden border border-slate-200">
-              <img src={photoDataUrl} alt="Receipt preview" className="w-24 h-24 object-cover" />
-              <button
-                type="button"
-                onClick={() => setPhotoDataUrl(null)}
-                className="absolute top-1 right-1 p-1 rounded-full bg-slate-900/80 text-white"
+            <div className="flex items-center gap-3">
+              <div
+                onClick={() => setPreviewOpen(true)}
+                className="group relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-emerald-400 bg-slate-100 cursor-pointer shadow-sm hover:ring-2 hover:ring-emerald-400 transition-all"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
+                <img
+                  src={photoDataUrl}
+                  alt="Receipt preview"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
+                <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[11px] font-bold gap-1">
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Zoom</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>View Full Screen</span>
+                </button>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoDataUrl(null)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Remove Receipt</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCapturePhoto}
-                className="flex-1 py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Snap Camera</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePickGallery}
-                className="flex-1 py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
-                <span>Choose Photo</span>
-              </button>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileInput}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCapturePhoto}
+                  className="flex-1 py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Snap Camera</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePickGallery}
+                  className="flex-1 py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Choose Photo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Upload image file"
+                >
+                  <Upload className="w-3.5 h-3.5 text-slate-600" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -245,6 +312,13 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
           />
         </Field>
       </div>
+
+      <ImageViewerSheet
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        imageUrl={photoDataUrl || ''}
+        title="Expense Receipt Preview"
+      />
     </FormSheet>
   );
 };

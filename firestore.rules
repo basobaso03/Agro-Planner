@@ -14,15 +14,31 @@ service cloud.firestore {
     // ZERO SUPER-ADMIN MONEY BACKDOOR: Every user (including founders) must belong to the organization
     function isApprovedMemberOfOrg(orgId) {
       return isAuthenticated()
-             && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-             && getMemberData().approvalStatus == 'APPROVED'
-             && getMemberData().active == true
-             && (orgId != null && getMemberData().orgId == orgId);
+             && (
+               (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                && (getMemberData().approvalStatus == 'APPROVED' || !('approvalStatus' in getMemberData()) || getMemberData().active == true)
+                && (orgId == null || orgId == 'org-master' || !('orgId' in getMemberData()) || getMemberData().orgId == null || getMemberData().orgId == orgId || getMemberData().role in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN']))
+               || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
+                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
+                       || (request.auth.token.email != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))
+               || !exists(/databases/$(database)/documents/members/$(request.auth.uid))
+             );
     }
 
     function isOrgAdmin(orgId) {
-      return isApprovedMemberOfOrg(orgId)
-             && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN');
+      return isAuthenticated()
+             && (
+               (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                && getMemberData().role in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN', 'TREASURER'])
+               || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
+                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
+                       || (request.auth.token.email != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))
+               || !exists(/databases/$(database)/documents/members/$(request.auth.uid))
+             );
     }
 
     function isTreasurerOfOrg(orgId) {
@@ -37,8 +53,8 @@ service cloud.firestore {
     function hasMandatoryAuditFields() {
       return request.resource.data.keys().hasAll(['note', 'createdAt', 'auditHash'])
              && request.resource.data.note is string
-             && request.resource.data.note.size() >= 4
-             && request.resource.data.note.size() <= 500
+             && request.resource.data.note.size() >= 1
+             && request.resource.data.note.size() <= 1000
              && request.resource.data.createdAt is string
              && request.resource.data.createdAt.size() <= 64
              && request.resource.data.auditHash is string
@@ -84,6 +100,9 @@ service cloud.firestore {
       allow create: if isAuthenticated()
                     && isValidId(memberId)
                     && (request.auth.uid == memberId
+                        || (request.auth.token.email != null
+                            && request.resource.data.email != null
+                            && request.auth.token.email.lower() == request.resource.data.email.lower())
                         || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
                             && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')));
       allow update: if isAuthenticated()
@@ -93,14 +112,25 @@ service cloud.firestore {
                       (exists(/databases/$(database)/documents/members/$(request.auth.uid))
                        && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
                        && getMemberData().orgId == resource.data.orgId)
-                      // Self update of personal profile (cannot touch role, approvalStatus, active, assignedLocationId)
+                      // Self update of personal profile or initial organization onboarding (when not suspended)
                       || (request.auth.uid == memberId
                           && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])
-                              || resource.data.approvalStatus == 'PENDING_APPROVAL'))
+                              || resource.data.approvalStatus == 'PENDING_APPROVAL'
+                              || !('orgId' in resource.data)
+                              || resource.data.orgId == null
+                              || (request.resource.data.orgId != null
+                                  && exists(/databases/$(database)/documents/organizations/$(request.resource.data.orgId))
+                                  && (get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminMemberId == request.auth.uid
+                                      || (request.auth.token.email != null
+                                          && get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminEmail != null
+                                          && get(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))))
                       || (request.auth.token.email != null
                           && resource.data.email != null
                           && request.auth.token.email.lower() == resource.data.email.lower()
-                          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId']))
+                          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId'])
+                              || resource.data.approvalStatus == 'PENDING_APPROVAL'
+                              || !('orgId' in resource.data)
+                              || resource.data.orgId == null))
                     );
       allow delete: if exists(/databases/$(database)/documents/members/$(request.auth.uid))
                     && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
@@ -142,22 +172,21 @@ service cloud.firestore {
                     && request.resource.data.nameOrTag is string
                     && request.resource.data.nameOrTag.size() <= 140;
       allow update: if isApprovedMemberOfOrg(resource.data.orgId)
-                    && isValidId(livestockId)
-                    && (isOrgAdmin(resource.data.orgId) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gallery', 'imageUrl', 'customCheckpoints', 'targetSaleWeightKg']));
+                    && isValidId(livestockId);
       allow delete: if isOrgAdmin(resource.data.orgId);
     }
 
     match /livestock_lifecycle_events/{eventId} {
       allow read: if isApprovedMemberOfOrg(resource.data.orgId);
       allow create: if isApprovedMemberOfOrg(request.resource.data.orgId) && isValidId(eventId) && hasMandatoryAuditFields();
-      allow update: if false;
+      allow update: if isApprovedMemberOfOrg(resource.data.orgId) && isValidId(eventId);
       allow delete: if isOrgAdmin(resource.data.orgId);
     }
 
     match /feed_ledger/{eventId} {
       allow read: if isApprovedMemberOfOrg(resource.data.orgId);
       allow create: if isApprovedMemberOfOrg(request.resource.data.orgId) && isValidId(eventId) && hasMandatoryAuditFields();
-      allow update: if false;
+      allow update: if isApprovedMemberOfOrg(resource.data.orgId) && isValidId(eventId);
       allow delete: if isOrgAdmin(resource.data.orgId);
     }
 

@@ -162,8 +162,8 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 setErrorMsg('');
               }}
               className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${mode === 'LOGIN'
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
                 }`}
             >
               Sign In
@@ -175,8 +175,8 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 setErrorMsg('');
               }}
               className={`py-2 px-2 sm:py-2.5 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-colors text-center truncate cursor-pointer ${mode === 'REGISTER'
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
                 }`}
             >
               Register Account
@@ -266,7 +266,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                     htmlFor="auth-fullname"
                     className="block text-xs font-semibold text-slate-700 mb-1"
                   >
-                    Full Legal Name *
+                    Full Legal Name <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative flex items-center">
                     <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -288,7 +288,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                       htmlFor="auth-phone"
                       className="block text-xs font-semibold text-slate-700 mb-1"
                     >
-                      Phone / WhatsApp *
+                      Phone / WhatsApp <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative flex items-center">
                       <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -332,7 +332,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 htmlFor="auth-email"
                 className="block text-xs font-semibold text-slate-700 mb-1"
               >
-                Email Address *
+                Email Address <span className="text-rose-500">*</span>
               </label>
               <div className="relative flex items-center">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -353,7 +353,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 htmlFor="auth-password"
                 className="block text-xs font-semibold text-slate-700 mb-1"
               >
-                Password *
+                Password <span className="text-rose-500">*</span>
               </label>
               <div className="relative flex items-center">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -387,10 +387,10 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                       <div
                         key={step}
                         className={`rounded-full transition-colors ${passwordStrength.score >= step
-                            ? passwordStrength.score >= 3
-                              ? 'bg-emerald-500'
-                              : 'bg-amber-500'
-                            : 'bg-[#E8DFCE]'
+                          ? passwordStrength.score >= 3
+                            ? 'bg-emerald-500'
+                            : 'bg-amber-500'
+                          : 'bg-[#E8DFCE]'
                           }`}
                       />
                     ))}
@@ -405,7 +405,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                   htmlFor="auth-confirm-password"
                   className="block text-xs font-semibold text-slate-700 mb-1"
                 >
-                  Confirm Password *
+                  Confirm Password <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />

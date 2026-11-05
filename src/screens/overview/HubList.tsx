@@ -12,11 +12,13 @@ import {
   Users,
   ShieldCheck,
   Megaphone,
+  MapPin,
 } from 'lucide-react';
 import { ListRow } from '../../components/ui/ListRow.tsx';
 import { formatMoney } from '../../utils/currency.ts';
 import { useNavigation } from '../../navigation/useNavigation.ts';
 import { PERMISSIONS } from '../../utils/permissions.ts';
+import { dataService } from '../../services/dataService.ts';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface HubListProps {
@@ -35,6 +37,7 @@ export interface HubListProps {
   generalStockValue?: number;
   lowStockItemsCount?: number;
   unreadBroadcastsCount?: number;
+  onOpenSiteManager?: () => void;
 }
 
 export const HubList: React.FC<HubListProps> = ({
@@ -53,6 +56,7 @@ export const HubList: React.FC<HubListProps> = ({
   generalStockValue = 0,
   lowStockItemsCount = 0,
   unreadBroadcastsCount = 0,
+  onOpenSiteManager,
 }) => {
   const { navigate } = useNavigation();
 
@@ -178,6 +182,14 @@ export const HubList: React.FC<HubListProps> = ({
 
         <div className="bg-white rounded-3xl border border-[#E8DFCE] divide-y divide-[#F0EBE1] overflow-hidden shadow-xs">
           <ListRow
+            icon={<MapPin className="w-5 h-5" />}
+            iconBg="bg-amber-600 text-white"
+            title="Operational Sites &amp; Locations"
+            subtitle="Manage farm sites, kraals, station GPS &amp; operators"
+            onClick={() => (onOpenSiteManager ? onOpenSiteManager() : navigate('siteCompare'))}
+          />
+
+          <ListRow
             icon={<Megaphone className="w-5 h-5" />}
             iconBg="bg-blue-500 text-white"
             title="Broadcast Center"
@@ -191,7 +203,7 @@ export const HubList: React.FC<HubListProps> = ({
             icon={<ShieldCheck className="w-5 h-5" />}
             iconBg="bg-slate-800 text-white"
             title="Audit Security Ledger"
-            subtitle="Immutable SHA-256 hash-chained trail"
+            subtitle="Immutable verified security audit trail"
             onClick={() => navigate('auditLedger')}
           />
 

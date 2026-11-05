@@ -25,24 +25,24 @@ export const FeedInventoryScreen: React.FC<FeedInventoryScreenProps> = ({
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Metric Cards */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-slate-900 text-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm">
-          <div className="text-xs text-slate-400 font-medium">Total Feed Stock</div>
-          <div className="text-2xl font-bold tracking-tight mt-0.5">{totalBags} bags</div>
-          <div className="text-xs text-emerald-400 mt-1">{(totalKg / 1000).toFixed(2)} metric tons</div>
+        <div className="bg-white border border-[#E8DFCE] p-4.5 rounded-2xl shadow-xs">
+          <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Total Feed Stock</div>
+          <div className="text-2xl font-black font-mono text-slate-950 tracking-tight mt-0.5">{totalBags} bags</div>
+          <div className="text-xs text-emerald-700 font-bold mt-1">{(totalKg / 1000).toFixed(2)} metric tons</div>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm">
-          <div className="text-xs text-slate-500 font-medium">Distinct Rations</div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white mt-0.5">
+        <div className="bg-white border border-[#E8DFCE] p-4.5 rounded-2xl shadow-xs">
+          <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Distinct Rations</div>
+          <div className="text-2xl font-black font-mono text-slate-950 tracking-tight mt-0.5">
             {summaries.length} formulas
           </div>
-          <div className="text-xs text-slate-400 mt-1">Append-only ledger</div>
+          <div className="text-xs text-slate-600 font-medium mt-1">Append-only ledger</div>
         </div>
       </div>
 
       {/* Stock Cards List */}
       <div className="space-y-3">
-        <div className="font-bold text-slate-900 dark:text-white text-sm">Feed Formulations & Rations</div>
+        <div className="font-black text-slate-950 text-sm">Feed Formulations & Rations</div>
         {summaries.length === 0 ? (
           <EmptyState
             icon="🌾"
@@ -55,22 +55,22 @@ export const FeedInventoryScreen: React.FC<FeedInventoryScreenProps> = ({
           summaries.map((item: any, idx: number) => (
             <div
               key={idx}
-              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs flex justify-between items-center text-xs"
+              className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs flex justify-between items-center text-xs"
             >
               <div>
-                <div className="font-bold text-slate-900 dark:text-white text-sm">
+                <div className="font-bold text-slate-950 text-sm">
                   {item.feedType}
                 </div>
-                <div className="text-slate-500 mt-0.5">
+                <div className="text-slate-600 font-medium mt-0.5">
                   {item.locationName} · {item.events.length} transactions
                 </div>
               </div>
 
               <div className="text-right">
-                <div className="text-base font-bold text-slate-900 dark:text-white">
+                <div className="text-base font-black font-mono text-slate-950">
                   {item.remainingBags || item.currentBagsBalance || 0} bags
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-[11px] text-slate-600 font-medium mt-0.5">
                   {(item.remainingKg || item.currentKgBalance || 0).toLocaleString()} kg net
                 </div>
               </div>

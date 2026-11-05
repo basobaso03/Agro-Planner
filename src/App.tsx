@@ -257,18 +257,30 @@ export default function App() {
     );
 
     const found =
-      matches.find((m) => m.approvalStatus === 'APPROVED' || m.active) || matches[0];
+      matches.find((m) => Boolean(m.orgId) && (m.approvalStatus === 'APPROVED' || m.active)) ||
+      matches.find((m) => Boolean(m.orgId)) ||
+      matches.find((m) => m.approvalStatus === 'APPROVED' || m.active) ||
+      matches[0];
 
     if (found) {
-      if (isPrimaryAdmin && (found.role !== 'ORG_ADMIN' || found.approvalStatus !== 'APPROVED')) {
+      if (isPrimaryAdmin) {
+        const fallbackOrgId = found.orgId || activeSession.activeOrgId || state.activeOrgId || state.organizations?.[0]?.id;
         return {
           ...found,
+          orgId: fallbackOrgId,
           role: 'ORG_ADMIN',
           approvalStatus: 'APPROVED',
           active: true,
         };
       }
-      return found;
+      // Non-admin members must only have an orgId if their member profile explicitly has one.
+      // Never inherit a stale session activeOrgId, ensuring fresh onboarding users reach OrgOnboardingModal.
+      const userOrgId = found.orgId || undefined;
+      return {
+        ...found,
+        orgId: userOrgId,
+        active: found.approvalStatus !== 'SUSPENDED',
+      };
     }
 
     // Fallback transient profile while state syncs
@@ -279,7 +291,8 @@ export default function App() {
       fullName: activeSession.displayName || normEmail.split('@')[0] || 'Member',
       phoneOrEmail: normEmail,
       role: isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER',
-      approvalStatus: 'APPROVED',
+      approvalStatus: isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL',
+      orgId: isPrimaryAdmin ? (state.activeOrgId || state.organizations?.[0]?.id) : undefined,
       authProviders: activeSession.providers,
       hasPasswordSetup: activeSession.providers.includes('password'),
       joinedAt: new Date().toISOString(),
@@ -324,8 +337,11 @@ export default function App() {
   useEffect(() => {
     if (activeOrg?.id) {
       dataService.checkRunwayReminders();
+      if (activeMember) {
+        void dataService.checkDueProtocolReminders(activeMember);
+      }
     }
-  }, [activeOrg?.id]);
+  }, [activeOrg?.id, activeMember?.id]);
 
   useEffect(() => {
     nativeKeyboard.init();
@@ -552,12 +568,34 @@ export default function App() {
   ]);
 
   const memberEquities = useMemo(() => {
+    // Unify member targets from active runway plan pledges
+    const activePlan = (state.runwayPlans || []).find(
+      (p) =>
+        (!currentOrgId || p.orgId === currentOrgId) &&
+        (p.status === 'ACTIVE' || p.status === 'PLEDGING' || p.status === 'DRAFT')
+    );
+    const unifiedMembers = activePlan
+      ? orgMembers.map((m) => {
+        const pledge = (state.runwayPledges || []).find(
+          (p) => p.planId === activePlan.id && p.memberId === m.id
+        );
+        if (pledge && pledge.amount > 0) {
+          return {
+            ...m,
+            targetContributionUsd: pledge.amount,
+            contributionPace: (pledge.pace === 'ONE_OFF' ? 'MILESTONE' : pledge.pace) || m.contributionPace,
+          };
+        }
+        return m;
+      })
+      : orgMembers;
+
     return computeMemberEquities(
-      orgMembers,
+      unifiedMembers,
       orgCapitalContributions,
       financials.totalNav
     );
-  }, [orgMembers, orgCapitalContributions, financials.totalNav]);
+  }, [orgMembers, orgCapitalContributions, financials.totalNav, state.runwayPlans, state.runwayPledges, currentOrgId]);
 
   const fixedAssetGroups = useMemo(() => {
     return computeFixedAssetGroups(
@@ -686,8 +724,8 @@ export default function App() {
     );
   }
 
-  // GATE 3: Zero-Trust Clearance Check (Suspended users are blocked)
-  if (activeMember.approvalStatus === 'SUSPENDED' || !activeMember.active) {
+  // GATE 3: Zero-Trust Clearance Check (Only explicitly suspended members of an organization are blocked)
+  if (activeMember.approvalStatus === 'SUSPENDED') {
     return (
       <>
         {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
@@ -770,7 +808,11 @@ export default function App() {
           />
         )}
         <div
-          className={`h-dvh max-h-dvh overflow-hidden relative flex flex-col ${activeFontCss} ${mobileFrameMode
+          style={{
+            height: 'var(--vvh, 100dvh)',
+            maxHeight: 'var(--vvh, 100dvh)',
+          }}
+          className={`overflow-hidden relative flex flex-col ${activeFontCss} ${mobileFrameMode
             ? 'max-w-[430px] mx-auto border-x border-[#E8DFCE] shadow-2xl bg-[#FAF7F2]'
             : 'w-full'
             }`}
@@ -788,6 +830,7 @@ export default function App() {
             onToggleShowNumbers={handleToggleShowNumbers}
             unreadNotificationsCount={unreadCount}
             onOpenNotifications={() => setDrawerOpen(true)}
+            onOpenSiteManager={() => setShowSiteManagerModal(true)}
           />
 
           {/* Main Viewport rendering Active Screen within Multi-Stack Navigation */}
@@ -813,6 +856,7 @@ export default function App() {
               onRecordSale={() => setShowRecordSaleSheet(true)}
               onAddLoanDebt={() => setShowNewDebtSheet(true)}
               onBroadcast={() => setShowBroadcastSheet(true)}
+              onOpenSiteManager={() => setShowSiteManagerModal(true)}
             />
           </main>
 

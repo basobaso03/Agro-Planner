@@ -98,6 +98,7 @@ import {
   dispatchSystemNotification,
   verifyDeviceBiometric,
 } from '../utils/mobileHardware.ts';
+import { compressImage } from '../utils/imageUpload.ts';
 import { PERMISSIONS } from '../utils/permissions.ts';
 import type {
   RunwayPlan,
@@ -384,6 +385,9 @@ class AgroDataService {
         initFirebaseInstance(this.getCustomFirebaseConfig());
       }
       if (!firestoreDb) throw new Error('Firestore is not available');
+      if (item.collectionPath !== 'members') {
+        await this.ensureCloudAuthUserAndMemberSynced(item.data?.orgId);
+      }
       await setDoc(doc(firestoreDb, item.collectionPath, item.docId), item.data);
     });
 
@@ -409,12 +413,20 @@ class AgroDataService {
         onAuthStateChanged(fb.auth, (user) => {
           this.currentUser = user;
           this.authListeners.forEach((cb) => cb(user));
-          if (user && !this.isSigningOut && fb.db) {
+          if (user && !user.isAnonymous && !this.isSigningOut && fb.db) {
             void (async () => {
               const providers = user.providerData.map((p) => p.providerId).filter(Boolean);
               const email = (user.email || '').trim().toLowerCase();
               const cloudMem = await this.fetchAuthoritativeCloudMember(user.uid, email);
               if (this.isSigningOut || !this.currentUser || this.currentUser.uid !== user.uid) {
+                return;
+              }
+
+              // STRICT ONLINE VALIDATION ON APP RESTART:
+              // If the user has a Firebase Auth session but their record was wiped/deleted from Cloud Firestore,
+              // immediately terminate the local session and require them to register again.
+              if (!cloudMem && email !== PRIMARY_ADMIN_EMAIL) {
+                await this.signOutCloud();
                 return;
               }
               const existingMem = cloudMem || this.findMemberByUidOrEmail(user.uid, email);
@@ -434,6 +446,7 @@ class AgroDataService {
                 emailVerified: user.emailVerified || providers.includes('google.com'),
                 providers: mergedProviders.length > 0 ? mergedProviders : ['google.com'],
                 isCloudAuth: true,
+                activeOrgId: existingMem?.orgId || undefined,
               };
               this.setActiveSession(nextSession);
               this.attachCloudListeners(fb.db!, user.uid);
@@ -444,6 +457,8 @@ class AgroDataService {
                 providers: nextSession.providers,
                 passwordVerifierHash: creds[email]?.verifierHash || existingMem?.passwordVerifierHash,
               });
+              // Automatically retry any pending or failed outbox items now that cloud auth is active
+              outboxService.retryFailed();
             })();
           }
           // Do NOT detach real-time listeners on mobile app startup or guest mode;
@@ -475,8 +490,38 @@ class AgroDataService {
         const parsed = JSON.parse(raw) as AgroStateSnapshot;
         if (parsed && typeof parsed === 'object') {
           const cleaned = sanitizeSnapshotOfLegacySeed(parsed);
+
+          // Purge requested user accounts from local state and credentials
+          const PURGED_EMAILS = ['neetresearch25@gmail.com'];
+          try {
+            const storedCreds = getStoredLocalCredentials();
+            let credsChanged = false;
+            for (const pe of PURGED_EMAILS) {
+              if (storedCreds[pe]) {
+                delete storedCreds[pe];
+                credsChanged = true;
+              }
+            }
+            if (credsChanged) {
+              window.localStorage.setItem(LOCAL_CREDENTIALS_STORAGE_KEY, JSON.stringify(storedCreds));
+            }
+            const sessRaw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+            if (sessRaw) {
+              const sess = JSON.parse(sessRaw);
+              if (sess && PURGED_EMAILS.includes((sess.email || '').trim().toLowerCase())) {
+                window.localStorage.removeItem(SESSION_STORAGE_KEY);
+                window.localStorage.removeItem('agro_active_org_id');
+                window.localStorage.removeItem('agro_planner_active_org_id');
+              }
+            }
+          } catch {}
+
           const creds = getStoredLocalCredentials();
-          cleaned.members = (cleaned.members || []).map((m) => {
+          const filteredMembers = (cleaned.members || []).filter((m) => {
+            const em = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+            return !PURGED_EMAILS.includes(em);
+          });
+          const enrichedMembers = filteredMembers.map((m) => {
             const email = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
             const rec = email ? creds[email] : null;
             if (rec || m.passwordVerifierHash || m.hasPasswordSetup) {
@@ -491,6 +536,106 @@ class AgroDataService {
             }
             return m;
           });
+
+          // Remove duplicate un-org'd member profiles when an org-scoped profile exists for the same uid or email
+          const orgBoundKeys = new Set<string>();
+          for (const m of enrichedMembers) {
+            if (m.orgId) {
+              if (m.uid) orgBoundKeys.add(`uid:${m.uid}`);
+              const em = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+              if (em) orgBoundKeys.add(`email:${em}`);
+            }
+          }
+          cleaned.members = enrichedMembers.filter((m) => {
+            if (m.orgId) return true;
+            if (m.uid && orgBoundKeys.has(`uid:${m.uid}`)) return false;
+            const em = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+            if (em && orgBoundKeys.has(`email:${em}`)) return false;
+            return true;
+          });
+
+          // Backfill orgId on any expenses missing orgId (e.g. from fixed asset purchases)
+          const locOrgMap = new Map<string, string>();
+          for (const l of cleaned.locations || []) {
+            if (l.orgId) locOrgMap.set(l.id, l.orgId);
+          }
+          const planOrgMap = new Map<string, string>();
+          for (const p of cleaned.runwayPlans || []) {
+            if (p.orgId) planOrgMap.set(p.id, p.orgId);
+          }
+          const fallbackOrgId = cleaned.activeOrgId || cleaned.organizations?.[0]?.id;
+          cleaned.expenses = (cleaned.expenses || []).map((e) => {
+            if (e.orgId) return e;
+            const inferredOrgId =
+              (e.runwayPlanId && planOrgMap.get(e.runwayPlanId)) ||
+              (e.locationId && locOrgMap.get(e.locationId)) ||
+              fallbackOrgId;
+            return inferredOrgId ? { ...e, orgId: inferredOrgId } : e;
+          });
+
+          // Reconcile and link unlinked runway purchases (e.g. fixed asset purchases or runway line purchases)
+          const allLines = cleaned.runwayLines || [];
+          const allPlans = cleaned.runwayPlans || [];
+          cleaned.expenses = (cleaned.expenses || []).map((e) => {
+            let updated = { ...e };
+            // If expense has no runwayLineId or runwayPlanId, match by line title or fixed asset note
+            if (!updated.runwayLineId || !updated.runwayPlanId) {
+              const matchedLine = allLines.find((l) => {
+                if (updated.note && (updated.note.includes(l.title) || updated.note.includes(`Purchase of ${l.title}`))) return true;
+                return false;
+              });
+              if (matchedLine) {
+                updated.runwayLineId = matchedLine.id;
+                updated.runwayPlanId = matchedLine.planId;
+                const matchedPlan = allPlans.find((p) => p.id === matchedLine.planId);
+                if (matchedPlan?.orgId) updated.orgId = matchedPlan.orgId;
+                if (updated.approvalStatus === 'PENDING_MULTISIG') {
+                  updated.approvalStatus = 'APPROVED';
+                }
+              }
+            } else if (updated.runwayPlanId && updated.approvalStatus === 'PENDING_MULTISIG') {
+              // Runway purchases are pre-approved in the capital plan
+              updated.approvalStatus = 'APPROVED';
+            }
+            return updated;
+          });
+
+          // Deduplicate multiple contra-reversals referencing the same original transaction
+          const seenExpenseContraRefs = new Set<string>();
+          cleaned.expenses = (cleaned.expenses || []).filter((e) => {
+            if (e.direction === 'CONTRA_REVERSAL' && e.referenceTransactionId) {
+              if (seenExpenseContraRefs.has(e.referenceTransactionId)) {
+                return false; // remove duplicate contra-reversal
+              }
+              seenExpenseContraRefs.add(e.referenceTransactionId);
+            }
+            return true;
+          });
+
+          // Also reconcile fixedAssets orgId to match the active organization or runway plan
+          cleaned.fixedAssets = (cleaned.fixedAssets || []).map((a) => {
+            if (a.orgId && a.orgId !== 'org-master') return a;
+            const linkedExp = cleaned.expenses.find((e) => e.note && e.note.includes(a.assetName));
+            if (linkedExp?.orgId) {
+              return { ...a, orgId: linkedExp.orgId };
+            }
+            if (fallbackOrgId) {
+              return { ...a, orgId: fallbackOrgId };
+            }
+            return a;
+          });
+
+          const seenAssetContraRefs = new Set<string>();
+          cleaned.fixedAssets = (cleaned.fixedAssets || []).filter((a) => {
+            if (a.direction === 'CONTRA_REVERSAL' && a.referenceTransactionId) {
+              if (seenAssetContraRefs.has(a.referenceTransactionId)) {
+                return false; // remove duplicate contra-reversal
+              }
+              seenAssetContraRefs.add(a.referenceTransactionId);
+            }
+            return true;
+          });
+
           return cleaned;
         }
       }
@@ -640,7 +785,30 @@ class AgroDataService {
     const members = (this.state.members || []).filter((m) => m.orgId === orgId);
     const contributions = (this.state.capitalContributions || []).filter((c) => c.orgId === orgId);
     const financials = this.computeFinancialSummary();
-    return computeMemberEquities(members, contributions, financials.leftMoney);
+
+    // Fetch active runway plan to unify member targets from active pledges
+    const activePlan = (this.state.runwayPlans || []).find(
+      (p) =>
+        (!orgId || p.orgId === orgId) &&
+        (p.status === 'ACTIVE' || p.status === 'PLEDGING' || p.status === 'DRAFT')
+    );
+    const unifiedMembers = activePlan
+      ? members.map((m) => {
+          const pledge = (this.state.runwayPledges || []).find(
+            (p) => p.planId === activePlan.id && p.memberId === m.id
+          );
+          if (pledge && pledge.amount > 0) {
+            return {
+              ...m,
+              targetContributionUsd: pledge.amount,
+              contributionPace: (pledge.pace === 'ONE_OFF' ? 'MILESTONE' : pledge.pace) || m.contributionPace,
+            };
+          }
+          return m;
+        })
+      : members;
+
+    return computeMemberEquities(unifiedMembers, contributions, financials.leftMoney);
   }
 
   public computeFinancialSummary(): FinancialSummary {
@@ -699,6 +867,7 @@ class AgroDataService {
       kgConsumed: params.quantityKg,
       feedType: params.feedBrandOrRation,
       note: params.notes,
+      photoDataUrl: params.photoDataUrl,
       actor: params.actor,
     });
   }
@@ -742,14 +911,17 @@ class AgroDataService {
       if (s === 'SUSPENDED') return 2;
       return 1; // PENDING_APPROVAL
     };
-    const roleScore = (r?: Role) => {
-      if (r === 'SYNDICATE_ADMIN') return 4;
-      if (r === 'TREASURER') return 3;
+    const roleScore = (r?: Role | string) => {
+      if (r === 'ORG_ADMIN' || r === 'SYNDICATE_ADMIN') return 4;
+      if (r === 'TREASURER' || r === 'SYNDICATE_TREASURER') return 3;
       if (r === 'GROUND_OPERATOR') return 2;
-      return 1; // REMOTE_INVESTOR
+      return 1; // MEMBER / REMOTE_INVESTOR
     };
 
     const sorted = [...candidates].sort((a, b) => {
+      // Prefer records that already belong to an organization over un-org'd legacy stubs
+      const orgDiff = (b.orgId ? 1 : 0) - (a.orgId ? 1 : 0);
+      if (orgDiff !== 0) return orgDiff;
       const sDiff = statusScore(b.approvalStatus, b.active) - statusScore(a.approvalStatus, a.active);
       if (sDiff !== 0) return sDiff;
       const rDiff = roleScore(b.role) - roleScore(a.role);
@@ -762,6 +934,7 @@ class AgroDataService {
     const hasPwd = candidates.some((c) => c.hasPasswordSetup || Boolean(c.passwordVerifierHash));
     const verifierHash = candidates.find((c) => Boolean(c.passwordVerifierHash))?.passwordVerifierHash;
     const assignedLoc = winner.assignedLocationId || candidates.find((c) => Boolean(c.assignedLocationId))?.assignedLocationId;
+    const orgId = winner.orgId || candidates.find((c) => Boolean(c.orgId))?.orgId;
     const phone = winner.phone || candidates.find((c) => Boolean(c.phone))?.phone;
     const jobTitle =
       winner.jobTitle && winner.jobTitle !== 'Organization Member' && winner.jobTitle !== 'Syndicate Member'
@@ -770,6 +943,7 @@ class AgroDataService {
 
     return {
       ...winner,
+      orgId,
       assignedLocationId: assignedLoc,
       phone,
       jobTitle,
@@ -856,9 +1030,11 @@ class AgroDataService {
       }
     }
 
-    const localMatch = this.findMemberByUidOrEmail(uid, normEmail);
-    if (localMatch) {
-      foundDocs.push(localMatch);
+    if (!firestoreDb && !foundDocs.length) {
+      const localMatch = this.findMemberByUidOrEmail(uid, normEmail);
+      if (localMatch) {
+        foundDocs.push(localMatch);
+      }
     }
 
     const best = this.pickBestMemberRecord(foundDocs);
@@ -926,7 +1102,7 @@ class AgroDataService {
         approvalStatus: isPrimaryAdmin
           ? 'APPROVED'
           : existing.approvalStatus || (existing.active ? 'APPROVED' : 'PENDING_APPROVAL'),
-        active: isPrimaryAdmin ? true : existing.approvalStatus === 'APPROVED' || existing.active,
+        active: isPrimaryAdmin ? true : existing.approvalStatus !== 'SUSPENDED',
         authProviders: mergedProviders,
         hasPasswordSetup: hasPassword,
         passwordVerifierHash,
@@ -983,7 +1159,7 @@ class AgroDataService {
       joinedAt: now,
       updatedAt: now,
       lastLoginAt: now,
-      active: isPrimaryAdmin,
+      active: true,
     };
 
     const audit = this.createChainedAuditEvent({
@@ -1116,72 +1292,105 @@ class AgroDataService {
       throw new Error('Password must be at least 8 characters long for account security.');
     }
 
-    if (!firebaseAuth) {
+    // STRICTLY ONLINE CHECK: No offline dummy registration
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error('Online connection required: An active internet connection is required to register.');
+    }
+
+    if (!firebaseAuth || !firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
 
-    // Check Cloud Firestore first (in case user was pre-authorized by Admin or previously registered)
-    let existing = await this.fetchAuthoritativeCloudMember(undefined, cleanEmail);
-    if (existing && existing.hasPasswordSetup) {
-      throw new Error('An account with this email already has a password configured. Please sign in instead.');
+    if (!firebaseAuth || !firestoreDb) {
+      throw new Error('Online connection required: Authentication service could not connect to cloud servers.');
     }
 
-    const verifierHash = computePasswordVerifier(cleanEmail, params.password);
-    let resolvedUid = existing?.uid || existing?.id || `usr-${sha256Hex(cleanEmail).slice(0, 16)}`;
-    let isCloudUser = false;
+    // Check Cloud Firestore directly first
+    let existing = await this.fetchAuthoritativeCloudMember(undefined, cleanEmail);
+    if (existing && existing.hasPasswordSetup) {
+      throw new Error('An account with this email is already registered online. Please sign in instead.');
+    }
 
-    if (firebaseAuth) {
-      try {
-        const cred = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
-        resolvedUid = cred.user.uid;
-        isCloudUser = true;
-        await updateProfile(cred.user, { displayName: cleanName });
-        // Re-fetch with authenticated session token in case Firestore rules blocked unauthenticated read
-        const postAuthExisting = await this.fetchAuthoritativeCloudMember(resolvedUid, cleanEmail);
-        if (postAuthExisting) {
-          existing = postAuthExisting;
+    let resolvedUid: string;
+    let isCloudUser = true;
+
+    try {
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
+      resolvedUid = cred.user.uid;
+      await updateProfile(cred.user, { displayName: cleanName });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('auth/email-already-in-use')) {
+        try {
+          const signInCred = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
+          resolvedUid = signInCred.user.uid;
+          await updateProfile(signInCred.user, { displayName: cleanName });
+          const postAuthExisting = await this.fetchAuthoritativeCloudMember(resolvedUid, cleanEmail);
+          if (postAuthExisting) {
+            existing = postAuthExisting;
+          }
+        } catch {
+          throw new Error('This email is already registered online. Please sign in with your password, or use Google Sign-In.');
         }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('auth/email-already-in-use')) {
-          throw new Error('This email is already registered. Please sign in or use Google Sign-In.');
-        }
-        // If Email/Password provider is not yet enabled in Firebase Console (operation-not-allowed),
-        // proceed seamlessly with our cryptographic Zero-Trust verifier vault
+      } else {
+        throw new Error(err instanceof Error ? err.message : 'Online registration failed. Please check your internet connection.');
       }
     }
 
-    saveStoredLocalCredential(cleanEmail, verifierHash);
+    const now = new Date().toISOString();
+    const isPrimaryAdmin = cleanEmail === PRIMARY_ADMIN_EMAIL;
+    const initialRole: Role = isPrimaryAdmin ? 'ORG_ADMIN' : 'MEMBER';
+    const initialApproval: MemberApprovalStatus = isPrimaryAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
 
-    const mergedProviders = Array.from(
-      new Set([...(existing?.authProviders || []), 'password'])
-    );
-
-    const member = this.ensureAuthenticatedMemberProfile({
+    const newMember: OrgMember = {
+      id: resolvedUid,
       uid: resolvedUid,
       email: cleanEmail,
       fullName: cleanName,
-      phone: params.phone.trim(),
-      jobTitle: params.jobTitle?.trim(),
-      providers: mergedProviders,
-      passwordVerifierHash: verifierHash,
-    });
+      phoneOrEmail: (params.phone?.trim() || cleanEmail).slice(0, 160),
+      phone: params.phone?.trim().slice(0, 60),
+      jobTitle: params.jobTitle?.trim().slice(0, 120) || (isPrimaryAdmin ? 'Managing Organization Founder' : 'Member'),
+      preferredContact: 'EMAIL',
+      role: initialRole,
+      approvalStatus: initialApproval,
+      authProviders: ['password'],
+      hasPasswordSetup: true,
+      joinedAt: now,
+      updatedAt: now,
+      lastLoginAt: now,
+      active: isPrimaryAdmin,
+      // orgId is undefined so user encounters Gate 2 OrgOnboardingModal
+    };
+
+    // STRICTLY ONLINE WRITE: Directly write to Cloud Firestore without local queueing
+    try {
+      const cleanData = JSON.parse(JSON.stringify(newMember));
+      await setDoc(doc(firestoreDb, 'members', resolvedUid), cleanData);
+    } catch (cloudErr: any) {
+      throw new Error(`Online registration failed while saving to database: ${cloudErr.message || 'Permission or network error.'}`);
+    }
+
+    const nextMembers = [
+      ...this.state.members.filter(
+        (m) => m.id !== newMember.id && m.uid !== newMember.uid && (m.email || '').toLowerCase() !== cleanEmail
+      ),
+      newMember,
+    ];
+    this.saveLocalState({ ...this.state, members: nextMembers });
 
     const session: AuthenticatedSession = {
       uid: resolvedUid,
       email: cleanEmail,
-      displayName: member.fullName,
+      displayName: cleanName,
       emailVerified: cleanEmail === PRIMARY_ADMIN_EMAIL || isCloudUser,
-      providers: mergedProviders,
-      isCloudAuth: isCloudUser,
+      providers: ['password'],
+      isCloudAuth: true,
     };
     this.setActiveSession(session);
 
-    if (firestoreDb) {
-      this.attachCloudListeners(firestoreDb, resolvedUid);
-    }
+    this.attachCloudListeners(firestoreDb, resolvedUid);
 
-    return member;
+    return newMember;
   }
 
   public async signInWithEmailAccount(params: {
@@ -1193,93 +1402,89 @@ class AgroDataService {
       throw new Error('Please enter both your email address and password.');
     }
 
-    const verifierHash = computePasswordVerifier(cleanEmail, params.password);
-    if (!firebaseAuth) {
+    // STRICTLY ONLINE CHECK: No offline dummy login
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      throw new Error('Online connection required: An active internet connection is required to sign in.');
+    }
+
+    if (!firebaseAuth || !firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
 
-    let existingLocal = await this.fetchAuthoritativeCloudMember(undefined, cleanEmail);
+    if (!firebaseAuth || !firestoreDb) {
+      throw new Error('Online connection required: Authentication service could not connect to cloud servers.');
+    }
 
-    // 1. Try Firebase Auth Email/Password sign in first
-    if (firebaseAuth) {
-      try {
-        const cred = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
-        const user = cred.user;
-        // Now that Firebase Auth is authenticated, query Firestore again to ensure we get any approved profile
-        const cloudConfirmed = await this.fetchAuthoritativeCloudMember(user.uid, cleanEmail);
-        if (cloudConfirmed) {
-          existingLocal = cloudConfirmed;
-        }
-        const providers = Array.from(
-          new Set([
-            ...user.providerData.map((p) => p.providerId),
-            ...(existingLocal?.authProviders || []),
-            'password',
-          ])
-        );
-        const member = this.ensureAuthenticatedMemberProfile({
-          uid: user.uid,
-          email: cleanEmail,
-          fullName: existingLocal?.fullName || user.displayName || cleanEmail.split('@')[0],
-          providers,
-          passwordVerifierHash: verifierHash,
-        });
-        this.setActiveSession({
-          uid: user.uid,
-          email: cleanEmail,
-          displayName: member.fullName,
-          emailVerified: true,
-          providers,
-          isCloudAuth: true,
-        });
-        if (firestoreDb) {
-          this.attachCloudListeners(firestoreDb, user.uid);
-        }
-        return member;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('auth/wrong-password') || msg.includes('auth/invalid-credential')) {
-          // Also check if user linked password via cryptographic verifier in Settings
-          if (!existingLocal || existingLocal.passwordVerifierHash !== verifierHash) {
-            throw new Error('Invalid email or password. Please verify your credentials.');
-          }
-        }
+    // 1. Strictly authenticate with Firebase Auth online
+    let user: any;
+    try {
+      const cred = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, params.password);
+      user = cred.user;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('auth/wrong-password') ||
+        msg.includes('auth/invalid-credential') ||
+        msg.includes('auth/user-not-found') ||
+        msg.includes('auth/invalid-email')
+      ) {
+        throw new Error('Invalid email or password. If your data was wiped or deleted, please register again to create your account.');
       }
+      throw new Error(err instanceof Error ? err.message : 'Online authentication failed. Please check your internet connection.');
     }
 
-    // 2. Verify against Zero-Trust Cryptographic Password Verifier (supports Google accounts that linked a password in Settings!)
-    if (existingLocal && existingLocal.passwordVerifierHash === verifierHash) {
-      const providers = Array.from(
-        new Set([...(existingLocal.authProviders || []), 'password'])
-      );
-      const updated = this.ensureAuthenticatedMemberProfile({
-        uid: existingLocal.uid || existingLocal.id,
-        email: cleanEmail,
-        fullName: existingLocal.fullName,
-        providers,
-        passwordVerifierHash: verifierHash,
-      });
-      this.setActiveSession({
-        uid: updated.uid || updated.id,
-        email: cleanEmail,
-        displayName: updated.fullName,
-        emailVerified: true,
-        providers,
-        isCloudAuth: Boolean(this.currentUser),
-      });
-      if (firestoreDb) {
-        this.attachCloudListeners(firestoreDb, updated.uid || updated.id);
-      }
-      return updated;
+    // 2. Fetch authoritative profile from Cloud Firestore online
+    const cloudMember = await this.fetchAuthoritativeCloudMember(user.uid, cleanEmail);
+
+    if (!cloudMember) {
+      // User authenticated in Firebase Auth, but account was deleted/wiped from the database!
+      // Strictly require re-registration
+      throw new Error('Account record not found in the database. Your previous data was wiped. Please register again to set up your account.');
     }
 
-    if (existingLocal && !existingLocal.hasPasswordSetup) {
-      throw new Error(
-        'This account was created with Google Sign-In and does not have a password set yet. Please click "Continue with Google" and set up your password in Settings.'
-      );
+    const providers = Array.from(
+      new Set([
+        ...user.providerData.map((p: any) => p.providerId),
+        ...(cloudMember.authProviders || []),
+        'password',
+      ])
+    );
+
+    const now = new Date().toISOString();
+    const updatedMember: OrgMember = {
+      ...cloudMember,
+      uid: user.uid,
+      lastLoginAt: now,
+      authProviders: providers,
+    };
+
+    // Update login timestamp in Cloud Firestore
+    try {
+      await setDoc(doc(firestoreDb, 'members', user.uid), JSON.parse(JSON.stringify(updatedMember)), { merge: true });
+    } catch {
+      // Non-fatal if permission-restricted
     }
 
-    throw new Error('No account found with matching email and password. Please register or sign in with Google.');
+    const nextMembers = [
+      ...this.state.members.filter(
+        (m) => m.id !== updatedMember.id && m.uid !== updatedMember.uid && (m.email || '').toLowerCase() !== cleanEmail
+      ),
+      updatedMember,
+    ];
+    this.saveLocalState({ ...this.state, members: nextMembers });
+
+    this.setActiveSession({
+      uid: user.uid,
+      email: cleanEmail,
+      displayName: updatedMember.fullName,
+      emailVerified: true,
+      providers,
+      isCloudAuth: true,
+      activeOrgId: updatedMember.orgId,
+    });
+
+    this.attachCloudListeners(firestoreDb, user.uid);
+    return updatedMember;
   }
 
   /**
@@ -1695,6 +1900,52 @@ class AgroDataService {
   }
 
   /**
+   * Permanently purge an account by email from local state, stored credentials, session and cloud
+   */
+  public purgeAccountByEmail(email: string): void {
+    const norm = email.trim().toLowerCase();
+    this.state = {
+      ...this.state,
+      members: (this.state.members || []).filter(
+        (m) => (m.email || m.phoneOrEmail || '').trim().toLowerCase() !== norm
+      ),
+    };
+    if (typeof window !== 'undefined') {
+      try {
+        const creds = getStoredLocalCredentials();
+        if (creds[norm]) {
+          delete creds[norm];
+          window.localStorage.setItem(LOCAL_CREDENTIALS_STORAGE_KEY, JSON.stringify(creds));
+        }
+        const sessRaw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+        if (sessRaw) {
+          const sess = JSON.parse(sessRaw);
+          if ((sess?.email || '').trim().toLowerCase() === norm) {
+            window.localStorage.removeItem(SESSION_STORAGE_KEY);
+            this.activeSession = null;
+          }
+        }
+        this.saveLocalState(this.state);
+      } catch (e) {
+        console.warn('Purge account local error:', e);
+      }
+    }
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (firestoreDb) {
+      try {
+        const qEmail = query(collection(firestoreDb, 'members'), where('email', '==', norm));
+        getDocs(qEmail).then((snap) => {
+          snap.forEach((d) => {
+            deleteDoc(doc(firestoreDb!, 'members', d.id)).catch(() => {});
+          });
+        }).catch(() => {});
+      } catch {}
+    }
+  }
+
+  /**
    * Admin Utility: Wipe any legacy demo data or perform a clean production ledger reset
    */
   public async wipeAllDemoAndLedgerData(
@@ -1776,6 +2027,7 @@ class AgroDataService {
 
     const genesisAudit: AuditNotificationEvent = {
       id: `AUD-001-${Date.now().toString(36).toUpperCase()}`,
+      orgId: actor.orgId || this.state.activeOrgId || 'org-master',
       sequenceNumber: 1,
       timestamp: now,
       actorId: actor.id,
@@ -1856,6 +2108,10 @@ class AgroDataService {
       this.currentUser = null;
       this.activeSession = null;
 
+      // Clear persistent outbox queue and high-capacity IndexedDB appStorage
+      outboxService.clearQueue();
+      await appStorage.clearAll();
+
       if (typeof window !== 'undefined') {
         try {
           window.localStorage.clear();
@@ -1866,6 +2122,14 @@ class AgroDataService {
           window.sessionStorage.clear();
         } catch {
           // Ignore session storage clear error
+        }
+        if ('caches' in window) {
+          try {
+            const keys = await window.caches.keys();
+            await Promise.all(keys.map((k) => window.caches.delete(k)));
+          } catch {
+            // Ignore cache clear error
+          }
         }
       }
 
@@ -2088,12 +2352,14 @@ class AgroDataService {
   }
 
   private attachCloudListeners(db: Firestore, uid?: string) {
-    if (this.cloudSyncActive && uid && this.activeListenerUid === uid) {
+    const activeOrgId = this.getActiveOrgId();
+    const listenerKey = `${uid ?? this.currentUser?.uid ?? 'anon'}::${activeOrgId}`;
+    if (this.cloudSyncActive && this.activeListenerUid === listenerKey) {
       return;
     }
     this.detachCloudListeners();
     this.cloudSyncActive = true;
-    this.activeListenerUid = uid ?? this.currentUser?.uid ?? null;
+    this.activeListenerUid = listenerKey;
 
     const collectionsMap: {
       path: string;
@@ -2280,8 +2546,13 @@ class AgroDataService {
       ];
 
     collectionsMap.forEach(({ path, apply }) => {
+      const targetQuery =
+        path === 'locations' || path === 'members' || !activeOrgId
+          ? collection(db, path)
+          : query(collection(db, path), where('orgId', '==', activeOrgId));
+
       const unsub = onSnapshot(
-        collection(db, path),
+        targetQuery,
         (snap) => {
           const items = snap.docs.map((d) => d.data());
           apply(items);
@@ -2337,14 +2608,19 @@ class AgroDataService {
       }
     }
 
+    const activeOrgId = this.getActiveOrgId();
     const fetchCol = async (colPath: string) => {
+      const q =
+        colPath === 'locations' || colPath === 'members' || !activeOrgId
+          ? collection(firestoreDb!, colPath)
+          : query(collection(firestoreDb!, colPath), where('orgId', '==', activeOrgId));
       try {
-        const snap = await getDocsFromServer(collection(firestoreDb!, colPath));
+        const snap = await getDocsFromServer(q);
         return { colPath, docs: snap.docs.map((d) => d.data()) };
       } catch (err) {
         console.warn(`Direct server query failed for ${colPath}, falling back to cache:`, err);
         try {
-          const snap = await getDocs(collection(firestoreDb!, colPath));
+          const snap = await getDocs(q);
           return { colPath, docs: snap.docs.map((d) => d.data()) };
         } catch (innerErr) {
           console.warn(`Cache read also failed for ${colPath}:`, innerErr);
@@ -2477,15 +2753,135 @@ class AgroDataService {
     };
   }
 
+  /**
+   * Ensures that an active Firebase Auth user exists and that their corresponding
+   * `/members/$(request.auth.uid)` document in Cloud Firestore is synchronized with
+   * their current approved organization and role. This prevents `permission-denied`
+   * when legacy member IDs (e.g. `founder-basera`) differ from `request.auth.uid`.
+   */
+  private async ensureCloudAuthUserAndMemberSynced(targetOrgId?: string): Promise<void> {
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (!firestoreDb) return;
+
+    if (firebaseAuth && !firebaseAuth.currentUser && this.activeSession) {
+      try {
+        await signInAnonymously(firebaseAuth);
+      } catch {
+        // Ignore anonymous auth fallback error
+      }
+    }
+
+    const authUid = firebaseAuth?.currentUser?.uid;
+    if (!authUid) return;
+
+    const sessionEmail = (
+      firebaseAuth?.currentUser?.email ||
+      this.activeSession?.email ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+    const localMember =
+      this.findMemberByUidOrEmail(authUid, sessionEmail || undefined) ||
+      (this.state.activeOrgId ? this.state.members.find((m) => m.orgId === this.state.activeOrgId) : null) ||
+      this.state.members[0];
+
+    const resolvedOrgId =
+      targetOrgId ||
+      localMember?.orgId ||
+      this.activeSession?.activeOrgId ||
+      (sessionEmail === PRIMARY_ADMIN_EMAIL ? (this.state.activeOrgId || 'org-master') : undefined);
+
+    if (!resolvedOrgId && sessionEmail !== PRIMARY_ADMIN_EMAIL) {
+      // Do not synthesize or force a default organization on a member who is onboarding
+      return;
+    }
+
+    const syncedMemberDoc: OrgMember = {
+      ...(localMember || {
+        fullName: firebaseAuth?.currentUser?.displayName || 'Member',
+        phoneOrEmail: sessionEmail || 'member@venture.local',
+        role: sessionEmail === PRIMARY_ADMIN_EMAIL ? 'ORG_ADMIN' : 'MEMBER',
+        joinedAt: new Date().toISOString(),
+      }),
+      id: authUid,
+      uid: authUid,
+      orgId: resolvedOrgId,
+      role:
+        sessionEmail === PRIMARY_ADMIN_EMAIL
+          ? 'ORG_ADMIN'
+          : localMember?.role || 'MEMBER',
+      approvalStatus: localMember?.approvalStatus || (sessionEmail === PRIMARY_ADMIN_EMAIL ? 'APPROVED' : 'PENDING_APPROVAL'),
+      active: sessionEmail === PRIMARY_ADMIN_EMAIL ? true : Boolean(localMember?.active),
+    };
+
+    try {
+      const cleanMember = JSON.parse(JSON.stringify(syncedMemberDoc));
+      await setDoc(doc(firestoreDb, 'members', authUid), cleanMember, { merge: true });
+    } catch (syncErr) {
+      console.warn(`Member auth pre-sync notice for ${authUid}:`, syncErr);
+    }
+  }
+
   private async persistDocumentToCloudIfActive(collectionPath: string, docId: string, data: object) {
     if (!firestoreDb) {
       initFirebaseInstance(this.getCustomFirebaseConfig());
     }
     const cleanData = JSON.parse(JSON.stringify(data));
+
+    // Pre-flight document size reduction to prevent exceeding Firestore 1MB (1,048,576 bytes) document ceiling
+    if (cleanData.imageUrl && typeof cleanData.imageUrl === 'string' && cleanData.imageUrl.length > 150000) {
+      try {
+        cleanData.imageUrl = await compressImage(cleanData.imageUrl, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
+      } catch {}
+    }
+    if (cleanData.photoUrl && typeof cleanData.photoUrl === 'string' && cleanData.photoUrl.length > 150000) {
+      try {
+        cleanData.photoUrl = await compressImage(cleanData.photoUrl, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
+      } catch {}
+    }
+    if (Array.isArray(cleanData.gallery) && cleanData.gallery.length > 0) {
+      const recent = cleanData.gallery.slice(-6);
+      cleanData.gallery = await Promise.all(
+        recent.map(async (p: string) => {
+          if (typeof p === 'string' && p.length > 120000) {
+            try {
+              return await compressImage(p, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
+            } catch {
+              return p;
+            }
+          }
+          return p;
+        })
+      );
+    }
+
     outboxService.enqueue(collectionPath, docId, cleanData);
 
     if (firestoreDb) {
       try {
+        if (collectionPath !== 'members') {
+          await this.ensureCloudAuthUserAndMemberSynced(cleanData.orgId);
+        } else {
+          const authUid = firebaseAuth?.currentUser?.uid;
+          if (
+            authUid &&
+            authUid !== docId &&
+            (cleanData.uid === authUid ||
+              (cleanData.email &&
+                firebaseAuth?.currentUser?.email &&
+                cleanData.email.trim().toLowerCase() ===
+                  firebaseAuth.currentUser.email.trim().toLowerCase()))
+          ) {
+            await setDoc(doc(firestoreDb, 'members', authUid), {
+              ...cleanData,
+              id: authUid,
+              uid: authUid,
+            }).catch(() => {});
+          }
+        }
         // Protect against demoting an already approved member on app reinstall or new phone:
         if (collectionPath === 'members' && cleanData.approvalStatus === 'PENDING_APPROVAL') {
           try {
@@ -2586,6 +2982,7 @@ class AgroDataService {
 
     const newAuditEvent: AuditNotificationEvent = {
       id: `AUD-${String(sequenceNumber).padStart(3, '0')}-${Date.now().toString(36).toUpperCase()}`,
+      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
       sequenceNumber,
       timestamp,
       actorId: params.actor.id,
@@ -2843,6 +3240,7 @@ class AgroDataService {
         `Initial capital contribution by ${newMember.fullName} upon joining organization`;
       const capEvent: CapitalContributionEvent = {
         id: capId,
+        orgId: newMember.orgId,
         memberId: newMember.id,
         memberName: newMember.fullName,
         direction: 'INITIAL',
@@ -2918,6 +3316,13 @@ class AgroDataService {
         plgId = ref.pledgeId;
         clmId = ref.claimId;
       }
+    } else if (planId && !plgId) {
+      const matchedPledge = (this.state.runwayPledges || []).find(
+        (p) => p.planId === planId && p.memberId === member.id
+      );
+      if (matchedPledge) {
+        plgId = matchedPledge.id;
+      }
     }
 
     const newEvent: CapitalContributionEvent = {
@@ -2985,6 +3390,7 @@ class AgroDataService {
     receiptPhotoDataUrl?: string;
     actor: OrgMember;
     runwayAllocation?: RunwayAllocation;
+    runwayPlanId?: string;
   }): ExpenseLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Farm location is required.');
@@ -2998,7 +3404,17 @@ class AgroDataService {
     const cleanAmount = Number(params.amount.toFixed(2));
     const cleanNote = params.note.trim().slice(0, 500);
 
-    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    let targetPlanId = params.runwayPlanId;
+    const expAlloc = params.runwayAllocation;
+    if (!targetPlanId && expAlloc?.mode === 'LINE') {
+      const line = (this.state.runwayLines || []).find((l) => l.id === expAlloc.lineId);
+      if (line) targetPlanId = line.planId;
+    }
+    const targetPlan = targetPlanId
+      ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
+      : undefined;
+
+    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
 
     let runwayPlanId: string | undefined;
     let runwayLineId: string | undefined;
@@ -3006,6 +3422,12 @@ class AgroDataService {
     let runwayAllocationNote: string | undefined;
 
     if (isContra && params.referenceTransactionId) {
+      const alreadyReversed = this.state.expenses.some(
+        (e) => e.direction === 'CONTRA_REVERSAL' && e.referenceTransactionId === params.referenceTransactionId
+      );
+      if (alreadyReversed) {
+        throw new Error(`Expense transaction ${params.referenceTransactionId} has already been reversed.`);
+      }
       const ref = this.state.expenses.find((e) => e.id === params.referenceTransactionId);
       if (ref && ref.runwayPlanId) {
         runwayPlanId = ref.runwayPlanId;
@@ -3020,14 +3442,15 @@ class AgroDataService {
         amount: cleanAmount,
         allocation: params.runwayAllocation,
         actor: params.actor,
+        planId: targetPlanId,
       });
-      runwayPlanId = tags.runwayPlanId;
-      runwayLineId = tags.runwayLineId;
+      runwayPlanId = tags.runwayPlanId || targetPlanId;
+      runwayLineId = tags.runwayLineId || (params.runwayAllocation?.mode === 'LINE' ? params.runwayAllocation.lineId : undefined);
       runwayReserveDraw = tags.runwayReserveDraw;
       runwayAllocationNote = tags.runwayAllocationNote;
     }
 
-    const requiresMultiSig = !isContra && cleanAmount > 150;
+    const requiresMultiSig = !isContra && cleanAmount > 150 && !runwayPlanId;
     const approvalStatus = requiresMultiSig ? 'PENDING_MULTISIG' : 'APPROVED';
 
     const newExpense: ExpenseLedgerEvent = {
@@ -3245,15 +3668,15 @@ class AgroDataService {
     if (params.purchaseCostTotal > 0) {
       if (params.fundingSource === 'SUPPLIER_CREDIT') {
         // Trade credit from supplier: validated and processed as a liability without deducting phantom cash
-      } else if (params.autoDeductPurchaseFromLeftMoney) {
+      } else {
         if (currentLeftMoney <= 0) {
           throw new Error(
-            `Insufficient liquid funds in Left Money ($0.00 available). Cannot purchase livestock ($${params.purchaseCostTotal.toFixed(2)}) with zero funds. Please select 'Supplier Credit / Borrowed' or deposit capital into the pool first.`
+            `Insufficient liquid funds in Left Money ($0.00 available). Cannot purchase livestock ($${params.purchaseCostTotal.toFixed(2)}) with zero funds. Please deposit capital into the pool first.`
           );
         }
         if (params.purchaseCostTotal > currentLeftMoney) {
           throw new Error(
-            `Insufficient liquid funds in Left Money pool. Purchase cost ($${params.purchaseCostTotal.toFixed(2)}) exceeds available cash ($${currentLeftMoney.toFixed(2)}). Please select 'Supplier Credit / Borrowed' or deposit capital into the pool first.`
+            `Insufficient liquid funds in Left Money pool. Purchase cost ($${params.purchaseCostTotal.toFixed(2)}) exceeds available cash ($${currentLeftMoney.toFixed(2)}). Please deposit capital into the pool first.`
           );
         }
       }
@@ -3382,6 +3805,7 @@ class AgroDataService {
       const expNote = `Auto-logged livestock acquisition cost for ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}.`;
       const expEvent: ExpenseLedgerEvent = {
         id: expId,
+        orgId: targetOrgId,
         locationId: loc.id,
         locationName: loc.name,
         batchOrAnimalId: newEntry.id,
@@ -3446,6 +3870,7 @@ class AgroDataService {
 
     const newEvent: LivestockLifecycleEvent = {
       id,
+      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || entry.orgId || params.actor.orgId || 'org-master',
       livestockId: entry.id,
       livestockName: entry.nameOrTag,
       locationId: entry.locationId,
@@ -3502,6 +3927,101 @@ class AgroDataService {
     return newEvent;
   }
 
+  public updateLivestockEntry(params: {
+    id: string;
+    updates: {
+      locationId?: string;
+      species?: string;
+      nameOrTag?: string;
+      trackingMode?: TrackingMode;
+      entryDate?: string;
+      initialAgeValue?: number;
+      initialAgeUnit?: DurationUnit;
+      targetDurationValue?: number;
+      targetDurationUnit?: DurationUnit;
+      initialHeadcount?: number;
+      purchaseCostTotal?: number;
+      targetSaleWeightKg?: number;
+      notes?: string;
+      imageUrl?: string;
+      gallery?: string[];
+      customCheckpoints?: AnimalCheckpoint[];
+      fundingSource?: 'CASH_POOL' | 'SUPPLIER_CREDIT' | 'DIRECTOR_LOAN';
+      configuredSalePricePerUnit?: number;
+      configuredSalePricePerKg?: number;
+    };
+    actor: OrgMember;
+  }): LivestockEntry {
+    const existing = this.state.livestockEntries.find((l) => l.id === params.id);
+    if (!existing) throw new Error(`Livestock record "${params.id}" not found.`);
+
+    let loc = params.updates.locationId
+      ? this.state.locations.find((l) => l.id === params.updates.locationId)
+      : this.state.locations.find((l) => l.id === existing.locationId);
+
+    const locationId = loc ? loc.id : existing.locationId;
+    const locationName = loc ? loc.name : existing.locationName;
+
+    const entryDate = params.updates.entryDate || existing.entryDate;
+    const targetDurationValue = params.updates.targetDurationValue ?? existing.targetDurationValue;
+    const targetDurationUnit = params.updates.targetDurationUnit || existing.targetDurationUnit;
+
+    const targetSaleDate = computeTargetSaleDate(
+      entryDate,
+      targetDurationValue,
+      targetDurationUnit
+    );
+
+    const updatedEntry: LivestockEntry = {
+      ...existing,
+      ...params.updates,
+      locationId,
+      locationName,
+      entryDate,
+      targetDurationValue,
+      targetDurationUnit,
+      targetSaleDate,
+      species: params.updates.species ? params.updates.species.trim().slice(0, 80) : existing.species,
+      nameOrTag: params.updates.nameOrTag ? params.updates.nameOrTag.trim().slice(0, 140) : existing.nameOrTag,
+      notes: params.updates.notes !== undefined ? params.updates.notes.trim().slice(0, 500) : existing.notes,
+    };
+
+    // If initial headcount changed, adjust initial stock lifecycle event
+    if (params.updates.initialHeadcount !== undefined && params.updates.initialHeadcount !== existing.initialHeadcount) {
+      const initEvent = this.state.livestockEvents.find(
+        (e) => e.livestockId === existing.id && e.eventType === 'INITIAL_STOCK'
+      );
+      if (initEvent) {
+        initEvent.headcountDelta = params.updates.initialHeadcount;
+        void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', initEvent.id, initEvent);
+      }
+    }
+
+    const now = new Date().toISOString();
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: updatedEntry.locationId,
+      locationName: updatedEntry.locationName,
+      eventType: 'GROUND_BROADCAST',
+      severity: 'INFO',
+      title: `Livestock Updated: ${updatedEntry.nameOrTag}`,
+      message: `Updated batch specifications for ${updatedEntry.nameOrTag} (${updatedEntry.species}) at ${updatedEntry.locationName}.`,
+      referenceEntityId: updatedEntry.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      livestockEntries: this.state.livestockEntries.map((l) => (l.id === existing.id ? updatedEntry : l)),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updatedEntry;
+  }
+
   public logLivestockLifecycleEvent(params: {
     livestockId: string;
     eventType: LivestockLifecycleEvent['eventType'];
@@ -3554,7 +4074,7 @@ class AgroDataService {
 
     const newEvent: LivestockLifecycleEvent = {
       id,
-      orgId: entry.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || entry.orgId || params.actor.orgId || 'org-master',
       livestockId: entry.id,
       livestockName: entry.nameOrTag,
       locationId: entry.locationId,
@@ -3972,6 +4492,19 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('loans_given', newLoan.id, newLoan);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (newLoan.agreedReturnDate) {
+      const numericLoanReminderId = Math.abs(id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+      void nativeReminders.scheduleDueReminders({
+        id: numericLoanReminderId,
+        title: `Loan Due: ${newLoan.borrowerName}`,
+        body: `Repayment of $${amount.toFixed(2)} receivable from ${newLoan.borrowerName}`,
+        dueDate: new Date(newLoan.agreedReturnDate),
+        entityId: id,
+        type: 'CREDIT_SALE',
+      });
+    }
+
     return newLoan;
   }
 
@@ -4036,7 +4569,63 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('loans_given', updatedLoan.id, updatedLoan);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    if (newBalance <= 0.001) {
+      const numericLoanReminderId = Math.abs(loan.id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+      void nativeReminders.cancelReminders(numericLoanReminderId);
+    }
+
     return recLog;
+  }
+
+  public broadcastFinancialDueAlert(params: {
+    entityType: 'DEBT_LIABILITY' | 'LOAN_GIVEN' | 'CREDIT_SALE';
+    entityId: string;
+    partyName: string;
+    amount: number;
+    dueDate: string;
+    customNote?: string;
+    actor: OrgMember;
+  }): AuditNotificationEvent {
+    const now = new Date().toISOString();
+    const typeLabel =
+      params.entityType === 'DEBT_LIABILITY'
+        ? 'Debt Liability'
+        : params.entityType === 'LOAN_GIVEN'
+          ? 'Loan Advanced'
+          : 'Credit Sale';
+
+    const cleanDueDate = params.dueDate ? new Date(params.dueDate).toLocaleDateString() : 'Agreed Date';
+    const title = `Org Alert: ${typeLabel} (${params.partyName}) — $${params.amount.toFixed(2)}`;
+    const message = [
+      `Notice to all team members regarding ${typeLabel} for ${params.partyName}.`,
+      `Outstanding Amount: $${params.amount.toFixed(2)}`,
+      `Agreed Due Date: ${cleanDueDate}`,
+      params.customNote ? `Note: ${params.customNote}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'Treasury & Operations',
+      eventType: 'GROUND_BROADCAST',
+      severity: 'WARNING_CONTRA',
+      title,
+      message,
+      referenceEntityId: params.entityId,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return audit;
   }
 
   public recordCreditSale(params: {
@@ -4047,7 +4636,7 @@ class AgroDataService {
     customerPhone?: string;
     customerContact?: string;
     customerAddress?: string;
-    quantitySold: number;
+    quantitySold?: number;
     unitPrice?: number;
     unitPriceUsd?: number;
     totalSaleAmountUsd?: number;
@@ -4059,24 +4648,47 @@ class AgroDataService {
     notes?: string;
     note?: string;
     actor: OrgMember;
+    items?: Array<{
+      id?: string;
+      livestockId?: string;
+      livestockName?: string;
+      quantitySold: number;
+      unitPrice: number;
+      totalAmount?: number;
+    }>;
   }): CreditSaleEvent {
     if (!params.customerName.trim()) throw new Error('Customer name is required.');
-    if (params.quantitySold <= 0) throw new Error('Quantity sold must be at least 1.');
-    const unitPrice = params.unitPrice || params.unitPriceUsd || 0;
-    if (unitPrice <= 0) throw new Error('Unit price must be greater than zero.');
     const rawNotes = params.notes || params.note || '';
     if (rawNotes.trim().length < 4) throw new Error('Mandatory notes (min 4 chars) are required.');
+
+    const hasMultiItems = Boolean(params.items && params.items.length > 0);
+    const quantitySold = hasMultiItems
+      ? params.items!.reduce((acc, it) => acc + (it.quantitySold || 0), 0)
+      : (params.quantitySold || 0);
+
+    if (quantitySold <= 0) throw new Error('Quantity sold must be at least 1.');
+
+    const computedItemsTotal = hasMultiItems
+      ? params.items!.reduce((acc, it) => acc + (it.totalAmount ?? (it.quantitySold * it.unitPrice)), 0)
+      : (quantitySold * (params.unitPrice || params.unitPriceUsd || 0));
+
+    const totalAmount = Number((params.totalSaleAmountUsd || computedItemsTotal).toFixed(2));
+    const unitPrice = params.unitPrice || params.unitPriceUsd || (quantitySold > 0 ? Number((totalAmount / quantitySold).toFixed(2)) : 0);
+
+    if (totalAmount <= 0) throw new Error('Total sale amount must be greater than zero.');
 
     const resolvedLocId =
       params.locationId ||
       (params.livestockId
         ? this.state.livestockEntries.find((l) => l.id === params.livestockId)?.locationId
         : undefined) ||
+      (hasMultiItems && params.items![0]?.livestockId
+        ? this.state.livestockEntries.find((l) => l.id === params.items![0].livestockId)?.locationId
+        : undefined) ||
       this.state.locations[0]?.id;
     const loc = this.state.locations.find((l) => l.id === resolvedLocId);
     if (!loc) throw new Error('Valid farm site location is required.');
 
-    const totalAmount = Number((params.totalSaleAmountUsd || (params.quantitySold * unitPrice)).toFixed(2));
     const deposit = Math.max(0, Number((params.depositPaidCash || params.upfrontDepositUsd || 0).toFixed(2)));
     if (deposit > totalAmount) {
       throw new Error(`Upfront deposit ($${deposit.toFixed(2)}) cannot exceed total sale amount ($${totalAmount.toFixed(2)}).`);
@@ -4088,35 +4700,88 @@ class AgroDataService {
     const id = `CSALE-${Date.now().toString(36).toUpperCase()}`;
     const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
 
-    let livestockEntry: LivestockEntry | undefined;
-    let lifecycleEvent: LivestockLifecycleEvent | undefined;
+    const lifecycleEvents: LivestockLifecycleEvent[] = [];
+    let primaryLivestockEntry: LivestockEntry | undefined;
+    let combinedLivestockName: string | undefined;
 
-    if (params.livestockId) {
-      livestockEntry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
-      if (livestockEntry) {
-        const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === livestockEntry!.id);
-        const currentHeadcount = livestockEntry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
-        if (params.quantitySold > currentHeadcount) {
-          throw new Error(`Invalid credit sale: Harvest headcount (${params.quantitySold}) exceeds current live headcount (${currentHeadcount}).`);
+    if (hasMultiItems) {
+      const nameParts: string[] = [];
+      const batchSoldMap = new Map<string, number>();
+
+      for (const it of params.items!) {
+        if (!it.livestockId) {
+          throw new Error('Every item in a credit sale must be linked to an active livestock batch.');
         }
+        const entry = this.state.livestockEntries.find((l) => l.id === it.livestockId);
+        if (!entry) {
+          throw new Error(`Livestock batch ${it.livestockId} not found in farm inventory.`);
+        }
+        if (!primaryLivestockEntry) primaryLivestockEntry = entry;
+
+        const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === entry.id);
+        const currentHeadcount =
+          entry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+
+        const totalSold = (batchSoldMap.get(entry.id) || 0) + it.quantitySold;
+        batchSoldMap.set(entry.id, totalSold);
+
+        if (totalSold > currentHeadcount) {
+          throw new Error(
+            `Invalid credit sale: Total quantity sold for ${entry.nameOrTag} (${totalSold}) exceeds available live headcount (${currentHeadcount}).`
+          );
+        }
+
+        nameParts.push(`${it.quantitySold}x ${entry.nameOrTag}`);
         const eventId = `EVENT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-        const eventNote = `Credit sale of ${params.quantitySold}x to ${params.customerName}. Total: $${totalAmount}, Deposit: $${deposit}, Credit: $${creditRemaining}. Due: ${settlementDate}. ${rawNotes.trim()}`;
-        lifecycleEvent = {
+        const eventNote = `Credit sale of ${it.quantitySold}x ${entry.nameOrTag} to ${params.customerName}. Subtotal: $${(it.quantitySold * it.unitPrice).toFixed(2)}. Due: ${settlementDate}. ${rawNotes.trim()}`;
+        lifecycleEvents.push({
           id: eventId,
           orgId: targetOrgId,
-          livestockId: livestockEntry.id,
-          livestockName: livestockEntry.nameOrTag,
-          locationId: livestockEntry.locationId,
+          livestockId: entry.id,
+          livestockName: entry.nameOrTag,
+          locationId: entry.locationId,
           eventType: 'SALE_DISPATCH',
-          headcountDelta: -params.quantitySold,
+          headcountDelta: -it.quantitySold,
           saleRevenueAmount: 0,
           reinvestmentPercentage: 100,
           referenceTransactionId: id,
           note: eventNote,
           loggedByName: params.actor.fullName,
           createdAt: now,
-          auditHash: computeLedgerRecordHash('LIVESTOCK_EVENT', eventId, now, -params.quantitySold, eventNote),
-        };
+          auditHash: computeLedgerRecordHash('LIVESTOCK_EVENT', eventId, now, -it.quantitySold, eventNote),
+        });
+      }
+      combinedLivestockName = nameParts.length > 0 ? nameParts.join(', ') : undefined;
+    } else if (params.livestockId) {
+      primaryLivestockEntry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+      if (primaryLivestockEntry) {
+        const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === primaryLivestockEntry!.id);
+        const currentHeadcount =
+          primaryLivestockEntry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+        if (quantitySold > currentHeadcount) {
+          throw new Error(
+            `Invalid credit sale: Harvest headcount (${quantitySold}) exceeds current live headcount (${currentHeadcount}).`
+          );
+        }
+        const eventId = `EVENT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const eventNote = `Credit sale of ${quantitySold}x to ${params.customerName}. Total: $${totalAmount}, Deposit: $${deposit}, Credit: $${creditRemaining}. Due: ${settlementDate}. ${rawNotes.trim()}`;
+        lifecycleEvents.push({
+          id: eventId,
+          orgId: targetOrgId,
+          livestockId: primaryLivestockEntry.id,
+          livestockName: primaryLivestockEntry.nameOrTag,
+          locationId: primaryLivestockEntry.locationId,
+          eventType: 'SALE_DISPATCH',
+          headcountDelta: -quantitySold,
+          saleRevenueAmount: 0,
+          reinvestmentPercentage: 100,
+          referenceTransactionId: id,
+          note: eventNote,
+          loggedByName: params.actor.fullName,
+          createdAt: now,
+          auditHash: computeLedgerRecordHash('LIVESTOCK_EVENT', eventId, now, -quantitySold, eventNote),
+        });
+        combinedLivestockName = primaryLivestockEntry.nameOrTag;
       }
     }
 
@@ -4128,9 +4793,9 @@ class AgroDataService {
       customerName: params.customerName.trim(),
       customerPhone: (params.customerPhone || params.customerContact || '').trim(),
       customerAddress: params.customerAddress?.trim(),
-      livestockId: params.livestockId,
-      livestockName: livestockEntry?.nameOrTag,
-      quantitySold: params.quantitySold,
+      livestockId: params.livestockId || (hasMultiItems ? params.items![0]?.livestockId : undefined),
+      livestockName: combinedLivestockName || primaryLivestockEntry?.nameOrTag,
+      quantitySold,
       unitPrice,
       totalSaleAmount: totalAmount,
       depositPaidCash: deposit,
@@ -4142,6 +4807,7 @@ class AgroDataService {
       status: creditRemaining <= 0 ? 'SETTLED' : deposit > 0 ? 'PARTIALLY_PAID' : 'OUTSTANDING',
       paymentLogs: [],
       dateExtensions: [],
+      items: params.items,
       loggedByMemberId: params.actor.id,
       loggedByName: params.actor.fullName,
       createdAt: now,
@@ -4169,7 +4835,7 @@ class AgroDataService {
       eventType: 'CREDIT_SALE',
       severity: 'FINANCIAL',
       title: `Sale on Credit: ${params.customerName} ($${totalAmount.toFixed(2)})`,
-      message: `Sale on credit logged by ${params.actor.fullName}: ${params.quantitySold}x ${livestockEntry ? livestockEntry.nameOrTag : 'items'} sold to ${params.customerName}. Upfront deposit of $${deposit.toFixed(2)} received; remaining $${creditRemaining.toFixed(2)} due on ${formattedDueDate}. Terms: ${newCreditSale.paymentTerms}.`,
+      message: `Sale on credit logged by ${params.actor.fullName}: ${params.quantitySold}x ${primaryLivestockEntry ? primaryLivestockEntry.nameOrTag : combinedLivestockName || 'items'} sold to ${params.customerName}. Upfront deposit of $${deposit.toFixed(2)} received; remaining $${creditRemaining.toFixed(2)} due on ${formattedDueDate}. Terms: ${newCreditSale.paymentTerms}.`,
       referenceEntityId: id,
       timestamp: now,
     });
@@ -4177,16 +4843,17 @@ class AgroDataService {
     // Pure Atomic Commit: All related state changes committed in a single snapshot update
     const nextState: AgroStateSnapshot = {
       ...this.state,
-      livestockEvents: lifecycleEvent
-        ? [lifecycleEvent, ...(this.state.livestockEvents || [])]
-        : (this.state.livestockEvents || []),
+      livestockEvents: [
+        ...lifecycleEvents,
+        ...(this.state.livestockEvents || []),
+      ],
       creditSales: [newCreditSale, ...(this.state.creditSales || [])],
       auditNotifications: [broadcastAudit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
-    if (lifecycleEvent) {
-      void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', lifecycleEvent.id, lifecycleEvent);
+    for (const ev of lifecycleEvents) {
+      void this.persistDocumentToCloudIfActive('livestock_lifecycle_events', ev.id, ev);
     }
     void this.persistDocumentToCloudIfActive('credit_sales', newCreditSale.id, newCreditSale);
     void this.persistDocumentToCloudIfActive('audit_notifications', broadcastAudit.id, broadcastAudit);
@@ -4270,6 +4937,19 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('credit_sales', updatedSale.id, updatedSale);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+
+    // Reschedule native reminder for the new agreed due date
+    const numericReminderId = Math.abs(sale.id.split('').reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+    void nativeReminders.cancelReminders(numericReminderId);
+    void nativeReminders.scheduleDueReminders({
+      id: numericReminderId,
+      title: `Credit Sale: ${sale.customerName}`,
+      body: `Settlement of $${sale.creditBalanceRemaining.toFixed(2)}`,
+      dueDate: new Date(newDate),
+      entityId: sale.id,
+      type: 'CREDIT_SALE',
+    });
+
     return updatedSale;
   }
 
@@ -4362,6 +5042,7 @@ class AgroDataService {
     photoUrl?: string;
     actor: OrgMember;
     runwayAllocation?: RunwayAllocation;
+    runwayPlanId?: string;
   }): FixedAssetLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -4374,9 +5055,21 @@ class AgroDataService {
     const groupId = params.assetGroupId || `AGRP-${Date.now().toString(36).toUpperCase()}`;
     const cleanNote = params.note.trim().slice(0, 500);
 
+    let targetPlanId = params.runwayPlanId;
+    const expAlloc = params.runwayAllocation;
+    if (!targetPlanId && expAlloc?.mode === 'LINE') {
+      const line = (this.state.runwayLines || []).find((l) => l.id === expAlloc.lineId);
+      if (line) targetPlanId = line.planId;
+    }
+    const targetPlan = targetPlanId
+      ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
+      : undefined;
+
+    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+
     const newAssetEvent: FixedAssetLedgerEvent = {
       id,
-      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
+      orgId: targetOrgId,
       assetGroupId: groupId,
       assetName: params.assetName.trim().slice(0, 140),
       category: params.category,
@@ -4402,12 +5095,21 @@ class AgroDataService {
 
     const isContra =
       params.direction === 'CONTRA_REVERSAL' || params.direction === 'DEDUCTION';
+
+    if (params.direction === 'CONTRA_REVERSAL' && params.referenceTransactionId) {
+      const alreadyReversed = this.state.fixedAssets.some(
+        (a) => a.direction === 'CONTRA_REVERSAL' && a.referenceTransactionId === params.referenceTransactionId
+      );
+      if (alreadyReversed) {
+        throw new Error(`Fixed asset transaction ${params.referenceTransactionId} has already been reversed.`);
+      }
+    }
     const updatedAudits = [...this.state.auditNotifications];
     const updatedExpenses = [...this.state.expenses];
 
     const shouldDeduct = params.deductFromLeftMoney !== false && params.valueDelta > 0 && (params.direction === 'INITIAL' || params.direction === 'ADDITION');
     if (shouldDeduct) {
-      const currentLeftMoney = this.getCurrentOrgLeftMoney(params.actor.orgId || loc.orgId);
+      const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
 
       if (currentLeftMoney <= 0) {
         throw new Error('Insufficient funds in Left Money pool ($0.00 available). Cannot purchase asset with zero money.');
@@ -4437,16 +5139,18 @@ class AgroDataService {
 
     if (shouldDeduct) {
       const tags = this.assertRunwayCompliance({
-        orgId: params.actor.orgId || loc.orgId || 'org-master',
+        orgId: targetOrgId,
         amount: params.valueDelta,
         allocation: params.runwayAllocation,
         actor: params.actor,
+        planId: targetPlanId,
       });
 
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
       const expNote = `Fixed asset acquisition: ${newAssetEvent.assetName} (${params.quantityDelta} units) at ${loc.name}. ${cleanNote}`;
       const expEvent: ExpenseLedgerEvent = {
         id: expId,
+        orgId: targetOrgId,
         locationId: loc.id,
         locationName: loc.name,
         category: 'FIXED_ASSET_PURCHASE',
@@ -4459,8 +5163,8 @@ class AgroDataService {
         receiptPhotoDataUrl: params.photoUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
-        runwayPlanId: tags.runwayPlanId,
-        runwayLineId: tags.runwayLineId,
+        runwayPlanId: tags.runwayPlanId || targetPlanId,
+        runwayLineId: tags.runwayLineId || (params.runwayAllocation?.mode === 'LINE' ? params.runwayAllocation.lineId : undefined),
         runwayReserveDraw: tags.runwayReserveDraw,
         runwayAllocationNote: tags.runwayAllocationNote,
         createdAt: now,
@@ -4517,8 +5221,11 @@ class AgroDataService {
     const inId = `AST-TR-IN-${Date.now().toString(36).toUpperCase()}`;
     const cleanNote = params.note.trim().slice(0, 450);
 
+    const targetOrgId = fromLoc.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+
     const outEvent: FixedAssetLedgerEvent = {
       id: outId,
+      orgId: targetOrgId,
       assetGroupId: params.assetGroupId,
       assetName: params.assetName,
       category: params.category,
@@ -4541,6 +5248,7 @@ class AgroDataService {
 
     const inEvent: FixedAssetLedgerEvent = {
       id: inId,
+      orgId: targetOrgId,
       assetGroupId: params.assetGroupId,
       assetName: params.assetName,
       category: params.category,
@@ -4594,6 +5302,7 @@ class AgroDataService {
     kgConsumed: number;
     feedType: string;
     note?: string;
+    photoDataUrl?: string;
     actor: OrgMember;
   }): FeedLedgerEvent {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
@@ -4607,7 +5316,7 @@ class AgroDataService {
 
     const newFeedEvent: FeedLedgerEvent = {
       id,
-      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
+      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || params.actor.orgId || loc.orgId || 'org-master',
       locationId: loc.id,
       feedType: cleanFeedType.slice(0, 120),
       direction: 'DAILY_CONSUMPTION',
@@ -4615,18 +5324,53 @@ class AgroDataService {
       kgPerBag: 1,
       linkedLivestockId: params.livestockId,
       note: cleanNote.slice(0, 500),
+      photoUrl: params.photoDataUrl,
       loggedByMemberId: params.actor.id,
       loggedByName: params.actor.fullName,
       createdAt: now,
       auditHash: computeLedgerRecordHash('FEED', id, now, params.kgConsumed, cleanNote),
     };
 
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: loc.id,
+      locationName: loc.name,
+      eventType: 'FEED_LOGGED',
+      severity: 'INFO',
+      title: `Feed Consumed: -${params.kgConsumed} kg ${cleanFeedType}`,
+      message: `${id} at ${loc.name}: -${params.kgConsumed} kg (${cleanFeedType}). Note: ${cleanNote}`,
+      referenceEntityId: id,
+      photoUrl: params.photoDataUrl,
+      timestamp: now,
+    });
+
+    const entry = this.state.livestockEntries.find((l) => l.id === params.livestockId);
+    let nextLivestockEntries = this.state.livestockEntries;
+    if (params.photoDataUrl && entry) {
+      const currentGallery = entry.gallery || [];
+      const nextGallery = currentGallery.includes(params.photoDataUrl)
+        ? currentGallery
+        : [...currentGallery, params.photoDataUrl];
+      const updatedEntry: LivestockEntry = {
+        ...entry,
+        imageUrl: entry.imageUrl || params.photoDataUrl,
+        gallery: nextGallery,
+      };
+      nextLivestockEntries = this.state.livestockEntries.map((l) =>
+        l.id === entry.id ? updatedEntry : l
+      );
+      void this.persistDocumentToCloudIfActive('livestock_entries', updatedEntry.id, updatedEntry);
+    }
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
+      livestockEntries: nextLivestockEntries,
       feedLedger: [newFeedEvent, ...this.state.feedLedger],
+      auditNotifications: [audit, ...this.state.auditNotifications],
     };
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('feed_ledger', newFeedEvent.id, newFeedEvent);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newFeedEvent;
   }
 
@@ -4693,14 +5437,20 @@ class AgroDataService {
       ),
     };
 
+    const unitLabel = newFeedEvent.kgPerBag > 1 ? 'bags' : 'kg';
+    const quantityDetail =
+      newFeedEvent.kgPerBag > 1
+        ? `${signedBags >= 0 ? '+' : ''}${signedBags} bags (${Math.abs(signedBags * newFeedEvent.kgPerBag).toFixed(0)}kg)`
+        : `${signedBags >= 0 ? '+' : ''}${signedBags} kg`;
+
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
       locationId: loc.id,
       locationName: loc.name,
       eventType: 'FEED_LOGGED',
       severity: params.direction === 'CONTRA_REVERSAL' ? 'WARNING_CONTRA' : 'INFO',
-      title: `Feed ${params.direction.replace('_', ' ')}: ${signedBags >= 0 ? '+' : ''}${signedBags} bags ${newFeedEvent.feedType}`,
-      message: `${id} at ${loc.name}: ${signedBags >= 0 ? '+' : ''}${signedBags} bags (${Math.abs(signedBags * newFeedEvent.kgPerBag).toFixed(0)}kg). Note: ${cleanNote}`,
+      title: `Feed ${params.direction.replace(/_/g, ' ')}: ${signedBags >= 0 ? '+' : ''}${signedBags} ${unitLabel} ${newFeedEvent.feedType}`,
+      message: `${id} at ${loc.name}: ${quantityDetail}. Note: ${cleanNote}`,
       referenceEntityId: id,
       timestamp: now,
     });
@@ -4793,8 +5543,10 @@ class AgroDataService {
     };
 
     // Update actor to be ORG_ADMIN of this organization
+    const authUid = firebaseAuth?.currentUser?.uid || params.actor.uid;
     const updatedActor: OrgMember = {
       ...params.actor,
+      uid: authUid || params.actor.uid || params.actor.id,
       orgId: newOrg.id,
       role: 'ORG_ADMIN',
       approvalStatus: 'APPROVED',
@@ -4813,17 +5565,45 @@ class AgroDataService {
       timestamp: nowIso,
     });
 
+    const actorEmail = (updatedActor.email || updatedActor.phoneOrEmail || '').trim().toLowerCase();
+    const updatedMembers = this.state.members
+      .map((m) => (m.id === updatedActor.id ? updatedActor : m))
+      .filter((m) => {
+        if (m.id === updatedActor.id) return true;
+        if (m.orgId) return true;
+        if (updatedActor.uid && m.uid === updatedActor.uid) return false;
+        const mEmail = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+        if (actorEmail && mEmail === actorEmail) return false;
+        return true;
+      });
+    if (!updatedMembers.some((m) => m.id === updatedActor.id)) {
+      updatedMembers.push(updatedActor);
+    }
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
       organizations: [...(this.state.organizations || []), newOrg],
       activeOrgId: newOrg.id,
-      members: this.state.members.map((m) => (m.id === updatedActor.id ? updatedActor : m)),
+      members: updatedMembers,
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
+    if (this.activeSession) {
+      this.setActiveSession({
+        ...this.activeSession,
+        activeOrgId: newOrg.id,
+      });
+    }
     void this.persistDocumentToCloudIfActive('organizations', newOrg.id, newOrg);
     void this.persistDocumentToCloudIfActive('members', updatedActor.id, updatedActor);
+    if (authUid && authUid !== updatedActor.id) {
+      void this.persistDocumentToCloudIfActive('members', authUid, {
+        ...updatedActor,
+        id: authUid,
+        uid: authUid,
+      });
+    }
     if (firestoreDb) {
       setDoc(doc(firestoreDb, 'invite_codes', currentInviteCode), {
         code: currentInviteCode,
@@ -4956,12 +5736,86 @@ class AgroDataService {
     }
 
     const nowIso = new Date().toISOString();
+    const cleanTarget = Math.max(0, params.targetContributionUsd);
     const updatedMember: OrgMember = {
       ...targetMember,
-      targetContributionUsd: Math.max(0, params.targetContributionUsd),
+      targetContributionUsd: cleanTarget,
       contributionPace: params.contributionPace,
       updatedAt: nowIso,
     };
+
+    // Keep Runway pledges synchronized if an active runway plan exists
+    const activePlan = (this.state.runwayPlans || []).find(
+      (p) =>
+        (!targetMember.orgId || p.orgId === targetMember.orgId) &&
+        (p.status === 'ACTIVE' || p.status === 'PLEDGING' || p.status === 'DRAFT')
+    );
+
+    let nextPledges = this.state.runwayPledges || [];
+    let syncedPledge: RunwayPledge | null = null;
+
+    if (activePlan && cleanTarget > 0) {
+      const existingPledge = nextPledges.find(
+        (p) => p.planId === activePlan.id && p.memberId === targetMember.id
+      );
+
+      const runwayPace =
+        params.contributionPace === 'MONTHLY'
+          ? 'MONTHLY'
+          : params.contributionPace === 'MILESTONE'
+          ? 'MILESTONE'
+          : 'FLEXIBLE';
+
+      if (existingPledge) {
+        const eventType = cleanTarget >= existingPledge.amount ? 'INCREASE' : 'DECREASE';
+        syncedPledge = {
+          ...existingPledge,
+          amount: cleanTarget,
+          pace: runwayPace,
+          history: [
+            ...(existingPledge.history || []),
+            {
+              id: `PEV-${Date.now().toString(36).toUpperCase()}`,
+              type: eventType,
+              previousAmount: existingPledge.amount,
+              newAmount: cleanTarget,
+              note: `Pledge synchronized with member capital target by ${params.actor.fullName}`,
+              byMemberId: params.actor.id,
+              at: nowIso,
+              auditHash: computeLedgerRecordHash('PLEDGE_EVENT', existingPledge.id, nowIso, cleanTarget, 'Target sync'),
+            },
+          ],
+          updatedAt: nowIso,
+        };
+        nextPledges = nextPledges.map((p) => (p.id === syncedPledge!.id ? syncedPledge! : p));
+      } else {
+        const pledgeId = `PLG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        syncedPledge = {
+          id: pledgeId,
+          planId: activePlan.id,
+          orgId: activePlan.orgId,
+          memberId: targetMember.id,
+          memberName: targetMember.fullName,
+          amount: cleanTarget,
+          pace: runwayPace,
+          history: [
+            {
+              id: `PEV-${Date.now().toString(36).toUpperCase()}`,
+              type: 'INITIAL',
+              previousAmount: 0,
+              newAmount: cleanTarget,
+              note: `Initial pledge configured from member target by ${params.actor.fullName}`,
+              byMemberId: params.actor.id,
+              at: nowIso,
+              auditHash: computeLedgerRecordHash('PLEDGE_EVENT', pledgeId, nowIso, cleanTarget, 'Target sync'),
+            },
+          ],
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        nextPledges = [syncedPledge, ...nextPledges];
+      }
+    }
 
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
@@ -4978,11 +5832,15 @@ class AgroDataService {
     const nextState: AgroStateSnapshot = {
       ...this.state,
       members: this.state.members.map((m) => (m.id === updatedMember.id ? updatedMember : m)),
+      runwayPledges: nextPledges,
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+    if (syncedPledge) {
+      void this.persistDocumentToCloudIfActive('runway_pledges', syncedPledge.id, syncedPledge);
+    }
     return updatedMember;
   }
 
@@ -5091,8 +5949,10 @@ class AgroDataService {
     }
 
     const now = new Date().toISOString();
+    const authUid = firebaseAuth?.currentUser?.uid || params.actor.uid;
     const updatedMember: OrgMember = {
       ...params.actor,
+      uid: authUid || params.actor.uid || params.actor.id,
       orgId: orgData.id,
       role: 'MEMBER',
       approvalStatus: 'APPROVED',
@@ -5127,7 +5987,20 @@ class AgroDataService {
     };
 
     this.saveLocalState(nextState);
+    if (this.activeSession) {
+      this.setActiveSession({
+        ...this.activeSession,
+        activeOrgId: orgData.id,
+      });
+    }
     void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+    if (authUid && authUid !== updatedMember.id) {
+      void this.persistDocumentToCloudIfActive('members', authUid, {
+        ...updatedMember,
+        id: authUid,
+        uid: authUid,
+      });
+    }
     return orgData;
   }
 
@@ -5434,25 +6307,71 @@ class AgroDataService {
     amount: number;
     allocation?: RunwayAllocation;
     actor: OrgMember;
+    planId?: string;
   }): {
     runwayPlanId?: string;
     runwayLineId?: string;
     runwayReserveDraw?: number;
     runwayAllocationNote?: string;
   } {
-    const activePlan = (this.state.runwayPlans || []).find(
-      (p) => p.orgId === params.orgId && p.status === 'ACTIVE'
+    let targetPlan: RunwayPlan | undefined;
+    let targetLine: RunwayLine | undefined;
+
+    // 1. If explicit allocation to a line, locate the line and its plan directly
+    const alloc = params.allocation;
+    if (alloc?.mode === 'LINE') {
+      targetLine = (this.state.runwayLines || []).find((l) => l.id === alloc.lineId);
+      if (targetLine) {
+        targetPlan = (this.state.runwayPlans || []).find((p) => p.id === targetLine!.planId);
+      }
+    }
+
+    // 2. If explicit planId passed
+    if (!targetPlan && params.planId) {
+      targetPlan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
+    }
+
+    // 3. Match active plan by orgId (supporting multi-tenant aliases)
+    const candidateOrgIds = new Set<string>(
+      [params.orgId, params.actor?.orgId, this.state.activeOrgId, 'org-master'].filter(
+        Boolean
+      ) as string[]
     );
-    if (!activePlan) {
+
+    if (!targetPlan) {
+      targetPlan = (this.state.runwayPlans || []).find(
+        (p) => candidateOrgIds.has(p.orgId) && p.status === 'ACTIVE'
+      );
+    }
+
+    // 4. If an explicit allocation was provided and no ACTIVE plan was found, check if a plan is in PLEDGING or DRAFT status
+    if (!targetPlan && params.allocation) {
+      targetPlan = (this.state.runwayPlans || []).find(
+        (p) => candidateOrgIds.has(p.orgId) && (p.status === 'PLEDGING' || p.status === 'DRAFT')
+      );
+    }
+
+    if (!targetPlan) {
       return {};
     }
 
-    const lines = (this.state.runwayLines || []).filter((l) => l.planId === activePlan.id);
-    const leftMoney = this.getCurrentOrgLeftMoney(params.orgId);
+    // If plan is not ACTIVE (e.g. user executing during PLEDGING phase or testing):
+    // Still assign tags so the expense tracks properly against the plan and line
+    if (targetPlan.status !== 'ACTIVE') {
+      return {
+        runwayPlanId: targetPlan.id,
+        runwayLineId: targetLine?.id || (alloc?.mode === 'LINE' ? alloc.lineId : undefined),
+        runwayReserveDraw: alloc?.mode === 'LINE' ? alloc.reserveDrawAmount : undefined,
+        runwayAllocationNote: alloc?.mode === 'LINE' ? alloc.reserveReason : (alloc?.mode === 'CONTINGENCY' ? alloc.reason : undefined),
+      };
+    }
+
+    const lines = (this.state.runwayLines || []).filter((l) => l.planId === targetPlan!.id);
+    const leftMoney = this.getCurrentOrgLeftMoney(targetPlan.orgId || params.orgId);
     const availableCash = computeAvailableCash(leftMoney, this.state.expenses);
 
     const evalResult = evaluateSpend({
-      plan: activePlan,
+      plan: targetPlan,
       lines,
       expenses: this.state.expenses,
       allocation: params.allocation,
@@ -5466,13 +6385,13 @@ class AgroDataService {
       const now = new Date().toISOString();
       const audit = this.createChainedAuditEvent({
         actor: params.actor,
-        locationId: activePlan.locationId || 'ALL',
+        locationId: targetPlan.locationId || 'ALL',
         locationName: 'Runway Capital Engine',
         eventType: 'RUNWAY_OFF_PLAN_WARNING',
         severity: 'INFO',
-        title: `Off-Plan Spend Warning: ${activePlan.name}`,
+        title: `Off-Plan Spend Warning: ${targetPlan.name}`,
         message: `${params.actor.fullName} logged $${params.amount.toFixed(2)} without Runway plan allocation under ADVISORY enforcement.`,
-        referenceEntityId: activePlan.id,
+        referenceEntityId: targetPlan.id,
         timestamp: now,
       });
       this.state.auditNotifications = [audit, ...this.state.auditNotifications];
@@ -6094,8 +7013,8 @@ class AgroDataService {
       throw new Error('Tenant Boundary Violation: Actor cannot pledge to another organization\'s plan.');
     }
 
-    if (plan.status !== 'PLEDGING' && plan.status !== 'ACTIVE') {
-      throw new Error(`Cannot pledge to a plan in ${plan.status} status. Pledging is only open during PLEDGING and ACTIVE stages.`);
+    if (plan.status === 'COMPLETED' || plan.status === 'ARCHIVED') {
+      throw new Error(`Cannot pledge to a plan in ${plan.status} status. Pledging is only open during DRAFT, PLEDGING, and ACTIVE stages.`);
     }
 
     const isSelf = params.memberId === params.actor.id;
@@ -6205,13 +7124,51 @@ class AgroDataService {
       ? (this.state.runwayPledges || []).map((p) => (p.id === updatedPledge.id ? updatedPledge : p))
       : [updatedPledge, ...(this.state.runwayPledges || [])];
 
+    const nextContributions = (this.state.capitalContributions || []).map((c) => {
+      if (c.runwayPlanId === plan.id && c.memberId === member.id && !c.pledgeId) {
+        return { ...c, pledgeId: updatedPledge.id };
+      }
+      return c;
+    });
+
+    const nextClaims = (this.state.runwayClaims || []).map((cl) => {
+      if (cl.planId === plan.id && cl.memberId === member.id && !cl.pledgeId) {
+        return { ...cl, pledgeId: updatedPledge.id };
+      }
+      return cl;
+    });
+
+    const paceMapping: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE' =
+      params.pace === 'MONTHLY'
+        ? 'MONTHLY'
+        : params.pace === 'MILESTONE'
+        ? 'MILESTONE'
+        : params.pace === 'ONE_OFF'
+        ? 'MILESTONE'
+        : 'FLEXIBLE';
+
+    const updatedMember: OrgMember = {
+      ...member,
+      targetContributionUsd: cleanAmount,
+      contributionPace: paceMapping,
+      updatedAt: now,
+    };
+
+    const nextMembers = this.state.members.map((m) =>
+      m.id === updatedMember.id ? updatedMember : m
+    );
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
+      members: nextMembers,
       runwayPledges: nextPledges,
+      capitalContributions: nextContributions,
+      runwayClaims: nextClaims,
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
     void this.persistDocumentToCloudIfActive('runway_pledges', updatedPledge.id, updatedPledge);
     void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
 
@@ -6222,10 +7179,13 @@ class AgroDataService {
   public submitRunwayPaymentClaim(params: {
     planId: string;
     pledgeId?: string;
+    memberId?: string;
     amount: number;
     method: string;
     reference?: string;
+    note?: string;
     proofPhotoDataUrl?: string;
+    autoConfirm?: boolean;
     actor: OrgMember;
   }): RunwayPaymentClaim {
     const plan = (this.state.runwayPlans || []).find((p) => p.id === params.planId);
@@ -6234,8 +7194,22 @@ class AgroDataService {
       throw new Error('Tenant Boundary Violation: Actor cannot claim payment for another organization.');
     }
 
+    const targetMemberId = params.memberId || params.actor.id;
+    const isSelf = targetMemberId === params.actor.id;
+    const isPrivileged = PERMISSIONS.canConfirmPaymentClaim(params.actor.role);
+    if (!isSelf && !isPrivileged) {
+      throw new Error('Access Denied: Only Admins and Treasurers can record a payment claim on behalf of another member.');
+    }
+
+    const targetMember =
+      this.state.members.find((m) => m.id === targetMemberId) ||
+      (isSelf ? params.actor : undefined);
+    if (!targetMember) {
+      throw new Error('Selected member not found.');
+    }
+
     const pledge = (this.state.runwayPledges || []).find(
-      (p) => (params.pledgeId ? p.id === params.pledgeId : p.planId === plan.id && p.memberId === params.actor.id)
+      (p) => (params.pledgeId ? p.id === params.pledgeId : p.planId === plan.id && p.memberId === targetMember.id)
     );
 
     const now = new Date().toISOString();
@@ -6247,12 +7221,14 @@ class AgroDataService {
       planId: plan.id,
       orgId: plan.orgId,
       pledgeId: pledge ? pledge.id : '',
-      memberId: params.actor.id,
-      memberName: params.actor.fullName,
+      memberId: targetMember.id,
+      memberName: targetMember.fullName,
       amount: cleanAmount,
       method: params.method.trim(),
       reference: params.reference?.trim(),
+      note: params.note?.trim(),
       proofPhotoDataUrl: params.proofPhotoDataUrl,
+      receiptPhotoDataUrl: params.proofPhotoDataUrl,
       status: 'PENDING',
       createdAt: now,
       auditHash: computeLedgerRecordHash('PAYMENT_CLAIM', claimId, now, cleanAmount, params.method.trim()),
@@ -6265,6 +7241,16 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('runway_claims', claim.id, claim);
+
+    if (params.autoConfirm && isPrivileged) {
+      return this.resolveRunwayPaymentClaim({
+        claimId: claim.id,
+        decision: 'CONFIRM',
+        note: params.note || 'Confirmed upon entry',
+        actor: params.actor,
+      });
+    }
+
     return claim;
   }
 
@@ -6290,22 +7276,30 @@ class AgroDataService {
     let updatedClaim: RunwayPaymentClaim;
 
     if (params.decision === 'CONFIRM') {
+      const matchedPledge = (this.state.runwayPledges || []).find(
+        (p) =>
+          (claim.pledgeId && p.id === claim.pledgeId) ||
+          (p.planId === claim.planId && p.memberId === claim.memberId)
+      );
+      const resolvedPledgeId = claim.pledgeId || matchedPledge?.id;
+
       const contribution = this.logCapitalContribution({
         memberId: claim.memberId,
         direction: 'ADDITION',
         amount: claim.amount,
-        note: `Runway Pay-in: ${claim.method} ${claim.reference || ''} - ${params.note || ''}`.trim(),
+        note: `Runway Pay-in: ${claim.method} ${claim.reference || ''} - ${params.note || claim.note || ''}`.trim(),
         actor: params.actor,
         runwayPlanId: claim.planId,
-        pledgeId: claim.pledgeId || undefined,
+        pledgeId: resolvedPledgeId || undefined,
         claimId: claim.id,
       });
 
       updatedClaim = {
         ...claim,
+        pledgeId: resolvedPledgeId || claim.pledgeId,
         status: 'CONFIRMED',
         resolvedByMemberId: params.actor.id,
-        resolutionNote: params.note,
+        resolutionNote: params.note || claim.note,
         contributionId: contribution.id,
         resolvedAt: now,
       };
@@ -6592,6 +7586,7 @@ class AgroDataService {
       actor: params.actor,
       receiptPhotoDataUrl: params.receiptPhotoDataUrl,
       runwayAllocation: params.allocation,
+      runwayPlanId: params.planId,
     });
   }
 
@@ -6706,6 +7701,60 @@ class AgroDataService {
         });
       }
     }
+  }
+
+  public async checkDueProtocolReminders(actor?: OrgMember): Promise<number> {
+    const defaultActor: OrgMember = actor || this.state.members[0] || {
+      id: 'mem-system-protocol',
+      orgId: (this.state.organizations && this.state.organizations[0]?.id) || 'org-master',
+      fullName: 'Protocol Automation System',
+      email: 'system@agro.local',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      joinedAt: new Date().toISOString(),
+    };
+
+    const statuses = this.computeLivestockStatuses();
+    const todayStr = new Date().toISOString().split('T')[0];
+    let dispatchedCount = 0;
+
+    for (const status of statuses) {
+      const entry = status.entry;
+      for (const proto of status.protocols) {
+        if (proto.completed) continue;
+        const isDue = proto.reminderStatus === 'DUE_TODAY';
+        if (!isDue) continue;
+
+        // Check if an audit broadcast was already dispatched today for this protocol milestone
+        const alreadyDispatched = (this.state.auditNotifications || []).some(
+          (a) =>
+            a.referenceEntityId === entry.id &&
+            a.title?.includes(`Day ${proto.dayTarget}`) &&
+            a.timestamp?.startsWith(todayStr)
+        );
+
+        if (!alreadyDispatched) {
+          this.dispatchLivestockMilestoneBroadcast({
+            livestockId: entry.id,
+            dayTarget: proto.dayTarget,
+            milestoneTitle: proto.title,
+            customNote: proto.description || `Morning protocol notification reaching all organization members.`,
+            actor: defaultActor,
+          });
+
+          void dispatchSystemNotification({
+            title: `🔔 Morning Protocol: ${entry.nameOrTag} (Day ${proto.dayTarget})`,
+            body: `${proto.title} is scheduled today for ${entry.locationName}. All organization members have been notified.`,
+            urgent: false,
+            severity: 'MILESTONE',
+          });
+
+          dispatchedCount++;
+        }
+      }
+    }
+
+    return dispatchedCount;
   }
 }
 

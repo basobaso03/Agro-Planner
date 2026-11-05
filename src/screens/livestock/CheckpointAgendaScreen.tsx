@@ -61,21 +61,21 @@ export const CheckpointAgendaScreen: React.FC<CheckpointAgendaScreenProps> = ({
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Header Info */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm">
-        <h1 className="text-base font-bold">Protocol & Health Agenda</h1>
-        <p className="text-xs text-slate-400 mt-1">
-          Chronological schedule of vaccinations, feed transitions, and biosecurity checks across all batches.
+      <div className="bg-white border border-[#E8DFCE] p-4.5 rounded-2xl shadow-xs">
+        <h1 className="text-base font-black text-slate-950">Checkpoint & Health Agenda</h1>
+        <p className="text-xs text-slate-600 mt-1 font-medium">
+          Chronological schedule of vaccinations, feed transitions, and biosecurity checks. All organization members receive a 07:00 AM morning dispatch alert when milestone dates arrive.
         </p>
       </div>
 
       {/* Filter Tabs */}
-      <div className="grid grid-cols-3 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold text-center">
+      <div className="grid grid-cols-3 gap-2 bg-[#FAF8F5] border border-[#E8DFCE] p-1 rounded-xl text-xs font-bold text-center">
         <button
           type="button"
           onClick={() => setFilter('PENDING')}
-          className={`py-2 rounded-lg transition-all ${filter === 'PENDING'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
+          className={`py-2 rounded-lg transition-all cursor-pointer ${filter === 'PENDING'
+            ? 'bg-white text-slate-950 shadow-xs border border-[#E0D7C6]'
+            : 'text-slate-600 hover:text-slate-900'
             }`}
         >
           Pending / Due
@@ -83,9 +83,9 @@ export const CheckpointAgendaScreen: React.FC<CheckpointAgendaScreenProps> = ({
         <button
           type="button"
           onClick={() => setFilter('COMPLETED')}
-          className={`py-2 rounded-lg transition-all ${filter === 'COMPLETED'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
+          className={`py-2 rounded-lg transition-all cursor-pointer ${filter === 'COMPLETED'
+            ? 'bg-white text-slate-950 shadow-xs border border-[#E0D7C6]'
+            : 'text-slate-600 hover:text-slate-900'
             }`}
         >
           Completed
@@ -93,9 +93,9 @@ export const CheckpointAgendaScreen: React.FC<CheckpointAgendaScreenProps> = ({
         <button
           type="button"
           onClick={() => setFilter('ALL')}
-          className={`py-2 rounded-lg transition-all ${filter === 'ALL'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
+          className={`py-2 rounded-lg transition-all cursor-pointer ${filter === 'ALL'
+            ? 'bg-white text-slate-950 shadow-xs border border-[#E0D7C6]'
+            : 'text-slate-600 hover:text-slate-900'
             }`}
         >
           All Items ({agendaItems.length})
@@ -107,14 +107,14 @@ export const CheckpointAgendaScreen: React.FC<CheckpointAgendaScreenProps> = ({
         <EmptyState
           icon="📅"
           title="No Agenda Items"
-          message={filter === 'PENDING' ? 'All scheduled protocols have been completed!' : 'No protocol checkpoints found.'}
+          message={filter === 'PENDING' ? 'All scheduled checkpoints have been completed!' : 'No checkpoints found.'}
         />
       ) : (
         <div className="space-y-2.5">
           {filteredItems.map((item: any, idx: number) => (
             <div
               key={`${item.batchId}-${item.checkpointId}-${idx}`}
-              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs flex items-center justify-between gap-3 text-xs"
+              className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs flex items-center justify-between gap-3 text-xs"
             >
               <div className="flex items-center gap-3">
                 <button
@@ -122,30 +122,35 @@ export const CheckpointAgendaScreen: React.FC<CheckpointAgendaScreenProps> = ({
                   onClick={() => {
                     dataService.toggleMilestone(item.batchId, item.checkpointId, !item.completed, activeMember);
                   }}
-                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 transition-all ${item.completed
-                      ? 'bg-emerald-500 text-white'
-                      : 'border-2 border-slate-300 dark:border-slate-600 text-transparent hover:border-emerald-500'
+                  className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 transition-all cursor-pointer ${item.completed
+                    ? 'bg-emerald-600 text-white'
+                    : 'border-2 border-slate-300 text-transparent hover:border-emerald-600'
                     }`}
                 >
                   ✓
                 </button>
                 <div>
-                  <div className={`font-bold ${item.completed ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white'}`}>
+                  <div className={`font-bold ${item.completed ? 'line-through text-slate-400' : 'text-slate-950'}`}>
                     Day {item.dayTarget}: {item.title}
                   </div>
-                  <div className="text-slate-500 mt-0.5">
-                    {item.batchName} ({item.species}) · {item.locationName}
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-bold text-[10px] uppercase">
+                      {item.category.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-slate-600 font-medium">
+                      {item.batchName} ({item.species}) · {item.locationName}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="text-right shrink-0">
-                <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
-                  {item.scheduledDate}
+                <span className="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900" title="Morning alert sent to all org members">
+                  🔔 {item.scheduledDate} · 07:00 AM
                 </span>
                 <div
                   onClick={() => navigate('livestock-detail', { id: item.batchId })}
-                  className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1 cursor-pointer hover:underline"
+                  className="text-[11px] text-emerald-700 font-bold mt-1 cursor-pointer hover:underline"
                 >
                   View Batch →
                 </div>

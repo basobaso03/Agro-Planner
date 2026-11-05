@@ -100,33 +100,44 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
   const categories = ['FEED', 'EQUIPMENT', 'LIVESTOCK', 'MEDICINE', 'LABOR', 'UTILITIES', 'OTHER'];
 
   const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 backdrop-blur-xs px-3 py-3 sm:p-4 pt-safe pb-safe animate-in fade-in">
-      <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl p-4 sm:p-6 space-y-4 max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] sm:max-h-[88dvh] flex flex-col overflow-hidden">
+    <div
+      style={{
+        top: 'var(--vvo, 0px)',
+        height: 'var(--vvh, 100dvh)',
+      }}
+      className="fixed left-0 right-0 z-[100] flex items-end sm:items-center justify-center bg-black/65 backdrop-blur-xs px-2 py-1.5 sm:p-4 animate-in fade-in overflow-hidden"
+    >
+      <div
+        style={{
+          maxHeight: 'calc(var(--vvh, 100dvh) - var(--sat, 0px) - 8px)',
+        }}
+        className="w-full max-w-lg rounded-3xl bg-white border border-[#E8DFCE] shadow-2xl p-4 sm:p-6 space-y-3.5 flex flex-col overflow-hidden"
+      >
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+        <div className="shrink-0 flex items-center justify-between border-b border-[#E8DFCE] pb-2.5">
           <div className="flex items-center space-x-2 min-w-0">
-            <FileEdit className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-            <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate">
+            <FileEdit className="w-5 h-5 text-emerald-700 shrink-0" />
+            <h3 className="text-sm sm:text-base font-black text-slate-950 truncate">
               Plan Amendments &amp; Mid-Cycle Adjustments
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer shrink-0"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab switcher */}
-        <div className="shrink-0 grid grid-cols-2 gap-2 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-xs font-semibold">
+        <div className="shrink-0 grid grid-cols-2 gap-2 p-1 rounded-xl bg-[#FAF8F5] border border-[#E8DFCE] text-xs font-bold">
           <button
             type="button"
             onClick={() => setActiveTab('PROPOSE')}
             className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeTab === 'PROPOSE'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              ? 'bg-white text-emerald-800 shadow-xs border border-[#E8DFCE]'
+              : 'text-slate-600 hover:text-slate-950'
               }`}
           >
             Propose Amendment
@@ -135,8 +146,8 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
             type="button"
             onClick={() => setActiveTab('PENDING')}
             className={`py-1.5 rounded-lg transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${activeTab === 'PENDING'
-                ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
+              ? 'bg-white text-emerald-800 shadow-xs border border-[#E8DFCE]'
+              : 'text-slate-600 hover:text-slate-950'
               }`}
           >
             <span>Review Pending</span>
@@ -150,16 +161,16 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
 
         {/* PROPOSE TAB */}
         {activeTab === 'PROPOSE' && (
-          <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1">
+          <form onSubmit={handleSubmit} className="flex-1 min-h-[110px] overflow-y-auto overscroll-contain space-y-3.5 pr-1 pb-4">
             {!canPropose && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 text-xs">
+              <div className="p-3 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
                 Only Ground Operators, Treasurers, and Admins can submit plan amendments.
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Amendment Title *
+              <label className="block text-xs font-bold text-slate-950 mb-1">
+                Amendment Title <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
@@ -168,19 +179,19 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Additional Antibiotics Batch (Post-cold snap)"
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-medium"
+                className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
             <div className="grid grid-cols-3 gap-2.5">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-bold text-slate-950 mb-1">
                   Category
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs"
+                  className="w-full px-2.5 py-2 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
                 >
                   {categories.map((c) => (
                     <option key={c} value={c}>
@@ -191,8 +202,8 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Items (Qty) *
+                <label className="block text-xs font-bold text-slate-950 mb-1">
+                  Planned Qty <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -204,13 +215,13 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                   value={qtyStr}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setQtyStr(e.target.value)}
-                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-mono font-bold"
+                  className="w-full px-2.5 py-2 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-xs font-mono font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Total Price ($) *
+                <label className="block text-xs font-bold text-slate-950 mb-1">
+                  Estimated Total ($) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -222,14 +233,14 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                   value={totalPriceStr}
                   onFocus={(e) => e.target.select()}
                   onChange={(e) => setTotalPriceStr(e.target.value)}
-                  className="w-full px-2.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-mono font-bold text-indigo-600"
+                  className="w-full px-2.5 py-2 rounded-xl border border-[#E8DFCE] bg-white text-xs font-mono font-black text-emerald-700"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Mandatory Operational Justification *
+              <label className="block text-xs font-bold text-slate-950 mb-1">
+                Mandatory Operational Justification <span className="text-rose-500">*</span>
               </label>
               <textarea
                 rows={3}
@@ -237,16 +248,16 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Explain why this budget adjustment is required and why it wasn't captured in the original plan..."
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-xs"
+                className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-xs font-medium focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs">
-              <span className="text-gray-500 flex items-center gap-1">
-                <Calculator className="w-3.5 h-3.5 text-indigo-500" />
-                Auto Unit Cost: <strong>${autoUnitCost.toFixed(2)}/unit</strong>
+            <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#FAF8F5] border border-[#E8DFCE] text-xs">
+              <span className="text-slate-600 flex items-center gap-1 font-semibold">
+                <Calculator className="w-3.5 h-3.5 text-emerald-700" />
+                Unit Cost: <strong className="text-slate-950 font-bold">${autoUnitCost.toFixed(2)}/unit</strong>
               </span>
-              <span className="font-bold font-mono text-gray-900 dark:text-white">
+              <span className="font-black font-mono text-slate-950">
                 Total: ${validTotal.toFixed(2)}
               </span>
             </div>
@@ -255,14 +266,14 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-500 cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-stone-100 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={!canPropose || !title.trim() || !note.trim() || validQty <= 0 || validTotal <= 0}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md disabled:opacity-50 cursor-pointer"
               >
                 Submit Amendment
               </button>
@@ -274,31 +285,31 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
         {activeTab === 'PENDING' && (
           <div className="flex-1 min-h-0 overflow-y-auto space-y-3">
             {pendingAmendments.length === 0 ? (
-              <div className="p-8 text-center text-xs text-gray-400">
+              <div className="p-8 text-center text-xs text-slate-500 font-semibold">
                 No amendments currently awaiting review.
               </div>
             ) : (
               pendingAmendments.map((line) => (
                 <div
                   key={line.id}
-                  className="p-4 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 space-y-2.5 text-xs"
+                  className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-2.5 text-xs"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h5 className="font-bold text-gray-900 dark:text-white">{line.title}</h5>
-                      <span className="text-gray-500">
+                      <h5 className="font-black text-slate-950">{line.title}</h5>
+                      <span className="text-slate-600 font-semibold">
                         {line.qty} {line.unitLabel || 'units'} @ ${line.unitCost.toFixed(2)} • Total: $
                         {(line.qty * line.unitCost).toFixed(2)}
                       </span>
                     </div>
 
-                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-[10px] font-bold shrink-0">
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold shrink-0">
                       Awaiting Sign-off
                     </span>
                   </div>
 
                   {line.amendmentReason && (
-                    <p className="p-2.5 rounded-xl bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 italic">
+                    <p className="p-2.5 rounded-xl bg-white border border-[#E8DFCE] text-slate-800 italic">
                       &quot;{line.amendmentReason}&quot;
                     </p>
                   )}
@@ -308,7 +319,7 @@ export const AmendmentSheet: React.FC<AmendmentSheetProps> = ({
                       <button
                         type="button"
                         onClick={() => onResolve({ lineId: line.id, decision: 'REJECT' })}
-                        className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-100/50 text-xs font-bold transition-colors cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-bold transition-colors cursor-pointer"
                       >
                         Reject
                       </button>

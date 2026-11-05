@@ -27,20 +27,20 @@ export const NotificationPrefsScreen: React.FC<NotificationPrefsScreenProps> = (
 
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm">
-        <h1 className="text-base font-bold">Alerts & Native Haptics</h1>
-        <p className="text-xs text-slate-400 mt-1">
+      <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs">
+        <h1 className="text-base font-black text-slate-950">Alerts & Native Haptics</h1>
+        <p className="text-xs text-slate-600 mt-1 font-medium">
           Customize local scheduled reminders, financial approvals, and physical vibration feedback.
         </p>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl divide-y divide-slate-100 dark:divide-slate-700/60 shadow-xs overflow-hidden text-xs">
+      <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden text-xs">
         <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="font-bold text-slate-900 dark:text-white text-sm">
+            <div className="font-black text-slate-950 text-sm">
               Protocol Reminders
             </div>
-            <div className="text-slate-500 mt-0.5">
+            <div className="text-slate-600 font-medium mt-0.5">
               Scheduled notifications for vaccinations and feed shifts
             </div>
           </div>
@@ -54,10 +54,10 @@ export const NotificationPrefsScreen: React.FC<NotificationPrefsScreenProps> = (
 
         <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="font-bold text-slate-900 dark:text-white text-sm">
+            <div className="font-black text-slate-950 text-sm">
               Multi-Sig Financial Alerts
             </div>
-            <div className="text-slate-500 mt-0.5">
+            <div className="text-slate-600 font-medium mt-0.5">
               Push notification when an expense requires second treasurer sign-off
             </div>
           </div>
@@ -71,10 +71,10 @@ export const NotificationPrefsScreen: React.FC<NotificationPrefsScreenProps> = (
 
         <div className="p-4 flex items-center justify-between">
           <div>
-            <div className="font-bold text-slate-900 dark:text-white text-sm">
+            <div className="font-black text-slate-950 text-sm">
               Android Haptic Feedback
             </div>
-            <div className="text-slate-500 mt-0.5">
+            <div className="text-slate-600 font-medium mt-0.5">
               Vibrate lightly on button taps, confirmations, and form submissions
             </div>
           </div>

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dataService } from '../src/services/dataService.ts';
+import { outboxService } from '../src/services/outbox.ts';
 import type { OrgMember } from '../src/types/agro.ts';
 import type { Organization } from '../src/types/organization.ts';
 import { TEST_ACCOUNTS, toOrgMember } from './helpers/testContext.ts';
@@ -41,10 +42,6 @@ test('WF-01: Founder Admin creates AGRO_FARMING and GENERAL_VENTURE organization
   assert.equal(ventureOrg.defaultTargetContributionUsd, 3000);
   assert.equal(ventureOrg.features.livestockModule, false);
   assert.equal(agroOrg.features.farmSitesModule, true);
-});
-
-test.after(() => {
-  setTimeout(() => process.exit(0), 100);
 });
 
 test('WF-02: 24-Hour Cryptographic Invitation Code Lifecycle & Expiration Duration', () => {
@@ -207,4 +204,37 @@ test('WF-04-NEG: Non-admin member or ground operator attempting to refresh code 
     },
     /Access Denied: Only Organization Admins can refresh invitation codes/
   );
+});
+
+test('WF-05: signOutCloud completely wipes all localStorage, sessionStorage, IndexedDB, outbox queue, and auth session state', async () => {
+  const adminActor = toOrgMember(TEST_ACCOUNTS.agroAdmin);
+  dataService.createOrganization({
+    name: 'Wipe Test Organization',
+    type: 'AGRO_FARMING',
+    actor: adminActor,
+    defaultTargetContributionUsd: 1000,
+  });
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('agro_planner_local_credentials_v2', JSON.stringify({ 'test@example.com': {} }));
+    window.localStorage.setItem('agro_planner_active_auth_session_v2', JSON.stringify({ uid: adminActor.id }));
+    window.localStorage.setItem('agro_planner_biometric_credential_v1', JSON.stringify({ id: 'bio-1' }));
+    window.localStorage.setItem('capita_outbox_queue_v1', JSON.stringify([{ id: 'op-1' }]));
+    window.sessionStorage.setItem('temp_session_token', 'secret-token');
+  }
+
+  await dataService.signOutCloud();
+
+  assert.equal(dataService.getActiveSession(), null);
+  assert.equal(dataService.getState().organizations?.length || 0, 0);
+  assert.equal(dataService.getState().members.length, 0);
+  assert.equal(
+    outboxService.getQueue().length,
+    0,
+    'Outbox queue must be cleared upon signOutCloud'
+  );
+});
+
+test.after(() => {
+  setTimeout(() => process.exit(0), 100);
 });

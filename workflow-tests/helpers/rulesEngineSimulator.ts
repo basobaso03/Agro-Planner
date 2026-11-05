@@ -205,13 +205,18 @@ export class RulesEngineSimulator {
         if (isAdmin) return { allowed: true };
         const isSelf = context.request.auth?.uid === docId;
         const incoming = context.request.resource?.data || {};
+        const emailMatch = Boolean(
+          context.request.auth?.email &&
+          incoming.email &&
+          context.request.auth.email.toLowerCase() === incoming.email.toLowerCase()
+        );
         const roleAllowed =
           !('role' in incoming) ||
           ['MEMBER', 'REMOTE_INVESTOR', 'GROUND_OPERATOR', 'TREASURER', 'SYNDICATE_TREASURER', 'ORG_ADMIN', 'SYNDICATE_ADMIN'].includes(incoming.role);
         const statusAllowed =
           !('approvalStatus' in incoming) ||
           ['PENDING_APPROVAL', 'APPROVED'].includes(incoming.approvalStatus);
-        const ok = isSelf && roleAllowed && statusAllowed;
+        const ok = (isSelf || emailMatch) && roleAllowed && statusAllowed;
         return { allowed: ok, reason: ok ? undefined : 'Unauthorized member creation payload' };
       }
       if (operation === 'update') {
@@ -233,9 +238,10 @@ export class RulesEngineSimulator {
         const affectedKeys = Object.keys(incoming).filter((k) => incoming[k] !== existing[k]);
         const restrictedKeys = ['role', 'approvalStatus', 'active', 'assignedLocationId'];
         const touchesRestricted = affectedKeys.some((k) => restrictedKeys.includes(k));
+        const isOnboardingWithoutOrg = !('orgId' in existing) || existing.orgId == null;
 
         if (isSelf) {
-          if (!touchesRestricted || existing.approvalStatus === 'PENDING_APPROVAL') {
+          if (!touchesRestricted || existing.approvalStatus === 'PENDING_APPROVAL' || isOnboardingWithoutOrg) {
             return { allowed: true };
           }
           return { allowed: false, reason: 'Self cannot modify role, approvalStatus, active, or assignedLocation' };
@@ -245,7 +251,7 @@ export class RulesEngineSimulator {
           context.request.auth?.email &&
           existing.email &&
           context.request.auth.email.toLowerCase() === existing.email.toLowerCase();
-        if (emailMatch && !touchesRestricted) {
+        if (emailMatch && (!touchesRestricted || existing.approvalStatus === 'PENDING_APPROVAL' || isOnboardingWithoutOrg)) {
           return { allowed: true };
         }
         return { allowed: false, reason: 'Unauthorized member update' };

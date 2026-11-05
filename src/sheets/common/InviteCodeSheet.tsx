@@ -78,17 +78,17 @@ export const InviteCodeSheet: React.FC<InviteCodeSheetProps> = ({
     <BottomSheet isOpen={isOpen} onClose={onClose} title="Organization Invite Code" maxHeight="80dvh">
       <div className="space-y-5">
         <div className="text-center py-2">
-          <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">
+          <div className="text-xs uppercase tracking-wider text-slate-500 font-bold mb-2">
             Active 24-Hour Access Code
           </div>
-          <div className="inline-block px-6 py-3.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border-2 border-emerald-500/30">
-            <span className="font-mono text-3xl font-extrabold tracking-widest text-emerald-600 dark:text-emerald-400">
+          <div className="inline-block px-6 py-3.5 bg-[#FAF8F5] rounded-2xl border-2 border-emerald-600/30">
+            <span className="font-mono text-3xl font-extrabold tracking-widest text-emerald-700">
               {inviteCode}
             </span>
           </div>
-          <div className="mt-2 text-xs font-medium text-slate-500">
+          <div className="mt-2 text-xs font-semibold text-slate-600">
             {isExpired ? (
-              <span className="text-rose-500 font-semibold">⚠️ Code has expired. Refresh required.</span>
+              <span className="text-rose-600 font-bold">⚠️ Code has expired. Refresh required.</span>
             ) : expiresAt ? (
               <span>Expires at {expiresAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             ) : (
@@ -101,30 +101,30 @@ export const InviteCodeSheet: React.FC<InviteCodeSheetProps> = ({
           <button
             type="button"
             onClick={handleCopy}
-            className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm flex items-center justify-center gap-2"
+            className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-white border border-[#E8DFCE] text-slate-950 shadow-xs hover:bg-stone-50 flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             📋 Copy Code
           </button>
           <button
             type="button"
             onClick={handleShare}
-            className="w-full py-3 px-4 rounded-xl font-semibold text-sm bg-emerald-600 text-white shadow-sm flex items-center justify-center gap-2"
+            className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             📲 Share Code
           </button>
         </div>
 
         {canRefresh && (
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="pt-3 border-t border-[#E8DFCE]">
             <button
               type="button"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="w-full py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-3 rounded-xl border border-[#E8DFCE] text-xs font-bold text-slate-950 hover:bg-stone-50 flex items-center justify-center gap-2 cursor-pointer transition-colors"
             >
               🔄 {isRefreshing ? 'Generating...' : 'Regenerate Code (Admin)'}
             </button>
-            <p className="text-[11px] text-slate-400 text-center mt-1.5">
+            <p className="text-[11px] text-slate-500 text-center mt-1.5 font-medium">
               Regenerating will immediately invalidate any previous codes sent to prospective members.
             </p>
           </div>

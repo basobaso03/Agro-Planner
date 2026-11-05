@@ -18,6 +18,14 @@ export interface ContributionSheetProps {
   onContributed?: () => void;
 }
 
+const formatRole = (role?: string) => {
+  if (!role) return '';
+  return role
+    .split('_')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+};
+
 export const ContributionSheet: React.FC<ContributionSheetProps> = ({
   isOpen,
   onClose,
@@ -97,27 +105,27 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
             value={form.values.memberId}
             onChange={(e) => form.setValue('memberId', e.target.value)}
             disabled={!!targetMember}
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+            className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm font-medium"
           >
             {members.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.fullName} ({m.role})
+                {m.fullName} ({formatRole(m.role)})
               </option>
             ))}
           </select>
         </Field>
 
         {currentEquity && (
-          <div className="bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex justify-between items-center text-xs">
+          <div className="bg-[#FAF8F5] p-3 rounded-xl border border-[#E8DFCE] flex justify-between items-center text-xs">
             <div>
-              <div className="text-slate-400">Current Net Capital</div>
-              <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+              <div className="text-[11px] text-slate-600 font-semibold uppercase tracking-wider">Current Net Capital</div>
+              <div className="text-sm font-black font-mono text-slate-950 mt-0.5">
                 {formatMoney(currentEquity.netContribution)}
               </div>
             </div>
             <div className="text-right">
-              <div className="text-slate-400">Equity Share</div>
-              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+              <div className="text-[11px] text-slate-600 font-semibold uppercase tracking-wider">Equity Share</div>
+              <div className="text-sm font-black font-mono text-emerald-700 mt-0.5">
                 {currentEquity.profitSharePercentage.toFixed(2)}%
               </div>
             </div>
@@ -129,22 +137,20 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
             <button
               type="button"
               onClick={() => form.setValue('direction', 'ADDITION')}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                form.values.direction === 'ADDITION'
-                  ? 'bg-emerald-500 text-white border-emerald-600'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-              }`}
+              className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${form.values.direction === 'ADDITION'
+                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
+                  : 'bg-white text-slate-800 border-[#E8DFCE] hover:bg-[#FAF8F5]'
+                }`}
             >
               + Capital Injection
             </button>
             <button
               type="button"
               onClick={() => form.setValue('direction', 'CONTRA_REVERSAL')}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                form.values.direction === 'CONTRA_REVERSAL'
-                  ? 'bg-rose-500 text-white border-rose-600'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-              }`}
+              className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${form.values.direction === 'CONTRA_REVERSAL'
+                  ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
+                  : 'bg-white text-slate-800 border-[#E8DFCE] hover:bg-[#FAF8F5]'
+                }`}
             >
               Contra Reversal
             </button>
@@ -165,7 +171,7 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
             value={form.values.referenceTxId}
             onChange={(e) => form.setValue('referenceTxId', e.target.value)}
             placeholder="e.g. TX-2026-90412"
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+            className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm"
           />
         </Field>
 
@@ -180,7 +186,7 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
             value={form.values.note}
             onChange={(e) => form.setValue('note', e.target.value)}
             placeholder="e.g. Q1 syndicate capital injection via Stanbic transfer"
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+            className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm"
           />
         </Field>
       </div>

@@ -20,22 +20,22 @@ export const StockMovementLedger: React.FC<StockMovementLedgerProps> = () => {
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Header Info */}
-      <div className="bg-slate-900 text-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm">
-        <h1 className="text-base font-bold">Stock Movement Ledger</h1>
-        <p className="text-xs text-slate-400 mt-1">
+      <div className="bg-white border border-[#E8DFCE] p-4 rounded-2xl shadow-xs">
+        <h1 className="text-base font-black text-slate-950">Stock Movement Ledger</h1>
+        <p className="text-xs text-slate-600 font-medium mt-1">
           Cryptographically sealed append-only audit trail of all inventory receipts, dispatches, and reversals.
         </p>
       </div>
 
       {/* Filter Tabs */}
-      <div className="grid grid-cols-4 gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold text-center">
+      <div className="grid grid-cols-4 gap-1.5 bg-[#FAF8F5] border border-[#E8DFCE] p-1 rounded-xl text-xs font-bold text-center">
         <button
           type="button"
           onClick={() => setFilter('ALL')}
           className={`py-2 rounded-lg transition-all ${
             filter === 'ALL'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
+              ? 'bg-white text-slate-950 shadow-xs border border-[#E8DFCE]'
+              : 'text-slate-600 hover:text-slate-950'
           }`}
         >
           All

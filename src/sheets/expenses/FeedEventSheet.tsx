@@ -67,19 +67,15 @@ export const FeedEventSheet: React.FC<FeedEventSheetProps> = ({
 
   const handleCapturePhoto = async () => {
     const photo = await nativeCamera.takePhoto();
-    if (photo?.dataUrl) {
-      const filename = `feed_${Date.now()}.jpg`;
-      const saved = await nativeFiles.saveImageFile(photo.dataUrl, filename);
-      setPhotoDataUrl(saved || photo.dataUrl);
+    if (photo?.dataUrl || photo?.webPath) {
+      setPhotoDataUrl(photo.dataUrl || photo.webPath || null);
     }
   };
 
   const handlePickGallery = async () => {
     const photo = await nativeCamera.pickFromGallery();
-    if (photo?.dataUrl) {
-      const filename = `feed_${Date.now()}.jpg`;
-      const saved = await nativeFiles.saveImageFile(photo.dataUrl, filename);
-      setPhotoDataUrl(saved || photo.dataUrl);
+    if (photo?.dataUrl || photo?.webPath) {
+      setPhotoDataUrl(photo.dataUrl || photo.webPath || null);
     }
   };
 
