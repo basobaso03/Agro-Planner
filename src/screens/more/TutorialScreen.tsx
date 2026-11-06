@@ -181,7 +181,7 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
   {
     id: 'security-and-privacy',
     title: 'Biometric Lock, Privacy Masking & Audit Trail',
-    subtitle: 'Bank-grade zero-trust privacy and cryptographic SHA-256 integrity',
+    subtitle: 'Bank-grade financial privacy, verified records & SHA-256 integrity',
     category: 'SECURITY',
     icon: ShieldCheck,
     steps: [
@@ -248,7 +248,7 @@ export const TutorialScreen: React.FC = () => {
           </h1>
           <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed mt-1">
             Master the essentials of registration, 24-hr organization invite codes, capital target pledges,
-            milestone runway planning, and zero-trust audit verification.
+            milestone runway planning, and tamper-proof audit verification.
           </p>
         </div>
 
@@ -277,11 +277,10 @@ export const TutorialScreen: React.FC = () => {
             key={cat.id}
             type="button"
             onClick={() => setSelectedCategory(cat.id)}
-            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedCategory === cat.id
+            className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat.id
                 ? 'bg-amber-600 text-white shadow-xs'
                 : 'bg-white border border-[#E8DFCE] text-slate-700 hover:bg-[#FAF8F5]'
-            }`}
+              }`}
           >
             {cat.label}
           </button>
