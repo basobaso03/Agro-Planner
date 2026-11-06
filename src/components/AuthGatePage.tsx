@@ -141,7 +141,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
           </div>
           <div>
             <span className="text-lg font-extrabold tracking-tight text-slate-900 block leading-none">
-              CapitaSeed
+              Capital Seed
             </span>
             <span className="text-[11px] font-medium text-slate-500">
               Operations &amp; Capital Platform
@@ -186,8 +186,8 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
           <div className="mb-5">
             <h1 className="text-lg sm:text-xl font-bold text-slate-900">
               {mode === 'LOGIN'
-                ? 'Welcome Back to CapitaSeed'
-                : 'Create Your CapitaSeed Account'}
+                ? 'Welcome Back to Capital Seed'
+                : 'Create Your Capital Seed Account'}
             </h1>
             <p className="text-xs text-slate-500 mt-1">
               {mode === 'LOGIN'
@@ -431,7 +431,7 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                 {loading
                   ? 'Verifying Credentials...'
                   : mode === 'LOGIN'
-                    ? 'Sign In to CapitaSeed Portal'
+                    ? 'Sign In to Capital Seed Portal'
                     : 'Create Verified Account'}
               </span>
               <ArrowRight className="w-4 h-4" />

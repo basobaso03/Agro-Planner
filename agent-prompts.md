@@ -225,6 +225,21 @@ in the more tab we have the following issues:
 
 
 
+
+
+
+
+- recent page is styled very poorly improve it
+- the audit log page is displaying role with underscores
+
+
+also on the more tab at end add the well styled engeneered by BASOBASO SOFTAWARES as done in splash screen, and l also need them to be able to contact me on whatsapp +263 788 123 047 and the email :baseramarlvin@gmail.com for any bug or improvement needed or feedback well styled and professional
+- change the app name to Capital Seed and upgrade it to 1.0.5, then upfate the features to change of name and new split of the app for  business type, very shot and few points 
+
+- on the overview page the role is displayed with underscores, on the same page remove the credit sale and operational sites and locations from the general type they belong only to agro type business
+
+- on operations tab remove the record sale from the general type it only belong to agro type, also the stock in, stock out
+
 now it automatically shows the dashboard, l dont know the organisation l am registered to and its type, l think we need to add this to the app again after fixing this
 
 
@@ -234,11 +249,18 @@ now it automatically shows the dashboard, l dont know the organisation l am regi
 
 - on more tab, the user can configure their own profile details, the biometric authentication, font type and delete my account (were these code completely removed from the app? or they are just not wired on the UI)
 
-- the hide/show is supposed to make sure that when the app is opened using local autication, the numbers must be hidden automatically, unless it was google or email/password login, and l see it only hide the numbers in the overview page alone all other page infomation is opened, it must completely hide all other pages numbers in the sustem to the user untill the verification is inserted
+the following must be a strict rule in the app system and must be observed all time in all pages of the app:
+- the hide/show numbers is supposed to make sure that when the app opened using local autication, the numbers must be hidden automatically, unless it was google or email/password login, and on top of that l see it only hide the numbers in the overview page alone all other page infomation is opened, it must completely hide all other pages numbers in the system to the user untill the verification is inserted
 
 
+- on capital pool page, the member view element text is ugly and two rows text
+- on the more tab organisation and account settings, the fingureprint status text element is poorly syled and its two rows text
+- l see that the admin cannot change the roles of their users
+- also l see everyone in the business can share the invitation code, which must only be seen by the admin alone
+- in more tab remove the create/ switch organisation no switching of organisations yet
 
-- does the registration and invitations still stants ad documented in plans\redesign plan\financial-and-dashboard-redesign-plan.md focuing on registration and invitation workflow alone, because l registered without any asked the org type and automatically to agro
+
+- add the page search on the overview page, that users can search for every page or settings so index them and they can filter by pages or settings or all(default)
 
 
 
@@ -248,3 +270,14 @@ now it automatically shows the dashboard, l dont know the organisation l am regi
 remove my email now from every app, as primary admin
 
 remove the seed data now we need to go in production, leave all the tests and plans
+
+
+can you look at the agro business side, we have the organisation master capital pool and is also set during onboarding, and then we have the runway capital planning, but some of the things in runway affect the main pool of money eg deposits and purchase, is it good to seperate them or we need to merge them, whats the standard way here
+
+
+in the runway remove/hide the save plan as a template button, its not os use now
+- on runway under excecution the does the propose plan amendment actually work or its a place holde, l was thinking to hide it as well as lock plan button for now
+- on runway under varience tab, the text capital recovery in progress text is ungly and takes two rows, also l alwaya see 0 recovered why, whatis its purpose
+
+
+- lets plan first looking at the agro business features and business, then also on general features and pages, then plan on each type the pages and opertions that we need to export some pdfs, with well designed structures, best branding of the organisation and of the app (including the logo), making sure the output names must not inslude the underscores on their file names, we need to share some some parts of the busness like the plans, purchsed sales etc depending on the type of business, and the exports must be comprehensive, so make sure that we have the best plugins for pdf generation and test it, so lets create the implementation plan and put it into its new folder in plans folder

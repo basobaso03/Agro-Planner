@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useNavigation } from './useNavigation.ts';
 import { TabHost } from './TabHost.tsx';
 import { ScreenHost } from './ScreenHost.tsx';
@@ -47,6 +47,7 @@ import type {
   ExpenseCategory,
   FeedLedgerEvent,
   Role,
+  AuditNotificationEvent,
 } from '../types/agro.ts';
 
 export interface RouteRendererProps {
@@ -61,6 +62,7 @@ export interface RouteRendererProps {
   feedSummaries: FeedInventorySummary[];
   isAgroEnabled: boolean;
   showNumbers?: boolean;
+  onToggleShowNumbers?: () => void;
   cloudUserEmail?: string | null;
   onRefresh: () => Promise<void>;
   onSignOut?: () => void;
@@ -69,6 +71,8 @@ export interface RouteRendererProps {
   onAddLoanDebt: () => void;
   onBroadcast: () => void;
   onOpenSiteManager?: () => void;
+  onOpenNotifications?: () => void;
+  onSelectNotification?: (notification: AuditNotificationEvent) => void;
 }
 
 export const RouteRenderer: React.FC<RouteRendererProps> = ({
@@ -83,6 +87,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
   feedSummaries,
   isAgroEnabled,
   showNumbers = true,
+  onToggleShowNumbers,
   cloudUserEmail,
   onRefresh,
   onSignOut,
@@ -91,8 +96,14 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
   onAddLoanDebt,
   onBroadcast,
   onOpenSiteManager,
+  onOpenNotifications,
+  onSelectNotification,
 }) => {
   const { currentRoute, activeTab, navigate, pop } = useNavigation();
+
+  const activeOrg =
+    (state.organizations || []).find((o) => o.id === activeMember.orgId) ||
+    dataService.getActiveOrganization(activeMember.orgId);
 
   // If at root of tab, render the tab root screen
   const routeId = currentRoute.id;
@@ -100,55 +111,54 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
   // If at root of any primary bottom tab, preserve state memory with TabHost (Fix B11)
   const isRootTab = ['overview', 'operations', 'money', 'more'].includes(routeId);
 
-  if (isRootTab) {
-    return (
-      <TabHost
-        overviewContent={
-          <OverviewScreen
-            state={state}
-            activeMember={activeMember}
-            leftMoney={financials.leftMoney}
-            totalNav={financials.totalNav ?? (financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0))}
-            totalReceivables={
-              (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) +
-              (financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0)
-            }
-            totalDebt={financials.debtLiabilitiesOwed ?? financials.totalBorrowedDebtOutstanding ?? 0}
-            totalLoansGiven={financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0}
-            showNumbers={showNumbers}
-            onRefresh={onRefresh}
-            onLogExpense={onLogExpense}
-            onRecordSale={onRecordSale}
-            onAddLoanDebt={onAddLoanDebt}
-            onBroadcast={onBroadcast}
-            onOpenSiteManager={onOpenSiteManager}
-          />
-        }
-        operationsContent={
-          isAgroEnabled ? (
-            <BatchListScreen activeMember={activeMember} onRefresh={onRefresh} onOpenSiteManager={onOpenSiteManager} />
-          ) : (
-            <OperationsHubScreen activeMember={activeMember} onOpenSiteManager={onOpenSiteManager} />
-          )
-        }
-        moneyContent={<MoneyScreen activeMember={activeMember} />}
-        moreContent={
-          <MoreScreen
-            activeMember={activeMember}
-            onSignOut={onSignOut}
-            onOpenSiteManager={onOpenSiteManager}
-          />
-        }
-      />
-    );
-  }
+  const tabScrollMapRef = useRef<Record<string, number>>({});
+  const prevIsRootTabRef = useRef<boolean>(isRootTab);
+  const prevActiveTabRef = useRef<string>(activeTab);
+
+  useEffect(() => {
+    const mainEl = document.querySelector('main');
+    if (!mainEl) return;
+
+    // Track scroll events while on a root tab
+    const handleScroll = () => {
+      if (['overview', 'operations', 'money', 'more'].includes(currentRoute.id)) {
+        tabScrollMapRef.current[activeTab] = mainEl.scrollTop;
+      }
+    };
+
+    mainEl.addEventListener('scroll', handleScroll, { passive: true });
+
+    // Transitioning from pushed screen back to root tab: restore scroll
+    if (isRootTab && !prevIsRootTabRef.current) {
+      const saved = tabScrollMapRef.current[activeTab] || 0;
+      requestAnimationFrame(() => {
+        if (mainEl) mainEl.scrollTop = saved;
+      });
+    } else if (!isRootTab && prevIsRootTabRef.current) {
+      // Pushing a new screen: reset pushed screen to top
+      mainEl.scrollTop = 0;
+    } else if (isRootTab && prevActiveTabRef.current !== activeTab) {
+      // Switched between tabs: restore the target tab's scroll
+      const saved = tabScrollMapRef.current[activeTab] || 0;
+      requestAnimationFrame(() => {
+        if (mainEl) mainEl.scrollTop = saved;
+      });
+    }
+
+    prevIsRootTabRef.current = isRootTab;
+    prevActiveTabRef.current = activeTab;
+
+    return () => {
+      mainEl.removeEventListener('scroll', handleScroll);
+    };
+  }, [isRootTab, activeTab, currentRoute.id]);
 
   // Pushed screens across multi-stack navigation hosted with ScreenHost animations
   const renderPushedScreen = () => {
     switch (routeId) {
       case 'batchDetail':
       case 'livestock-detail':
-        return <BatchDetailScreen batchId={currentRoute.params?.id} activeMember={activeMember} />;
+        return <BatchDetailScreen batchId={currentRoute.params?.id} activeMember={activeMember} showNumbers={showNumbers} />;
 
       case 'checkpointAgenda':
         return <CheckpointAgendaScreen activeMember={activeMember} />;
@@ -158,19 +168,28 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
 
       case 'siteCompare':
       case 'site-compare':
-        return <SiteCompareScreen activeMember={activeMember} onOpenSiteManager={onOpenSiteManager} />;
+        return <SiteCompareScreen activeMember={activeMember} showNumbers={showNumbers} onOpenSiteManager={onOpenSiteManager} />;
 
       case 'stockInventory':
       case 'operations-inventory':
+        if (!isAgroEnabled) {
+          return <OperationsHubScreen activeMember={activeMember} showNumbers={showNumbers} onOpenSiteManager={undefined} />;
+        }
         return <StockInventoryScreen activeMember={activeMember} />;
 
       case 'stockMovementLedger':
       case 'operations-stock-ledger':
+        if (!isAgroEnabled) {
+          return <OperationsHubScreen activeMember={activeMember} showNumbers={showNumbers} onOpenSiteManager={undefined} />;
+        }
         return <StockMovementLedger activeMember={activeMember} />;
 
       case 'creditSales':
       case 'credit-sales':
-        return <CreditSalesScreen activeMember={activeMember} isAgroEnabled={isAgroEnabled} />;
+        if (!isAgroEnabled) {
+          return <OperationsHubScreen activeMember={activeMember} showNumbers={showNumbers} onOpenSiteManager={undefined} />;
+        }
+        return <CreditSalesScreen activeMember={activeMember} isAgroEnabled={isAgroEnabled} showNumbers={showNumbers} />;
 
       case 'saleDetail':
       case 'sale-detail':
@@ -179,12 +198,13 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             saleId={currentRoute.params?.id || ''}
             activeMember={activeMember}
             onBack={() => pop()}
+            showNumbers={showNumbers}
           />
         );
 
       case 'loansDebts':
       case 'loans-debts':
-        return <LoansDebtsScreen activeMember={activeMember} />;
+        return <LoansDebtsScreen activeMember={activeMember} showNumbers={showNumbers} />;
 
       case 'loanDetail':
         return (
@@ -192,6 +212,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             loanId={currentRoute.params?.id || ''}
             activeMember={activeMember}
             onBack={() => pop()}
+            showNumbers={showNumbers}
           />
         );
 
@@ -201,15 +222,16 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             debtId={currentRoute.params?.id || ''}
             activeMember={activeMember}
             onBack={() => pop()}
+            showNumbers={showNumbers}
           />
         );
 
       case 'financialSummary':
       case 'financial-summary':
-        return <FinancialSummaryScreen activeMember={activeMember} />;
+        return <FinancialSummaryScreen activeMember={activeMember} showNumbers={showNumbers} />;
 
       case 'members':
-        return <MembersScreen activeMember={activeMember} />;
+        return <MembersScreen activeMember={activeMember} showNumbers={showNumbers} />;
 
       case 'auditLedger':
       case 'audit-ledger':
@@ -246,6 +268,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             currentMember={activeMember}
             locations={locations}
             onOpenExpenseModal={onLogExpense}
+            showNumbers={showNumbers}
           />
         );
 
@@ -310,6 +333,7 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           </div>
         );
 
+      case 'settings':
       case 'helpOnboarding':
         return (
           <div className="px-3.5 sm:px-5 py-3">
@@ -317,8 +341,9 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
               activeMember={activeMember}
               session={null}
               locations={locations}
-              activeOrg={(state.organizations || [])[0]}
+              activeOrg={activeOrg}
               onSignOut={onSignOut || (() => { })}
+              targetSection={currentRoute.params?.section || null}
             />
           </div>
         );
@@ -328,10 +353,11 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
           <OverviewScreen
             state={state}
             activeMember={activeMember}
+            activeOrg={activeOrg}
             leftMoney={financials.leftMoney}
             totalNav={financials.totalNav ?? (financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0))}
             totalReceivables={
-              (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) +
+              (isAgroEnabled ? (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) : 0) +
               (financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0)
             }
             totalDebt={financials.debtLiabilitiesOwed ?? financials.totalBorrowedDebtOutstanding ?? 0}
@@ -342,15 +368,67 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             onRecordSale={onRecordSale}
             onAddLoanDebt={onAddLoanDebt}
             onBroadcast={onBroadcast}
+            onOpenNotifications={onOpenNotifications}
+            onSelectNotification={onSelectNotification}
           />
         );
     }
   };
 
   return (
-    <ScreenHost screenKey={routeId}>
-      {renderPushedScreen()}
-    </ScreenHost>
+    <>
+      <div style={{ display: isRootTab ? 'block' : 'none' }} className="w-full">
+        <TabHost
+          overviewContent={
+            <OverviewScreen
+              state={state}
+              activeMember={activeMember}
+              activeOrg={activeOrg}
+              leftMoney={financials.leftMoney}
+              totalNav={financials.totalNav ?? (financials.leftMoney + fixedAssetGroups.reduce((acc, a) => acc + a.currentValue, 0))}
+              totalReceivables={
+                (isAgroEnabled ? (financials.creditSalesReceivables ?? financials.totalCreditSalesOutstanding ?? 0) : 0) +
+                (financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0)
+              }
+              totalDebt={financials.debtLiabilitiesOwed ?? financials.totalBorrowedDebtOutstanding ?? 0}
+              totalLoansGiven={financials.loansGivenRecoverable ?? financials.totalLoansGivenOutstanding ?? 0}
+              showNumbers={showNumbers}
+              onRefresh={onRefresh}
+              onLogExpense={onLogExpense}
+              onRecordSale={onRecordSale}
+              onAddLoanDebt={onAddLoanDebt}
+              onBroadcast={onBroadcast}
+              onOpenSiteManager={isAgroEnabled ? onOpenSiteManager : undefined}
+              onOpenNotifications={onOpenNotifications}
+              onSelectNotification={onSelectNotification}
+            />
+          }
+          operationsContent={
+            isAgroEnabled ? (
+              <BatchListScreen activeMember={activeMember} showNumbers={showNumbers} onRefresh={onRefresh} onOpenSiteManager={onOpenSiteManager} />
+            ) : (
+              <OperationsHubScreen activeMember={activeMember} showNumbers={showNumbers} onOpenSiteManager={undefined} />
+            )
+          }
+          moneyContent={<MoneyScreen activeMember={activeMember} showNumbers={showNumbers} onToggleShowNumbers={onToggleShowNumbers} />}
+          moreContent={
+            <MoreScreen
+              activeMember={activeMember}
+              showNumbers={showNumbers}
+              onToggleShowNumbers={onToggleShowNumbers}
+              onSignOut={onSignOut}
+              onOpenSiteManager={isAgroEnabled ? onOpenSiteManager : undefined}
+            />
+          }
+        />
+      </div>
+
+      {!isRootTab && (
+        <ScreenHost screenKey={routeId}>
+          {renderPushedScreen()}
+        </ScreenHost>
+      )}
+    </>
   );
 };
 

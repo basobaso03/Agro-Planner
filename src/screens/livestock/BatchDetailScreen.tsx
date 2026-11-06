@@ -12,6 +12,10 @@ import { RegisterBatchSheet } from '../../sheets/livestock/RegisterBatchSheet.ts
 import { FeedEventSheet } from '../../sheets/livestock/FeedEventSheet.tsx';
 import { ImageViewerSheet } from '../../components/ui/ImageViewerSheet.tsx';
 import { useToast } from '../../components/ui/Toast.tsx';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateBatchLifecyclePdf } from '../../services/pdf/generators/agro/batchLifecyclePdf.ts';
+import { generateVaccinationPdf } from '../../services/pdf/generators/agro/vaccinationPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import {
   PlusCircle,
   CalendarPlus,
@@ -59,11 +63,13 @@ const formatCheckpointCategory = (cat?: string): string => {
 export interface BatchDetailScreenProps {
   batchId?: string;
   activeMember: OrgMember;
+  showNumbers?: boolean;
 }
 
 export const BatchDetailScreen: React.FC<BatchDetailScreenProps> = ({
   batchId,
   activeMember,
+  showNumbers = true,
 }) => {
   const { currentRoute, goBack } = useNavigation();
   const { showToast } = useToast();
@@ -146,7 +152,7 @@ export const BatchDetailScreen: React.FC<BatchDetailScreenProps> = ({
               {batchStatus.countdownBadgeText}
             </span>
             <div className="text-xs text-slate-600 font-medium mt-1.5">
-              Est. <strong className="text-emerald-700 font-black">{formatMoney(batchStatus.estimatedCurrentValueUsd)}</strong>
+              Est. <strong className="text-emerald-700 font-black">{formatMoney(batchStatus.estimatedCurrentValueUsd, showNumbers)}</strong>
             </div>
           </div>
         </div>
@@ -156,33 +162,53 @@ export const BatchDetailScreen: React.FC<BatchDetailScreenProps> = ({
           <div>
             <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Live Count</div>
             <div className="text-base font-black font-mono text-slate-950 mt-0.5">
-              {currentLiveHeadcount}
+              {showNumbers ? currentLiveHeadcount : '••'}
             </div>
           </div>
           <div>
             <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Initial</div>
             <div className="text-base font-black font-mono text-slate-700 mt-0.5">
-              {entry.initialHeadcount}
+              {showNumbers ? entry.initialHeadcount : '••'}
             </div>
           </div>
           <div>
             <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Mortality</div>
             <div className={`text-base font-black font-mono mt-0.5 ${mortalityRatePercent > 5 ? 'text-rose-600' : 'text-slate-950'}`}>
-              {mortalityRatePercent.toFixed(1)}%
+              {showNumbers ? `${mortalityRatePercent.toFixed(1)}%` : '••%'}
             </div>
           </div>
           <div>
             <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Avg Weight</div>
             <div className="text-base font-black font-mono text-emerald-700 mt-0.5">
-              {batchStatus.latestWeightAvgKg ? `${batchStatus.latestWeightAvgKg}kg` : '—'}
+              {showNumbers ? (batchStatus.latestWeightAvgKg ? `${batchStatus.latestWeightAvgKg}kg` : '—') : '••'}
             </div>
           </div>
         </div>
 
         {/* Quick Action Buttons */}
         <div className="pt-3 border-t border-[#F0EBE1] space-y-2">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-            Quick Actions
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Quick Actions
+            </div>
+            <PdfExportButton
+              label="Share Batch PDF"
+              title={`Batch ${entry.nameOrTag} Lifecycle Report`}
+              filename={buildExportFilename({
+                orgName: dataService.getActiveOrg()?.name,
+                documentType: 'Batch-Lifecycle-Report',
+                entityName: entry.nameOrTag,
+              })}
+              generateDoc={() =>
+                generateBatchLifecyclePdf({
+                  organization: dataService.getActiveOrg(),
+                  livestock: entry,
+                  computedStatus: batchStatus,
+                  lifecycleEvents: events,
+                  operatorName: activeMember?.fullName,
+                })
+              }
+            />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <button
@@ -388,22 +414,41 @@ export const BatchDetailScreen: React.FC<BatchDetailScreenProps> = ({
         <div className="space-y-3">
           {/* Org Notification Info Banner */}
           <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-4 shadow-xs text-xs space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 font-bold text-amber-950">
                 <Bell className="w-4 h-4 text-amber-600" />
                 <span>Morning Dispatch Notifications (07:00 AM)</span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCheckpoint(undefined);
-                  setShowCheckpointSheet(true);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs cursor-pointer transition-all"
-              >
-                <CalendarPlus className="w-3.5 h-3.5" />
-                <span>+ Custom Checkpoint</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <PdfExportButton
+                  label="Vaccination Cert"
+                  title={`Vaccination Certificate: ${entry.nameOrTag}`}
+                  filename={buildExportFilename({
+                    orgName: dataService.getActiveOrg()?.name,
+                    documentType: 'Vaccination-Certificate',
+                    entityName: entry.nameOrTag,
+                  })}
+                  generateDoc={() =>
+                    generateVaccinationPdf({
+                      organization: dataService.getActiveOrg(),
+                      livestock: entry,
+                      checkpoints: protocols as unknown as AnimalCheckpoint[],
+                      operatorName: activeMember?.fullName,
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCheckpoint(undefined);
+                    setShowCheckpointSheet(true);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs cursor-pointer transition-all"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  <span>+ Checkpoint</span>
+                </button>
+              </div>
             </div>
             <p className="text-amber-800 leading-relaxed font-medium">
               Every member in your organization receives a morning notification on the exact scheduled date for each checkpoint milestone.

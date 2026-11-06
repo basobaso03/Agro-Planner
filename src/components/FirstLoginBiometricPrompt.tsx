@@ -68,7 +68,7 @@ export const FirstLoginBiometricPrompt: React.FC<FirstLoginBiometricPromptProps>
             Enable Fingerprint Quick-Unlock?
           </h3>
           <p className="text-xs text-slate-700 font-medium leading-relaxed mt-1">
-            Protect your organization financials and unlock in one touch using your Android fingerprint sensor. Fingerprint is the recommended security standard for CapitaSeed.
+            Protect your organization financials and unlock in one touch using your Android fingerprint sensor. Fingerprint is the recommended security standard for Capital Seed.
           </p>
         </div>
 

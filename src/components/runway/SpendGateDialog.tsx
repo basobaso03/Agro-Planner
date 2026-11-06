@@ -82,7 +82,7 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
                 Runway Spend Gate Enforcement
               </h3>
               <p className="text-xs text-slate-600 font-medium">
-                Active plan is locked under STRICT enforcement. All capital disbursements must be accounted for.
+                Disbursements must be allocated to an authorized Runway budget line or contingency reserve, deducting from Master Treasury (<strong className="font-bold">leftMoney</strong>).
               </p>
             </div>
           </div>
@@ -196,22 +196,7 @@ export const SpendGateDialog: React.FC<SpendGateDialogProps> = ({
           </div>
         )}
 
-        {/* Propose Amendment Shortcut */}
-        {onProposeAmendment && (
-          <div className="pt-2 border-t border-[#E8DFCE] flex items-center justify-between text-xs">
-            <span className="text-slate-600 font-medium">Unbudgeted item or need additional funds?</span>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onProposeAmendment();
-              }}
-              className="font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
-            >
-              <FileEdit className="w-3.5 h-3.5" /> Propose Amendment
-            </button>
-          </div>
-        )}
+        {/* Propose Amendment Shortcut hidden per request */}
 
         {/* Footer Actions */}
         <div className="flex items-center justify-end space-x-2 pt-2">

@@ -4,6 +4,7 @@ import { dataService } from '../../services/dataService.ts';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { Fab } from '../../components/ui/Fab.tsx';
 import { BroadcastSheet } from '../../sheets/common/BroadcastSheet.tsx';
+import { getRoleMeta } from '../../utils/permissions.ts';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface BroadcastsScreenProps {
@@ -14,7 +15,10 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
   const [showBroadcastSheet, setShowBroadcastSheet] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState<string>('ALL');
 
-  const notifications = dataService.getState().auditNotifications || [];
+  const rawNotifications = dataService.getState().auditNotifications || [];
+  const notifications = activeMember?.orgId
+    ? rawNotifications.filter((n) => !n.orgId || n.orgId === activeMember.orgId)
+    : rawNotifications;
   const broadcasts = notifications.filter(
     (n) => n.eventType === 'GROUND_BROADCAST' || n.severity === 'URGENT_GROUND' || n.severity === 'WARNING_CONTRA'
   );
@@ -54,15 +58,14 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                        item.severity === 'URGENT_GROUND'
-                          ? 'bg-rose-100 text-rose-900 border border-rose-300'
-                          : item.severity === 'WARNING_CONTRA'
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${item.severity === 'URGENT_GROUND'
+                        ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                        : item.severity === 'WARNING_CONTRA'
                           ? 'bg-amber-100 text-amber-900 border border-amber-300'
                           : item.severity === 'MILESTONE'
-                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                          : 'bg-slate-100 text-slate-800 border border-slate-300'
-                      }`}
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                            : 'bg-slate-100 text-slate-800 border border-slate-300'
+                        }`}
                     >
                       {item.severity.replace(/_/g, ' ')}
                     </span>
@@ -89,8 +92,8 @@ export const BroadcastsScreen: React.FC<BroadcastsScreenProps> = ({ activeMember
               )}
 
               <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between text-[11px] text-slate-600">
-                <span>By <strong className="text-slate-950">{item.actorName}</strong> ({item.actorRole})</span>
-                <span className="font-mono font-bold text-slate-800">Block #{item.sequenceNumber}</span>
+                <span>By <strong className="text-slate-950">{item.actorName}</strong> ({getRoleMeta(item.actorRole).label})</span>
+                <span className="font-mono font-bold text-slate-800">Block {item.sequenceNumber}</span>
               </div>
             </div>
           ))}

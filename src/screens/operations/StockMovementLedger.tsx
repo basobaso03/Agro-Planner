@@ -23,7 +23,7 @@ export const StockMovementLedger: React.FC<StockMovementLedgerProps> = () => {
       <div className="bg-white border border-[#E8DFCE] p-4 rounded-2xl shadow-xs">
         <h1 className="text-base font-black text-slate-950">Stock Movement Ledger</h1>
         <p className="text-xs text-slate-600 font-medium mt-1">
-          Cryptographically sealed append-only audit trail of all inventory receipts, dispatches, and reversals.
+          Immutable append-only audit trail of all inventory receipts, dispatches, and reversals.
         </p>
       </div>
 
@@ -32,44 +32,40 @@ export const StockMovementLedger: React.FC<StockMovementLedgerProps> = () => {
         <button
           type="button"
           onClick={() => setFilter('ALL')}
-          className={`py-2 rounded-lg transition-all ${
-            filter === 'ALL'
-              ? 'bg-white text-slate-950 shadow-xs border border-[#E8DFCE]'
-              : 'text-slate-600 hover:text-slate-950'
-          }`}
+          className={`py-2 rounded-lg transition-all ${filter === 'ALL'
+            ? 'bg-white text-slate-950 shadow-xs border border-[#E8DFCE]'
+            : 'text-slate-600 hover:text-slate-950'
+            }`}
         >
           All
         </button>
         <button
           type="button"
           onClick={() => setFilter('STOCK_IN')}
-          className={`py-2 rounded-lg transition-all ${
-            filter === 'STOCK_IN'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
-          }`}
+          className={`py-2 rounded-lg transition-all ${filter === 'STOCK_IN'
+            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+            : 'text-slate-500'
+            }`}
         >
           Receipts
         </button>
         <button
           type="button"
           onClick={() => setFilter('DAILY_CONSUMPTION')}
-          className={`py-2 rounded-lg transition-all ${
-            filter === 'DAILY_CONSUMPTION'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
-          }`}
+          className={`py-2 rounded-lg transition-all ${filter === 'DAILY_CONSUMPTION'
+            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+            : 'text-slate-500'
+            }`}
         >
           Dispatches
         </button>
         <button
           type="button"
           onClick={() => setFilter('CONTRA_REVERSAL')}
-          className={`py-2 rounded-lg transition-all ${
-            filter === 'CONTRA_REVERSAL'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500'
-          }`}
+          className={`py-2 rounded-lg transition-all ${filter === 'CONTRA_REVERSAL'
+            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+            : 'text-slate-500'
+            }`}
         >
           Contra
         </button>
@@ -94,16 +90,15 @@ export const StockMovementLedger: React.FC<StockMovementLedgerProps> = () => {
                   {ev.feedType}
                 </div>
                 <div className="text-slate-500 mt-0.5">{ev.note}</div>
-                <div className="text-[11px] font-mono text-slate-400 mt-1">
-                  Hash: {ev.auditHash?.slice(0, 16)}... · By {ev.loggedByName}
+                <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                  Verified Ledger Record · By {ev.loggedByName}
                 </div>
               </div>
 
               <div className="text-right">
                 <span
-                  className={`text-base font-bold ${
-                    ev.bagsDelta > 0 ? 'text-emerald-600' : 'text-amber-600'
-                  }`}
+                  className={`text-base font-bold ${ev.bagsDelta > 0 ? 'text-emerald-600' : 'text-amber-600'
+                    }`}
                 >
                   {ev.bagsDelta > 0 ? `+${ev.bagsDelta}` : ev.bagsDelta} units
                 </span>

@@ -18,7 +18,7 @@ export interface AppBarProps {
 }
 
 export const AppBar: React.FC<AppBarProps> = ({
-  orgName = 'CapitaSeed',
+  orgName = 'Capital Seed',
   locations = [],
   selectedLocationId = 'ALL',
   onSelectLocation,
@@ -31,14 +31,20 @@ export const AppBar: React.FC<AppBarProps> = ({
 }) => {
   const { currentRoute, canPop, pop, navigate } = useNavigation();
 
-  const selectedLocName =
-    selectedLocationId === 'ALL'
-      ? 'All Sites'
-      : locations.find((l) => l.id === selectedLocationId)?.name || 'Select Site';
+  // On Overview tab, display org / platform name filling one row text without cutting
+  const displayTitle =
+    currentRoute.id === 'overview'
+      ? orgName || 'Capital Seed'
+      : currentRoute.title;
 
   return (
-    <header className="sticky top-0 z-30 shrink-0 bg-white/95 backdrop-blur-md border-b border-[#E8DFCE] pt-safe px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
-      {/* Left Column: Back button or Org Branding */}
+    <header
+      style={{
+        paddingTop: 'calc(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)) + 0.625rem)',
+      }}
+      className="sticky top-0 z-30 shrink-0 bg-white/95 backdrop-blur-md border-b border-[#E8DFCE] px-3 sm:px-4 pb-2.5 flex items-center justify-between gap-2 transition-all"
+    >
+      {/* Left Column: Back button or Page Name / Org Branding */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {canPop ? (
           <button
@@ -51,17 +57,16 @@ export const AppBar: React.FC<AppBarProps> = ({
           </button>
         ) : null}
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate flex items-center gap-1.5">
-            <span>{currentRoute.title}</span>
+            <span>{displayTitle}</span>
           </h1>
-          {!canPop && <p className="text-[10px] text-slate-500 font-bold uppercase truncate">{orgName}</p>}
         </div>
       </div>
 
-      {/* Right Column: Site Chip + SyncChip + Privacy Eye + Bell */}
+      {/* Right Column: Site Chip (root tabs only) + SyncChip + Privacy Eye + Bell */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {onSelectLocation && (
+        {!canPop && onSelectLocation && (
           <div className="flex items-center gap-1">
             {locations.length === 0 ? (
               <button
@@ -74,43 +79,30 @@ export const AppBar: React.FC<AppBarProps> = ({
                 <span>＋ Add Site</span>
               </button>
             ) : (
-              <>
-                <div className="relative">
-                  <select
-                    aria-label="Select Farm Site"
-                    value={selectedLocationId}
-                    onChange={(e) => {
-                      if (e.target.value === '__MANAGE_SITES__') {
-                        onOpenSiteManager?.();
-                      } else {
-                        onSelectLocation(e.target.value);
-                      }
-                    }}
-                    className="appearance-none pl-6 pr-5 py-1 rounded-full bg-[#FAF8F5] border border-slate-200 text-[10px] font-bold text-slate-700 hover:border-amber-400 focus:outline-hidden cursor-pointer max-w-[120px] sm:max-w-[150px] truncate"
-                  >
-                    <option value="ALL">All Sites ({locations.length})</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                    <option value="__MANAGE_SITES__">📍 ＋ Add / Manage Sites...</option>
-                  </select>
-                  <MapPin className="w-3 h-3 text-amber-500 absolute left-2 top-2 pointer-events-none" />
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
-                </div>
-
-                {onOpenSiteManager && (
-                  <button
-                    type="button"
-                    onClick={onOpenSiteManager}
-                    title="Add or manage sites"
-                    className="p-1 rounded-full bg-[#FAF8F5] hover:bg-amber-100 border border-slate-200 text-amber-800 transition-colors cursor-pointer"
-                  >
-                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
-                  </button>
-                )}
-              </>
+              <div className="relative">
+                <select
+                  aria-label="Select Farm Site"
+                  value={selectedLocationId}
+                  onChange={(e) => {
+                    if (e.target.value === '__MANAGE_SITES__') {
+                      onOpenSiteManager?.();
+                    } else {
+                      onSelectLocation(e.target.value);
+                    }
+                  }}
+                  className="appearance-none pl-6 pr-5 py-1 rounded-full bg-[#FAF8F5] border border-slate-200 text-[10px] font-bold text-slate-700 hover:border-amber-400 focus:outline-hidden cursor-pointer max-w-[110px] sm:max-w-[140px] truncate"
+                >
+                  <option value="ALL">All Sites ({locations.length})</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                  <option value="__MANAGE_SITES__">📍 ＋ Add / Manage Sites...</option>
+                </select>
+                <MapPin className="w-3 h-3 text-amber-500 absolute left-2 top-2 pointer-events-none" />
+                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-1.5 top-2 pointer-events-none" />
+              </div>
             )}
           </div>
         )}

@@ -270,32 +270,32 @@ export function getRoleMeta(role?: Role | null): {
     case 'SYNDICATE_ADMIN':
       return {
         label: 'Organization Admin',
-        badgeClass: 'bg-purple-900/80 text-purple-200 border-purple-700/60',
+        badgeClass: 'bg-purple-50 text-purple-800 border-purple-200 dark:bg-purple-900/60 dark:text-purple-200 dark:border-purple-700/60',
         desc: 'Full administrative authority across all organization ledgers, members, sites, and cloud configuration.',
       };
     case 'TREASURER':
       return {
         label: 'Treasurer',
-        badgeClass: 'bg-amber-900/80 text-amber-200 border-amber-700/60',
+        badgeClass: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/60 dark:text-amber-200 dark:border-amber-700/60',
         desc: 'Multi-sig expense authorizer, capital pool custodian, and contra-entry auditor.',
       };
     case 'MEMBER':
     case 'REMOTE_INVESTOR':
       return {
         label: 'Member',
-        badgeClass: 'bg-emerald-900/80 text-emerald-200 border-emerald-700/60',
+        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-900/60 dark:text-emerald-200 dark:border-emerald-700/60',
         desc: 'Capital contributor with real-time portfolio, dividend, and growth telemetry access.',
       };
     case 'GROUND_OPERATOR':
       return {
         label: 'Ground Operator',
-        badgeClass: 'bg-sky-900/80 text-sky-200 border-sky-700/60',
+        badgeClass: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-900/60 dark:text-sky-200 dark:border-sky-700/60',
         desc: 'Field station operator managing daily livestock feeding, weigh-ins, receipts, and site dispatches.',
       };
     default:
       return {
         label: 'Member',
-        badgeClass: 'bg-slate-800 text-slate-200 border-slate-700',
+        badgeClass: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700',
         desc: 'Authorized organization participant.',
       };
   }

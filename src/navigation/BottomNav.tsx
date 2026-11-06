@@ -20,21 +20,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({ isAgroEnabled }) => {
     <nav
       role="navigation"
       aria-label="Bottom Navigation"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#E8DFCE] pb-safe"
+      style={{
+        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px))',
+      }}
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#E8DFCE]"
     >
       <div className="max-w-md mx-auto flex items-center justify-around h-16 px-2">
         {/* Tab 1: Overview */}
         <button
           type="button"
           onClick={() => switchTab('overview')}
-          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
-            activeTab === 'overview' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
-          }`}
+          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${activeTab === 'overview' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
         >
           <div
-            className={`p-1 rounded-xl transition-all ${
-              activeTab === 'overview' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
-            }`}
+            className={`p-1 rounded-xl transition-all ${activeTab === 'overview' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
+              }`}
           >
             <Home className="w-5 h-5" />
           </div>
@@ -45,14 +46,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ isAgroEnabled }) => {
         <button
           type="button"
           onClick={() => switchTab('operations')}
-          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
-            activeTab === 'operations' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
-          }`}
+          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${activeTab === 'operations' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
         >
           <div
-            className={`p-1 rounded-xl transition-all ${
-              activeTab === 'operations' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
-            }`}
+            className={`p-1 rounded-xl transition-all ${activeTab === 'operations' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
+              }`}
           >
             {isAgroEnabled ? <Layers className="w-5 h-5" /> : <Package className="w-5 h-5" />}
           </div>
@@ -63,14 +62,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ isAgroEnabled }) => {
         <button
           type="button"
           onClick={() => switchTab('money')}
-          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
-            activeTab === 'money' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
-          }`}
+          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${activeTab === 'money' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
         >
           <div
-            className={`p-1 rounded-xl transition-all ${
-              activeTab === 'money' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
-            }`}
+            className={`p-1 rounded-xl transition-all ${activeTab === 'money' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
+              }`}
           >
             <DollarSign className="w-5 h-5" />
           </div>
@@ -81,14 +78,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ isAgroEnabled }) => {
         <button
           type="button"
           onClick={() => switchTab('more')}
-          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${
-            activeTab === 'more' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
-          }`}
+          className={`flex-1 flex flex-col items-center justify-center h-full py-1 transition-all cursor-pointer ${activeTab === 'more' ? 'text-emerald-700 font-black' : 'text-slate-500 hover:text-slate-900 font-medium'
+            }`}
         >
           <div
-            className={`p-1 rounded-xl transition-all ${
-              activeTab === 'more' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
-            }`}
+            className={`p-1 rounded-xl transition-all ${activeTab === 'more' ? 'bg-emerald-100/70 text-emerald-800 scale-105' : ''
+              }`}
           >
             <Menu className="w-5 h-5" />
           </div>

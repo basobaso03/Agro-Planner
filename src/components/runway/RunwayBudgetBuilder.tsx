@@ -456,27 +456,9 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
       </div>
 
       {/* Bottom Control Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-        {onSaveAsTemplate && (
-          <button
-            onClick={() => setTemplateModalOpen(true)}
-            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <BookmarkPlus className="w-4 h-4 text-indigo-500" />
-            <span>Save Plan as Template</span>
-          </button>
-        )}
-
-        {isDraft && !readOnly && onLockPlan && (
-          <button
-            onClick={onLockPlan}
-            disabled={lines.length === 0}
-            className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs sm:text-sm font-bold shadow-md transition-all ml-auto disabled:opacity-50 cursor-pointer active:scale-95"
-          >
-            <Lock className="w-4 h-4" />
-            <span>Lock Plan & Open Pledges</span>
-          </button>
-        )}
+      <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+        {/* Save Plan as Template hidden per request */}
+        {/* Lock Plan button hidden per request */}
       </div>
 
       {/* Line Edit Bottom Sheet */}

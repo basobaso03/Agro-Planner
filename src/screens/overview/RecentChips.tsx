@@ -38,7 +38,7 @@ export const RecentChips: React.FC<RecentChipsProps> = ({ isAgroEnabled }) => {
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-full bg-white border border-[#E8DFCE] hover:border-slate-300 text-xs font-semibold text-slate-700 shadow-2xs whitespace-nowrap shrink-0 cursor-pointer active:scale-95 transition-all"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-            <span className="truncate max-w-[140px]">{item.title}</span>
+            <span className="truncate max-w-[220px]">{item.title}</span>
           </button>
         ))}
       </div>

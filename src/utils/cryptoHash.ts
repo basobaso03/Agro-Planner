@@ -187,7 +187,7 @@ export function verifyAuditChainIntegrity(
         genesisHash: GENESIS_SHORT,
         latestHash: sorted[sorted.length - 1].currentHash,
         brokenAtSequence: ev.sequenceNumber,
-        brokenReason: `Block #${ev.sequenceNumber} previousHash (${ev.previousHash.slice(0, 12)}...) does not match Block #${ev.sequenceNumber - 1} currentHash (${expectedPrevHash.slice(0, 12)}...)`,
+        brokenReason: `Record #${ev.sequenceNumber} link does not match Record #${ev.sequenceNumber - 1}. Chain sequence was interrupted.`,
         verifiedAt: new Date().toISOString(),
       };
     }
@@ -208,7 +208,7 @@ export function verifyAuditChainIntegrity(
         genesisHash: GENESIS_SHORT,
         latestHash: sorted[sorted.length - 1].currentHash,
         brokenAtSequence: ev.sequenceNumber,
-        brokenReason: `Block #${ev.sequenceNumber} SHA-256 digest mismatch. Expected ${recomputedHash.slice(0, 12)}..., found ${ev.currentHash.slice(0, 12)}...`,
+        brokenReason: `Record #${ev.sequenceNumber} integrity check mismatch. The record content may have been altered after creation.`,
         verifiedAt: new Date().toISOString(),
       };
     }

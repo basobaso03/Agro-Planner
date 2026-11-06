@@ -46,7 +46,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
       }`}
       role="dialog"
       aria-modal="true"
-      aria-label="CapitaSeed Splash Screen"
+      aria-label="Capital Seed Splash Screen"
     >
       {/* Background Ambient Glow & Organic Particle Accents */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -95,7 +95,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({
               backgroundSize: '200% auto',
             }}
           >
-            CapitaSeed
+            Capital Seed
           </h1>
           <p className="text-xs sm:text-sm font-semibold tracking-wider text-slate-500 uppercase">
             Operations, Agriculture &amp; Capital Platform

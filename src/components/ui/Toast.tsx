@@ -84,26 +84,27 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               <div
                 key={toast.id}
                 role="status"
-                className={`pointer-events-auto w-full py-3 px-4 rounded-2xl shadow-xl border flex items-center justify-between gap-3 animate-fade-in backdrop-blur-md ${toast.type === 'error'
-                    ? 'bg-rose-950/90 text-rose-50 border-rose-800'
-                    : toast.type === 'info'
-                      ? 'bg-slate-900/90 text-slate-50 border-slate-700'
-                      : 'bg-emerald-950/95 text-emerald-50 border-emerald-800'
-                  }`}
+                className="pointer-events-auto w-full py-3 px-4 rounded-2xl shadow-2xl border border-slate-800/80 bg-slate-950 text-white flex items-center justify-between gap-3 animate-fade-in backdrop-blur-lg ring-1 ring-white/10"
               >
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="shrink-0 mt-0.5">
                     {toast.type === 'error' ? (
-                      <AlertCircle className="w-5 h-5 text-rose-400" />
+                      <div className="w-5 h-5 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+                        <AlertCircle className="w-3.5 h-3.5 text-white" />
+                      </div>
                     ) : toast.type === 'info' ? (
-                      <Info className="w-5 h-5 text-sky-400" />
+                      <div className="w-5 h-5 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+                        <Info className="w-3.5 h-3.5 text-white" />
+                      </div>
                     ) : (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      <div className="w-5 h-5 rounded-full bg-white text-slate-950 flex items-center justify-center font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
+                      </div>
                     )}
                   </div>
                   <div className="text-xs leading-snug min-w-0">
-                    {toast.title && <div className="font-bold mb-0.5">{toast.title}</div>}
-                    <div className="font-medium text-slate-200">{toast.message}</div>
+                    {toast.title && <div className="font-bold text-white mb-0.5 tracking-tight">{toast.title}</div>}
+                    <div className="font-medium text-slate-300">{toast.message}</div>
                   </div>
                 </div>
 
@@ -115,7 +116,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                         toast.undoAction?.();
                         removeToast(toast.id);
                       }}
-                      className="text-xs font-bold underline text-amber-300 hover:text-amber-200"
+                      className="text-xs font-bold underline text-white hover:text-slate-300 cursor-pointer"
                     >
                       Undo
                     </button>
@@ -123,7 +124,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   <button
                     type="button"
                     onClick={() => removeToast(toast.id)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-white"
+                    className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>

@@ -61,7 +61,7 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = () => {
       <div className="bg-white border border-[#E8DFCE] rounded-2xl p-4 shadow-xs space-y-3 text-xs">
         <div className="font-black text-slate-950 text-sm">Storage Maintenance</div>
         <p className="text-slate-800 leading-relaxed font-normal">
-          The app stores cryptographic blocks, livestock photos, and offline journals locally. Pruning temporary cache will free storage while preserving all ledgers.
+          The app stores audit trail blocks, livestock photos, and offline journals locally. Pruning temporary cache will free storage while preserving all ledgers.
         </p>
 
         <div className="pt-2">

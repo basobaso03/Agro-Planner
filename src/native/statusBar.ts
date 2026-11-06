@@ -1,20 +1,30 @@
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 export const nativeStatusBar = {
+  syncSafeArea: async () => {
+    try {
+      const info = await StatusBar.getInfo();
+      if (info && typeof info.height === 'number' && info.height > 0) {
+        document.documentElement.style.setProperty('--safe-area-inset-top', `${info.height}px`);
+      }
+    } catch {
+      // Browser fallback
+    }
+  },
   setLightStyle: async () => {
     try {
-      await StatusBar.setOverlaysWebView({ overlay: false });
+      await StatusBar.setOverlaysWebView({ overlay: true });
       await StatusBar.setStyle({ style: Style.Light });
-      await StatusBar.setBackgroundColor({ color: '#FAF8F5' });
+      await nativeStatusBar.syncSafeArea();
     } catch {
       // Not supported in browser
     }
   },
   setDarkStyle: async () => {
     try {
-      await StatusBar.setOverlaysWebView({ overlay: false });
+      await StatusBar.setOverlaysWebView({ overlay: true });
       await StatusBar.setStyle({ style: Style.Dark });
-      await StatusBar.setBackgroundColor({ color: '#0F172A' });
+      await nativeStatusBar.syncSafeArea();
     } catch {
       // Not supported in browser
     }

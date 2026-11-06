@@ -4,6 +4,9 @@ import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { Fab } from '../../components/ui/Fab.tsx';
 import { StockInSheet } from '../../sheets/general/StockInSheet.tsx';
 import { StockOutSheet } from '../../sheets/general/StockOutSheet.tsx';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateStockInventoryPdf } from '../../services/pdf/generators/general/stockInventoryPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface StockInventoryScreenProps {
@@ -26,14 +29,29 @@ export const StockInventoryScreen: React.FC<StockInventoryScreenProps> = ({
 
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
-      {/* Search Input */}
-      <div>
+      {/* Search Input & Export Action */}
+      <div className="flex items-center gap-2">
         <input
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search products or inventory..."
-          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+          className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+        />
+        <PdfExportButton
+          label="Share Stock PDF"
+          title="Stock Inventory SKU Catalog"
+          filename={buildExportFilename({
+            orgName: dataService.getActiveOrg()?.name,
+            documentType: 'Stock-Inventory-Catalog',
+          })}
+          generateDoc={() =>
+            generateStockInventoryPdf({
+              organization: dataService.getActiveOrg(),
+              items: summaries,
+              operatorName: activeMember.fullName,
+            })
+          }
         />
       </div>
 

@@ -38,11 +38,17 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
     (m) => !activeMember.orgId || m.orgId === activeMember.orgId
   );
 
+  const state = dataService.getState();
+  const activePlans = (state.runwayPlans || []).filter(
+    (p) => (!activeMember.orgId || p.orgId === activeMember.orgId) && (p.status === 'ACTIVE' || p.status === 'PLEDGING')
+  );
+
   const form = useForm({
     initial: {
       memberId: targetMember?.id || (members[0]?.id ?? ''),
       direction: 'ADDITION' as 'ADDITION' | 'CONTRA_REVERSAL',
       amount: '',
+      runwayPlanId: activePlans[0]?.id || '',
       referenceTxId: '',
       note: '',
     },
@@ -64,6 +70,7 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
           referenceTransactionId: values.referenceTxId.trim() || undefined,
           note: values.note.trim(),
           actor: activeMember,
+          runwayPlanId: values.direction === 'ADDITION' && values.runwayPlanId ? values.runwayPlanId : undefined,
         });
 
         showToast({
@@ -164,6 +171,26 @@ export const ContributionSheet: React.FC<ContributionSheetProps> = ({
             placeholder="0.00"
           />
         </Field>
+
+        {activePlans.length > 0 && form.values.direction === 'ADDITION' && (
+          <Field label="Link to Operational Runway Cycle (Optional)">
+            <select
+              value={form.values.runwayPlanId}
+              onChange={(e) => form.setValue('runwayPlanId', e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-slate-950 text-sm font-medium"
+            >
+              <option value="">General Master Pool (Unallocated)</option>
+              {activePlans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.status})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium">
+              Funds this operational cycle while simultaneously crediting the member&apos;s Master Capital stake.
+            </p>
+          </Field>
+        )}
 
         <Field label="Bank / EcoCash Reference ID">
           <input

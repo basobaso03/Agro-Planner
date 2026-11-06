@@ -3,11 +3,11 @@ import React from 'react';
 export const DEVELOPER_INFO = {
   company: 'BASOBASO SOFTWARES',
   email: 'baseramarlvin@gmail.com',
-  phoneDisplay: '0788123047',
+  phoneDisplay: '+263 788 123 047',
   whatsappIntl: '263788123047',
   linkedInName: 'Marlvin Basera',
   linkedInUrl: 'https://www.linkedin.com/in/marlvin-basera-359939286',
-  version: 'v1.0.3',
+  version: 'v1.0.5',
 };
 
 /**

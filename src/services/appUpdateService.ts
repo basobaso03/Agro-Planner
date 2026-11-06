@@ -9,7 +9,7 @@ export interface AppVersionConfig {
   releaseNotes: string;
 }
 
-export const CURRENT_APP_VERSION = '1.0.4';
+export const CURRENT_APP_VERSION = '1.0.5';
 
 /**
  * Remote endpoints for version.json on the GitHub repository / GitHub Pages.

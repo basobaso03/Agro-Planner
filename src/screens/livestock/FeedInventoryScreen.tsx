@@ -3,6 +3,9 @@ import { dataService } from '../../services/dataService.ts';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { Fab } from '../../components/ui/Fab.tsx';
 import { FeedEventSheet } from '../../sheets/expenses/FeedEventSheet.tsx';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateFeedInventoryPdf } from '../../services/pdf/generators/agro/feedInventoryPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import { Plus } from 'lucide-react';
 import type { OrgMember } from '../../types/agro.ts';
 
@@ -42,7 +45,25 @@ export const FeedInventoryScreen: React.FC<FeedInventoryScreenProps> = ({
 
       {/* Stock Cards List */}
       <div className="space-y-3">
-        <div className="font-black text-slate-950 text-sm">Feed Formulations & Rations</div>
+        <div className="flex items-center justify-between">
+          <div className="font-black text-slate-950 text-sm">Feed Formulations & Rations</div>
+          <PdfExportButton
+            label="Share Feed Audit PDF"
+            title="Feed Inventory Audit Report"
+            filename={buildExportFilename({
+              orgName: dataService.getActiveOrg()?.name,
+              documentType: 'Feed-Inventory-Audit',
+            })}
+            generateDoc={() =>
+              generateFeedInventoryPdf({
+                organization: dataService.getActiveOrg(),
+                summaries,
+                feedEvents,
+                operatorName: activeMember.fullName,
+              })
+            }
+          />
+        </div>
         {summaries.length === 0 ? (
           <EmptyState
             icon="🌾"

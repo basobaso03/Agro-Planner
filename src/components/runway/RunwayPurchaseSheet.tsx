@@ -407,9 +407,9 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
             </div>
           </div>
 
-          {/* Ground Cash Indicator */}
+          {/* Ground Cash Indicator & Dual Verification */}
           <div
-            className={`p-3 rounded-2xl border flex items-center justify-between text-xs ${isCashSufficient
+            className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${isCashSufficient
               ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
               : 'bg-rose-50/70 border-rose-200 text-rose-900'
               }`}
@@ -421,13 +421,17 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               )}
               <span className="font-semibold">
-                Available Ground Cash: <strong>${availableCash.toFixed(2)}</strong>
+                Organization Master Cash (<strong className="font-mono">leftMoney</strong>): <strong>${availableCash.toFixed(2)}</strong>
               </span>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider">
-              {isCashSufficient ? 'Ready to Spend' : 'Insufficient Cash'}
+            <span className="text-[10px] font-bold uppercase tracking-wider self-start sm:self-auto px-2 py-0.5 rounded-md bg-white/70 border border-current">
+              {isCashSufficient ? 'Treasury Cash Ready' : 'Insufficient Treasury Cash'}
             </span>
           </div>
+
+          <p className="text-[11px] text-slate-500 font-medium">
+            Dual Gate: Spend is authorized against this step&apos;s budget (${actualRemainingBudget.toFixed(2)} rem) and withdraws directly from the Organization&apos;s physical liquid cash (${availableCash.toFixed(2)} available).
+          </p>
 
           {/* Already Fully Purchased Alert */}
           {isAlreadyFullyPaid && (

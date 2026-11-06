@@ -70,6 +70,11 @@ class RecentsManager {
     });
   }
 
+  public remove(id: string) {
+    this.recents = this.recents.filter((r) => r.id !== id);
+    this.save();
+  }
+
   public clear() {
     this.recents = [];
     this.save();

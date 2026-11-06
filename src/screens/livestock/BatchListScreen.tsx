@@ -11,12 +11,14 @@ import type { LivestockComputedStatus, OrgMember } from '../../types/agro.ts';
 
 export interface BatchListScreenProps {
   activeMember: OrgMember;
+  showNumbers?: boolean;
   onRefresh?: () => Promise<void>;
   onOpenSiteManager?: () => void;
 }
 
 export const BatchListScreen: React.FC<BatchListScreenProps> = ({
   activeMember,
+  showNumbers = true,
   onOpenSiteManager,
 }) => {
   const { navigate } = useNavigation();
@@ -53,12 +55,14 @@ export const BatchListScreen: React.FC<BatchListScreenProps> = ({
       <div className="bg-white border border-[#E8DFCE] p-4.5 rounded-2xl shadow-xs grid grid-cols-2 gap-4">
         <div>
           <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Total Live Animals</div>
-          <div className="text-2xl font-black text-slate-950 tracking-tight mt-0.5">{totalHeadcount} head</div>
+          <div className="text-2xl font-black text-slate-950 tracking-tight mt-0.5">
+            {showNumbers ? `${totalHeadcount} head` : '•••• head'}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Estimated Asset Value</div>
           <div className="text-2xl font-black tracking-tight text-emerald-700 mt-0.5">
-            {formatMoney(totalValuation)}
+            {formatMoney(totalValuation, showNumbers)}
           </div>
         </div>
       </div>
@@ -207,19 +211,19 @@ export const BatchListScreen: React.FC<BatchListScreenProps> = ({
                   <div>
                     <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Headcount</div>
                     <div className="font-black font-mono text-slate-950 mt-0.5">
-                      {item.currentLiveHeadcount} head
+                      {showNumbers ? `${item.currentLiveHeadcount} head` : '•••• head'}
                     </div>
                   </div>
                   <div>
                     <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Avg Weight</div>
                     <div className="font-black font-mono text-slate-950 mt-0.5">
-                      {item.latestWeightAvgKg ? `${item.latestWeightAvgKg} kg` : 'Pending'}
+                      {showNumbers ? (item.latestWeightAvgKg ? `${item.latestWeightAvgKg} kg` : 'Pending') : '••••'}
                     </div>
                   </div>
                   <div>
                     <div className="text-[11px] text-slate-600 font-bold uppercase tracking-wider">Est. Value</div>
                     <div className="font-black font-mono text-emerald-700 mt-0.5">
-                      {formatMoney(item.estimatedCurrentValueUsd)}
+                      {formatMoney(item.estimatedCurrentValueUsd, showNumbers)}
                     </div>
                   </div>
                 </div>

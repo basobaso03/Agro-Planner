@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Agro Planner</string>
-    <string name="title_activity_main">Agro Planner</string>
+    <string name="app_name">Capital Seed</string>
+    <string name="title_activity_main">Capital Seed</string>
     <string name="package_name">com.basobaso.agroplanner</string>
     <string name="custom_url_scheme">com.basobaso.agroplanner</string>
     <string name="shortcut_credit_sale_short">Credit Sale</string>

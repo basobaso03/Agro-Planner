@@ -203,7 +203,7 @@ export const RegisterBatchSheet: React.FC<RegisterBatchSheetProps> = ({
   const locations = dataService.getState().locations.filter(
     (l) => !activeMember.orgId || l.orgId === activeMember.orgId
   );
-  const targetOrgId = activeMember.orgId || locations[0]?.orgId || 'org-master';
+  const targetOrgId = activeMember.orgId || locations[0]?.orgId || '';
   const currentLeftMoney = dataService.getCurrentOrgLeftMoney(targetOrgId);
 
   // Protocols & Flexible CRUD state

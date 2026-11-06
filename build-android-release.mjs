@@ -138,8 +138,19 @@ try {
 
   targets.forEach((dir) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(srcFile, path.join(dir, 'capital-seed.apk'));
     fs.copyFileSync(srcFile, path.join(dir, 'agro-planner.apk'));
   });
+
+  // Read current version from public/version.json or root version.json
+  let currentVersion = '1.0.5';
+  try {
+    const rootVerPath = path.join(projectRoot, 'version.json');
+    if (fs.existsSync(rootVerPath)) {
+      const parsed = JSON.parse(fs.readFileSync(rootVerPath, 'utf-8'));
+      if (parsed.latestVersion) currentVersion = parsed.latestVersion;
+    }
+  } catch {}
 
   // Automatically update dynamic size config in public website HTML files
   try {
@@ -149,27 +160,38 @@ try {
     if (fs.existsSync(websiteHtmlPath)) {
       let htmlContent = fs.readFileSync(websiteHtmlPath, 'utf-8');
       htmlContent = htmlContent.replace(/apkSize:\s*['"][^'"]+['"]/, `apkSize: '${sizeMb} MB'`);
+      htmlContent = htmlContent.replace(/version:\s*['"][^'"]+['"]/, `version: 'v${currentVersion.replace(/^v/, '')}'`);
       fs.writeFileSync(websiteHtmlPath, htmlContent, 'utf-8');
 
       if (fs.existsSync(path.dirname(publicWebsiteHtmlPath))) {
         fs.copyFileSync(websiteHtmlPath, publicWebsiteHtmlPath);
       }
-      console.log(`\x1b[32m✔ Website Sync: Auto-updated APP_CONFIG.apkSize to ${sizeMb} MB\x1b[0m`);
+      console.log(`\x1b[32m✔ Website Sync: Auto-updated APP_CONFIG.apkSize to ${sizeMb} MB & version to v${currentVersion}\x1b[0m`);
     }
 
-    // Sync version.json across public, dist, and public-website
-    const versionSrc = path.join(projectRoot, 'public', 'version.json');
-    if (fs.existsSync(versionSrc)) {
-      const distVersion = path.join(projectRoot, 'dist', 'version.json');
-      const websiteVersion = path.join(projectRoot, 'public-website', 'version.json');
-      const rootVersion = path.join(projectRoot, 'version.json');
-      if (fs.existsSync(path.join(projectRoot, 'dist'))) {
-        fs.copyFileSync(versionSrc, distVersion);
+    // Sync and update version.json across public, dist, and public-website
+    const versionFiles = [
+      path.join(projectRoot, 'version.json'),
+      path.join(projectRoot, 'public', 'version.json'),
+      path.join(projectRoot, 'dist', 'version.json'),
+      path.join(projectRoot, 'public-website', 'version.json'),
+      path.join(projectRoot, 'public', 'public-website', 'version.json'),
+    ];
+
+    versionFiles.forEach((vf) => {
+      if (fs.existsSync(vf)) {
+        try {
+          const vObj = JSON.parse(fs.readFileSync(vf, 'utf-8'));
+          vObj.apkSize = `${sizeMb} MB`;
+          vObj.apkSizeBytes = stats.size;
+          vObj.apkName = 'capital-seed.apk';
+          fs.writeFileSync(vf, JSON.stringify(vObj, null, 2), 'utf-8');
+        } catch (vErr) {
+          console.warn(`  Notice: Could not update ${vf}:`, vErr.message);
+        }
       }
-      fs.copyFileSync(versionSrc, websiteVersion);
-      fs.copyFileSync(versionSrc, rootVersion);
-      console.log(`\x1b[32m✔ Version Config Sync: Synchronized version.json across dist & public-website\x1b[0m`);
-    }
+    });
+    console.log(`\x1b[32m✔ Version Config Sync: Synchronized version.json across dist, public-website & root\x1b[0m`);
   } catch (syncErr) {
     console.warn('  (Could not auto-update website size config, continuing...)', syncErr.message);
   }
@@ -177,7 +199,8 @@ try {
   console.log('\n\x1b[32m✔ SUCCESS! Standalone Release APK Generated Successfully!\x1b[0m');
   console.log(`\x1b[32m✔ File Size: ${sizeMb} MB\x1b[0m`);
   console.log(`\x1b[32m✔ Signature: ${isSigned ? 'SIGNED (Ready for public install)' : 'UNSIGNED'}\x1b[0m`);
-  console.log(`\x1b[32m✔ Root APK:    ./apk/agro-planner.apk\x1b[0m`);
+  console.log(`\x1b[32m✔ Root APK:    ./apk/capital-seed.apk & ./apk/agro-planner.apk\x1b[0m`);
+  console.log(`\x1b[32m✔ Website APK: ./public-website/apk/capital-seed.apk & ./public-website/apk/agro-planner.apk\x1b[0m\n`);
   console.log(`\x1b[32m✔ Website APK: ./public-website/apk/agro-planner.apk\x1b[0m\n`);
   console.log('You can now:');
   console.log('  1. Share ./apk/agro-planner.apk directly via WhatsApp or Email');

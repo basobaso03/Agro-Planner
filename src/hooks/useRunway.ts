@@ -31,7 +31,7 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     });
   }, []);
 
-  const activeOrgId = orgIdOverride || state.activeOrgId || dataService.getActiveOrgId() || 'org-master';
+  const activeOrgId = orgIdOverride || state.activeOrgId || dataService.getActiveOrgId() || '';
   const currentOrg =
     (state.organizations || []).find((o) => o.id === activeOrgId) ||
     dataService.getActiveOrganization(activeOrgId);
@@ -285,6 +285,7 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
     orgPlans,
     plans: orgPlans,
     plan,
+    currentPlan: plan,
     activePlan: plan,
     lines,
     pledges,

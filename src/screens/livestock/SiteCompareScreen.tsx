@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { dataService } from '../../services/dataService.ts';
 import { formatMoney } from '../../utils/currency.ts';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateSiteComparisonPdf } from '../../services/pdf/generators/agro/siteComparisonPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface SiteCompareScreenProps {
   activeMember: OrgMember;
+  showNumbers?: boolean;
   onOpenSiteManager?: () => void;
 }
 
 export const SiteCompareScreen: React.FC<SiteCompareScreenProps> = ({
   activeMember,
+  showNumbers = true,
   onOpenSiteManager,
 }) => {
   const locations = dataService.getState().locations.filter(
@@ -52,22 +57,48 @@ export const SiteCompareScreen: React.FC<SiteCompareScreenProps> = ({
   return (
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Header Info */}
-      <div className="bg-white border border-[#E8DFCE] p-4 sm:p-5 rounded-2xl shadow-xs flex items-start justify-between gap-3">
+      <div className="bg-white border border-[#E8DFCE] p-4 sm:p-5 rounded-2xl shadow-xs flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
         <div>
           <h1 className="text-base font-black text-slate-950">Multi-Site Operations Benchmark</h1>
           <p className="text-xs text-slate-600 mt-1 font-medium">
             Comparative analytics across all registered operational branches and farming sites.
           </p>
         </div>
-        {onOpenSiteManager && (
-          <button
-            type="button"
-            onClick={onOpenSiteManager}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs shrink-0 cursor-pointer inline-flex items-center gap-1.5 transition-colors"
-          >
-            <span>＋ Manage Sites</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <PdfExportButton
+            label="Share Site Report"
+            title="Multi-Site Operations Benchmark"
+            filename={buildExportFilename({
+              orgName: dataService.getActiveOrg()?.name,
+              documentType: 'Site-Comparison-Report',
+            })}
+            generateDoc={() =>
+              generateSiteComparisonPdf({
+                organization: dataService.getActiveOrg(),
+                siteSummaries: siteMetrics.map((m) => ({
+                  location: m.location,
+                  activeAnimalHeadcount: m.liveHeadcount,
+                  activeBatchCount: m.batchCount,
+                  siteApprovedExpenses: 0,
+                  sitePendingExpenses: 0,
+                  siteFixedAssetValue: m.fixedAssetValue,
+                  siteMortalityRatePercent: m.mortalityRate,
+                  siteSalesRevenue: m.livestockValue,
+                })),
+                operatorName: activeMember.fullName,
+              })
+            }
+          />
+          {onOpenSiteManager && (
+            <button
+              type="button"
+              onClick={onOpenSiteManager}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xs shrink-0 cursor-pointer inline-flex items-center gap-1.5 transition-colors"
+            >
+              <span>＋ Manage Sites</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Site Selector Pills */}

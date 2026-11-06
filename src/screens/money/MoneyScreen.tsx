@@ -11,11 +11,17 @@ import type { OrgMember } from '../../types/agro.ts';
 
 export interface MoneyScreenProps {
   activeMember: OrgMember;
+  showNumbers?: boolean;
+  onToggleShowNumbers?: () => void;
 }
 
-export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
+export const MoneyScreen: React.FC<MoneyScreenProps> = ({
+  activeMember,
+  showNumbers,
+  onToggleShowNumbers,
+}) => {
   const { navigate } = useNavigation();
-  const [masked, setMasked] = useState(isPrivacyMasked());
+  const masked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
 
   // Sheets
   const [showDepositSheet, setShowDepositSheet] = useState(false);
@@ -24,7 +30,9 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
   const [showCreditSaleSheet, setShowCreditSaleSheet] = useState(false);
 
   const finSummary = dataService.computeFinancialSummary();
-  const creditSales = dataService.getState().creditSales || [];
+  const org = (dataService.getState().organizations || []).find((o) => o.id === activeMember.orgId);
+  const isAgro = org?.type !== 'GENERAL_VENTURE';
+  const creditSales = isAgro ? (dataService.getState().creditSales || []) : [];
   const debts = dataService.getState().debtLiabilities || [];
   const loans = dataService.getState().loansGiven || [];
   const assets = dataService.computeFixedAssetGroupSummaries();
@@ -46,8 +54,11 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
   const netWorth = finSummary.leftMoney + totalAssetValue + totalCreditReceivables + totalLoansLent - totalDebtsOwed;
 
   const handleToggleMask = () => {
-    const next = togglePrivacyMask();
-    setMasked(next);
+    if (onToggleShowNumbers) {
+      onToggleShowNumbers();
+    } else {
+      togglePrivacyMask();
+    }
   };
 
   return (
@@ -122,16 +133,29 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
           <div className="text-xs font-black text-slate-950">Expense</div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setShowCreditSaleSheet(true)}
-          className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
-        >
-          <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base border border-blue-200">
-            📋
-          </div>
-          <div className="text-xs font-black text-slate-950">Credit Sale</div>
-        </button>
+        {isAgro ? (
+          <button
+            type="button"
+            onClick={() => setShowCreditSaleSheet(true)}
+            className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
+          >
+            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base border border-blue-200">
+              📋
+            </div>
+            <div className="text-xs font-black text-slate-950">Credit Sale</div>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate('runway')}
+            className="p-3 bg-white border border-[#E8DFCE] rounded-2xl text-center shadow-xs active:scale-[0.98] transition-all flex flex-col items-center gap-1.5 cursor-pointer"
+          >
+            <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-base border border-indigo-200">
+              🛫
+            </div>
+            <div className="text-xs font-black text-slate-950">Runway</div>
+          </button>
+        )}
 
         <button
           type="button"
@@ -148,16 +172,25 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({ activeMember }) => {
       {/* Financial Banking Modules */}
       <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
         <ListRow
-          icon="📋"
-          title="Sales on Credit & Receivables"
-          subtitle={
-            totalCreditReceivables > 0
-              ? `${formatMoney(totalCreditReceivables, { mask: masked })} pending collection`
-              : 'All customer invoices fully settled'
-          }
-          badge={creditSales.filter((s) => s.status !== 'SETTLED').length > 0 ? `${creditSales.filter((s) => s.status !== 'SETTLED').length} Active` : undefined}
-          onClick={() => navigate('credit-sales')}
+          icon="🪙"
+          title="Capital Equity Pool"
+          subtitle={`Total contributed: ${formatMoney(finSummary.totalPool, { mask: masked })}`}
+          onClick={() => navigate('capitalPool')}
         />
+
+        {isAgro && (
+          <ListRow
+            icon="📋"
+            title="Sales on Credit & Receivables"
+            subtitle={
+              totalCreditReceivables > 0
+                ? `${formatMoney(totalCreditReceivables, { mask: masked })} pending collection`
+                : 'All customer invoices fully settled'
+            }
+            badge={creditSales.filter((s) => s.status !== 'SETTLED').length > 0 ? `${creditSales.filter((s) => s.status !== 'SETTLED').length} Active` : undefined}
+            onClick={() => navigate('credit-sales')}
+          />
+        )}
 
         <ListRow
           icon="🤝"

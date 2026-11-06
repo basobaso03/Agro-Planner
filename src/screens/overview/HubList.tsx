@@ -80,16 +80,18 @@ export const HubList: React.FC<HubListProps> = ({
             />
           )}
 
-          <ListRow
-            icon={<CreditCard className="w-5 h-5" />}
-            iconBg="bg-amber-500 text-white"
-            title="Sales on Credit"
-            subtitle="Customer receivables & agreed due dates"
-            previewAmount={formatMoney(creditOutstanding, showNumbers)}
-            badge={creditOverdueCount > 0 ? `${creditOverdueCount} Overdue` : undefined}
-            badgeVariant="rose"
-            onClick={() => navigate('creditSales')}
-          />
+          {isAgroEnabled && (
+            <ListRow
+              icon={<CreditCard className="w-5 h-5" />}
+              iconBg="bg-amber-500 text-white"
+              title="Sales on Credit"
+              subtitle="Customer receivables & agreed due dates"
+              previewAmount={formatMoney(creditOutstanding, showNumbers)}
+              badge={creditOverdueCount > 0 ? `${creditOverdueCount} Overdue` : undefined}
+              badgeVariant="rose"
+              onClick={() => navigate('creditSales')}
+            />
+          )}
 
           <ListRow
             icon={<Scale className="w-5 h-5" />}
@@ -122,57 +124,34 @@ export const HubList: React.FC<HubListProps> = ({
         </div>
       </div>
 
-      {/* ── SECTION 2: OPERATIONS (AGRO OR GENERAL) ── */}
-      <div className="space-y-1">
-        <div className="px-3 py-1 text-[11px] font-black uppercase tracking-wider text-slate-400">
-          {isAgroEnabled ? 'Agro Livestock Operations' : 'General Venture Operations'}
+      {/* ── SECTION 2: LIVESTOCK OPERATIONS (AGRO ONLY) ── */}
+      {isAgroEnabled && (
+        <div className="space-y-1">
+          <div className="px-3 py-1 text-[11px] font-black uppercase tracking-wider text-slate-400">
+            Agro Livestock Operations
+          </div>
+
+          <div className="bg-white rounded-3xl border border-[#E8DFCE] divide-y divide-[#F0EBE1] overflow-hidden shadow-xs">
+            <ListRow
+              icon={<Layers className="w-5 h-5" />}
+              iconBg="bg-emerald-600 text-white"
+              title="Active Livestock Batches"
+              subtitle={`${livestockFlockCount} batches on ground across sites`}
+              previewAmount={`${livestockFlockCount} Batches`}
+              onClick={() => navigate('operations')}
+            />
+
+            <ListRow
+              icon={<Tag className="w-5 h-5" />}
+              iconBg="bg-amber-600 text-white"
+              title="Biological Livestock Valuation"
+              subtitle="Projected live market selling value"
+              previewAmount={formatMoney(livestockValuation, showNumbers)}
+              onClick={() => navigate('operations')}
+            />
+          </div>
         </div>
-
-        <div className="bg-white rounded-3xl border border-[#E8DFCE] divide-y divide-[#F0EBE1] overflow-hidden shadow-xs">
-          {isAgroEnabled ? (
-            <>
-              <ListRow
-                icon={<Layers className="w-5 h-5" />}
-                iconBg="bg-emerald-600 text-white"
-                title="Active Livestock Batches"
-                subtitle={`${livestockFlockCount} batches on ground across sites`}
-                previewAmount={`${livestockFlockCount} Batches`}
-                onClick={() => navigate('operations')}
-              />
-
-              <ListRow
-                icon={<Tag className="w-5 h-5" />}
-                iconBg="bg-amber-600 text-white"
-                title="Biological Livestock Valuation"
-                subtitle="Projected live market selling value"
-                previewAmount={formatMoney(livestockValuation, showNumbers)}
-                onClick={() => navigate('operations')}
-              />
-            </>
-          ) : (
-            <>
-              <ListRow
-                icon={<Package className="w-5 h-5" />}
-                iconBg="bg-emerald-600 text-white"
-                title="Inventory &amp; Stock Ledger"
-                subtitle="Warehouse stock, incoming shipments & SKUs"
-                previewAmount={formatMoney(generalStockValue, showNumbers)}
-                badge={lowStockItemsCount > 0 ? `${lowStockItemsCount} Low Stock` : undefined}
-                badgeVariant="amber"
-                onClick={() => navigate('operations')}
-              />
-
-              <ListRow
-                icon={<TrendingUp className="w-5 h-5" />}
-                iconBg="bg-blue-600 text-white"
-                title="Operations Sales Hub"
-                subtitle="Cash sales invoicing & product catalog"
-                onClick={() => navigate('operations')}
-              />
-            </>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* ── SECTION 3: TEAM & GOVERNANCE ── */}
       <div className="space-y-1">
@@ -181,13 +160,15 @@ export const HubList: React.FC<HubListProps> = ({
         </div>
 
         <div className="bg-white rounded-3xl border border-[#E8DFCE] divide-y divide-[#F0EBE1] overflow-hidden shadow-xs">
-          <ListRow
-            icon={<MapPin className="w-5 h-5" />}
-            iconBg="bg-amber-600 text-white"
-            title="Operational Sites &amp; Locations"
-            subtitle="Manage farm sites, kraals, station GPS &amp; operators"
-            onClick={() => (onOpenSiteManager ? onOpenSiteManager() : navigate('siteCompare'))}
-          />
+          {isAgroEnabled && (
+            <ListRow
+              icon={<MapPin className="w-5 h-5" />}
+              iconBg="bg-amber-600 text-white"
+              title="Operational Sites &amp; Locations"
+              subtitle="Manage farm sites, kraals, station GPS &amp; operators"
+              onClick={() => (onOpenSiteManager ? onOpenSiteManager() : navigate('siteCompare'))}
+            />
+          )}
 
           <ListRow
             icon={<Megaphone className="w-5 h-5" />}

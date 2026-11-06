@@ -1,8 +1,11 @@
 {
-  "latestVersion": "1.0.4",
-  "minSupportedVersion": "1.0.3",
+  "latestVersion": "1.0.5",
+  "minSupportedVersion": "1.0.5",
   "forceUpdate": false,
   "downloadUrl": "https://basobaso03.github.io/Agro-Planner/#download",
-  "title": "Agro Planner Update (v1.0.4)",
-  "releaseNotes": "- Practical Commercial Broiler Lifecycle: 12-stage management schedule from Day 1 to Day 42 (Starter Crumbles, 3-day feed transitions, Grower, Finisher, and Harvest).\n- Checkpoint Reminders & Organisation Broadcast: Deterministic 07:00 AM reminder dispatches with animal telemetry and live status alerts sent to all members.\n- Move-in Date Tracking: Exact arrival date entry for existing and new livestock with real-time countdown to target sale.\n- IBD Protocol Update: Updated nomenclature across all vaccine protocols and seed records."
+  "title": "Capital Seed Update (v1.0.5)",
+  "apkName": "capital-seed.apk",
+  "apkSize": "13.71 MB",
+  "apkSizeBytes": 14375604,
+  "releaseNotes": "• Capital Seed Rebrand: Official transition to Capital Seed with modernized identity and interface styling.\n• Dual Business Split: Clean workspace separation for Agro-Farming & Livestock vs General Business Ventures.\n• Runway Capital Planning: Milestone budgeting up to break-even, contingency buffer, and spend gating.\n• Standardized PDF Engine: 11 business and compliance reports with guaranteed zero-underscore filenames.\n• Actionable Audit Trail: Interactive SHA-256 chain verification, single-block inspector, and JSON/proof exports.\n• Polished Recents: Redesigned Opened Pages switcher with real-time search, category filters, and quick hubs."
 }

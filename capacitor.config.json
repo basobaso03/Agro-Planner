@@ -1,6 +1,6 @@
 {
   "appId": "com.basobaso.agroplanner",
-  "appName": "CapitaSeed",
+  "appName": "Capital Seed",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
@@ -29,9 +29,8 @@
       "resizeOnFullScreen": true
     },
     "StatusBar": {
-      "overlaysWebView": false,
-      "style": "LIGHT",
-      "backgroundColor": "#FAF8F5"
+      "overlaysWebView": true,
+      "style": "LIGHT"
     }
   }
 }

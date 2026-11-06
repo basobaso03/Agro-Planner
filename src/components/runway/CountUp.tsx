@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { getCelebrationMode } from '../../utils/celebrations';
+import { isPrivacyMasked } from '../../utils/currency';
 
 interface CountUpProps {
   value: number;
@@ -8,6 +9,7 @@ interface CountUpProps {
   decimals?: number;
   durationMs?: number;
   className?: string;
+  showNumbers?: boolean;
 }
 
 export const CountUp: React.FC<CountUpProps> = ({
@@ -17,7 +19,9 @@ export const CountUp: React.FC<CountUpProps> = ({
   decimals = 0,
   durationMs = 700,
   className = '',
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [displayValue, setDisplayValue] = useState<number>(value);
   const startValueRef = useRef<number>(value);
   const startTimeRef = useRef<number | null>(null);
@@ -71,6 +75,14 @@ export const CountUp: React.FC<CountUpProps> = ({
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [value, durationMs]);
+
+  if (isMasked) {
+    return (
+      <span className={`tabular-nums font-semibold tracking-tight ${className}`}>
+        ••••••
+      </span>
+    );
+  }
 
   const formatted = displayValue.toLocaleString('en-US', {
     minimumFractionDigits: decimals,

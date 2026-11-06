@@ -61,7 +61,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   const [currentStep, setCurrentStep] = useState<number>(1);
   const isKeyboardOpen = useKeyboardOpen();
 
-  const orgId = currentMember.orgId || dataService.getActiveOrgId() || 'org-master';
+  const orgId = currentMember.orgId || dataService.getActiveOrgId() || '';
   const resolvedOrg =
     activeOrg ||
     (currentMember.orgId ? dataService.getActiveOrganization(currentMember.orgId) : null) ||

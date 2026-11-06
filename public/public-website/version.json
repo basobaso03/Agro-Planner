@@ -1,8 +1,11 @@
 {
-  "latestVersion": "1.0.3",
-  "minSupportedVersion": "1.0.3",
-  "forceUpdate": true,
+  "latestVersion": "1.0.5",
+  "minSupportedVersion": "1.0.5",
+  "forceUpdate": false,
   "downloadUrl": "https://basobaso03.github.io/Agro-Planner/#download",
-  "title": "Agro Planner Update (v1.0.3)",
-  "releaseNotes": "- Minimum Supported Release v1.0.3: Official release baseline.\n- Background & Closed-App Notifications: Reliable native push & offline catch-up notifications with high-priority Android channels.\n- Remote Version Control & Force Update Gate: Automatic startup version verification and release notes display.\n- Real-Time Cloud Ledger Sync: Instant cross-device synchronization for syndicate members, livestock, and audit alerts.\n- Clean Slate Production: All test registries, sample entries, and trial data completely reset to zero."
+  "title": "Capital Seed Update (v1.0.5)",
+  "apkName": "capital-seed.apk",
+  "apkSize": "13.71 MB",
+  "apkSizeBytes": 14375604,
+  "releaseNotes": "• Capital Seed Rebrand: Official transition to Capital Seed with modernized identity and interface styling.\n• Dual Business Split: Clean workspace separation for Agro-Farming & Livestock vs General Business Ventures.\n• Runway Capital Planning: Milestone budgeting up to break-even, contingency buffer, and spend gating.\n• Standardized PDF Engine: 11 business and compliance reports with guaranteed zero-underscore filenames.\n• Actionable Audit Trail: Interactive SHA-256 chain verification, single-block inspector, and JSON/proof exports.\n• Polished Recents: Redesigned Opened Pages switcher with real-time search, category filters, and quick hubs."
 }

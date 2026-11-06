@@ -46,6 +46,7 @@ interface RunwayTabProps {
   locations?: FarmLocation[];
   initialSubTab?: 'PLAN' | 'REVENUE' | 'PLEDGES' | 'PAYIN' | 'SPEND' | 'TIMELINE' | 'REPORT';
   onOpenExpenseModal?: () => void;
+  showNumbers?: boolean;
 }
 
 export const RunwayTab: React.FC<RunwayTabProps> = ({
@@ -53,8 +54,9 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   locations = [],
   initialSubTab = 'PLAN',
   onOpenExpenseModal,
+  showNumbers = true,
 }) => {
-  const orgId = currentMember.orgId || 'org-master';
+  const orgId = currentMember.orgId || dataService.getActiveOrgId() || '';
   const { showToast } = useToast();
   // Selected plan state (defaults to activePlan, or first plan)
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
@@ -278,16 +280,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
             </button>
           )}
 
-          {currentPlan?.status === 'DRAFT' && canLock && (
-            <button
-              onClick={handleLockPlan}
-              disabled={planLines.length === 0}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>Lock Plan</span>
-            </button>
-          )}
+          {/* Lock Plan button hidden for now per request */}
 
           {currentPlan?.status === 'PLEDGING' && canActivate && (
             <button
@@ -378,19 +371,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
                   actor: currentMember,
                 })
               }
-              onLockPlan={handleLockPlan}
               onNavigateToRevenue={() => setActiveSubTab('REVENUE')}
-              onSaveAsTemplate={(name) =>
-                dataService.saveRunwayTemplate({
-                  name,
-                  orgId: currentPlan.orgId,
-                  orgType: currentPlan.orgType,
-                  contingencyPercent: currentPlan.contingencyPercent ?? 10,
-                  phases: currentPlan.phases.map(({ id, ...rest }) => rest),
-                  lines: planLines.map(({ id, planId, orgId, createdAt, updatedAt, auditHash, approval, origin, ...rest }) => rest),
-                  actor: currentMember,
-                })
-              }
             />
           )}
 

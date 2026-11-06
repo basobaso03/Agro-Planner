@@ -55,6 +55,7 @@ export type RouteId =
   | 'notification-prefs'
   | 'currencyLocale'
   | 'currency-locale'
+  | 'settings'
   | 'helpOnboarding';
 
 export interface RouteEntry {

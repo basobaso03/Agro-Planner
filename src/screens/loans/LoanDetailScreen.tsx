@@ -6,6 +6,9 @@ import { dataService } from '../../services/dataService.ts';
 import { useToast } from '../../components/ui/Toast.tsx';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { RecoverLoanSheet } from '../../sheets/loans/RecoverLoanSheet.tsx';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateLoanAgreementPdf } from '../../services/pdf/generators/shared/loanAgreementPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import type { LoanGivenEvent, OrgMember } from '../../types/agro.ts';
 
 export interface LoanDetailScreenProps {
@@ -92,18 +95,34 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
           </span>
         </div>
 
-        {loan.borrowerContact && (
-          <div className="pt-2 border-t border-[#F0EBE1]">
+        <div className="pt-2 border-t border-[#F0EBE1] flex flex-wrap items-center gap-2">
+          {loan.borrowerContact && (
             <button
               type="button"
               onClick={() => void nativeAppLauncher.dialPhone(loan.borrowerContact!)}
-              className="w-full py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+              className="flex-1 min-w-[130px] py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Phone className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Call Borrower ({loan.borrowerContact})</span>
+              <span>Call ({loan.borrowerContact})</span>
             </button>
-          </div>
-        )}
+          )}
+          <PdfExportButton
+            label="Share Loan Contract"
+            title={`Loan Agreement: ${loan.borrowerName}`}
+            filename={buildExportFilename({
+              orgName: dataService.getActiveOrg()?.name,
+              documentType: 'Outgrower-Loan-Agreement',
+              entityName: `${loan.id}-${loan.borrowerName}`,
+            })}
+            generateDoc={() =>
+              generateLoanAgreementPdf({
+                organization: dataService.getActiveOrg(),
+                loan,
+                operatorName: activeMember.fullName,
+              })
+            }
+          />
+        </div>
       </div>
 
       {/* Due Date & Active Reminder Schedule Card */}

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { dataService } from '../../services/dataService.ts';
 import { formatMoney } from '../../utils/currency.ts';
-import { PERMISSIONS } from '../../utils/permissions.ts';
+import { PERMISSIONS, getRoleMeta } from '../../utils/permissions.ts';
 import { AddMemberSheet } from '../../sheets/pool/AddMemberSheet.tsx';
 import { MemberRoleSheet } from '../../sheets/common/MemberRoleSheet.tsx';
 import { InviteCodeSheet } from '../../sheets/common/InviteCodeSheet.tsx';
@@ -10,9 +10,21 @@ import type { OrgMember } from '../../types/agro.ts';
 
 export interface MembersScreenProps {
   activeMember: OrgMember;
+  showNumbers?: boolean;
 }
 
-export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) => {
+export const MembersScreen: React.FC<MembersScreenProps> = ({
+  activeMember,
+  showNumbers = true,
+}) => {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    return dataService.subscribe(() => {
+      setTick((t) => t + 1);
+    });
+  }, []);
+
   const [selectedMember, setSelectedMember] = useState<OrgMember | null>(null);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showRoleSheet, setShowRoleSheet] = useState(false);
@@ -24,6 +36,10 @@ export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) =>
   );
   const equities = dataService.computeMemberEquitySummaries();
 
+  const org =
+    (dataService.getState().organizations || []).find((o) => o.id === activeMember.orgId) ||
+    dataService.getActiveOrganization(activeMember.orgId);
+
   const canManage = PERMISSIONS.canManageMembers(activeMember.role);
 
   return (
@@ -32,17 +48,24 @@ export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) =>
       <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-base font-black text-slate-950">Syndicate Governance</h1>
-            <p className="text-xs text-slate-600 font-medium mt-0.5">{members.length} registered partners</p>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{org?.type === 'AGRO_FARMING' ? '🌱' : '💼'}</span>
+              <h1 className="text-base font-black text-slate-950">{org?.name || 'Syndicate Governance'}</h1>
+            </div>
+            <p className="text-xs text-slate-600 font-medium mt-0.5">
+              {org?.type === 'AGRO_FARMING' ? 'Agro-Farming & Livestock Enterprise' : 'General Business Venture'} · {members.length} registered partners
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowInviteSheet(true)}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
-          >
-            <span>🔑</span>
-            <span>Invite Code</span>
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setShowInviteSheet(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+            >
+              <span>🔑</span>
+              <span>Invite Code</span>
+            </button>
+          )}
         </div>
 
         {canManage && (
@@ -77,21 +100,21 @@ export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) =>
                         {member.fullName}
                       </div>
                       <div className="text-xs text-slate-600 font-medium mt-0.5">
-                        {member.role} · {member.approvalStatus || 'APPROVED'}
+                        {getRoleMeta(member.role).label} · {member.approvalStatus || 'APPROVED'}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right">
                     <div className="text-sm font-black font-mono text-slate-950">
-                      {eq ? formatMoney(eq.netContribution) : '$0.00'}
+                      {eq ? formatMoney(eq.netContribution, showNumbers) : (showNumbers ? '$0.00' : '••••••')}
                     </div>
                     <div className="text-xs font-bold text-emerald-700">
-                      {eq ? `${eq.profitSharePercentage.toFixed(1)}% equity` : '0%'}
+                      {eq ? (showNumbers ? `${eq.profitSharePercentage.toFixed(1)}% equity` : '••% equity') : '0%'}
                     </div>
                     {eq && eq.targetContributionUsd > 0 && (
                       <div className="text-[10px] text-slate-600 font-medium mt-0.5">
-                        Pledged: {formatMoney(eq.targetContributionUsd)}
+                        Pledged: {formatMoney(eq.targetContributionUsd, showNumbers)}
                       </div>
                     )}
                   </div>
@@ -118,7 +141,7 @@ export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) =>
                       }}
                       className="flex-1 py-1.5 px-2 rounded-lg bg-[#FAF8F5] border border-[#E0D7C6] text-slate-900 font-bold text-center hover:bg-[#F0EBE1] cursor-pointer transition-colors shadow-xs"
                     >
-                      ⚙️ Clearances
+                      ⚙️ Change Role
                     </button>
                   )}
                 </div>
@@ -145,6 +168,7 @@ export const MembersScreen: React.FC<MembersScreenProps> = ({ activeMember }) =>
             }}
             member={selectedMember}
             activeMember={activeMember}
+            onUpdated={() => setTick((t) => t + 1)}
           />
 
           <ContributionSheet

@@ -136,6 +136,13 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
       const remaining = Math.max(0, pledgedAmount - paid);
       const paidPct = pledgedAmount > 0 ? Math.min(100, Math.round((paid / pledgedAmount) * 100)) : 0;
 
+      // Master Capital Goal context
+      const totalMasterContributed = contributions
+        .filter((c) => c.memberId === mem.id)
+        .reduce((acc, c) => (c.direction === 'CONTRA_REVERSAL' ? acc - Math.abs(c.amount) : acc + c.amount), 0);
+      const masterTarget = mem.targetContributionUsd || 1000;
+      const masterPct = masterTarget > 0 ? Math.min(100, Math.round((totalMasterContributed / masterTarget) * 100)) : 0;
+
       return {
         member: mem,
         pledge,
@@ -144,6 +151,9 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
         pending,
         remaining,
         paidPct,
+        totalMasterContributed: Math.max(0, totalMasterContributed),
+        masterTarget,
+        masterPct,
       };
     });
   }, [activeMembers, pledges, contributions, pendingClaims, plan.id]);
@@ -251,6 +261,21 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
         </div>
       )}
 
+      {/* Treasury & Equity Bridge Callout */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-xs flex items-start gap-3 shadow-xs">
+        <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-700" />
+        </div>
+        <div className="space-y-0.5">
+          <h4 className="font-black text-emerald-950 text-xs">
+            Direct Link to Organization Master Capital Pool
+          </h4>
+          <p className="text-emerald-900/90 font-medium leading-relaxed">
+            Every confirmed pay-in deposits physical cash into the Organization Treasury (<strong className="font-bold">leftMoney</strong>) and counts towards the member&apos;s Master Capital Target &amp; equity ownership.
+          </p>
+        </div>
+      </div>
+
       {/* Pledgers & Pay-In Progress Tracker */}
       <div className="rounded-2xl bg-white border border-[#E8DFCE] shadow-xs overflow-hidden">
         <div className="p-4 border-b border-[#F0EBE1] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -273,7 +298,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
         </div>
 
         <div className="divide-y divide-gray-100 dark:divide-gray-800/80">
-          {pledgerRows.map(({ member: mem, pledgedAmount, paid, pending, remaining, paidPct }) => {
+          {pledgerRows.map(({ member: mem, pledgedAmount, paid, pending, remaining, paidPct, totalMasterContributed, masterTarget, masterPct }) => {
             const isSelected = mem.id === selectedMemberId;
             return (
               <div
@@ -298,13 +323,16 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                             : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                           }`}
                       >
-                        {paid >= pledgedAmount ? 'Pledge Paid in Full' : `${paidPct}% Paid`}
+                        {paid >= pledgedAmount ? 'Plan Pledge Paid' : `${paidPct}% Plan Paid`}
                       </span>
                     ) : (
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">
                         No Pledge Logged
                       </span>
                     )}
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                      Master Equity: ${totalMasterContributed.toFixed(0)} / ${masterTarget.toFixed(0)} ({masterPct}%)
+                    </span>
                     {pending > 0 && (
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 font-bold">
                         +${pending.toFixed(2)} Pending Verification
@@ -314,15 +342,15 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <span>
-                      Pledged: <strong className="text-gray-900 dark:text-white">${pledgedAmount.toFixed(2)}</strong>
+                      Plan Pledge: <strong className="text-gray-900 dark:text-white">${pledgedAmount.toFixed(2)}</strong>
                     </span>
                     <span>•</span>
                     <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Paid: ${paid.toFixed(2)}
+                      Plan Paid: ${paid.toFixed(2)}
                     </span>
                     <span>•</span>
                     <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                      Remaining: ${remaining.toFixed(2)}
+                      Plan Rem: ${remaining.toFixed(2)}
                     </span>
                   </div>
 
@@ -696,6 +724,10 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                   <span className="font-mono">{confirmingClaim.reference}</span>
                 </div>
               )}
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-950 font-medium">
+              ✓ Confirming will add <strong>${confirmingClaim.amount.toFixed(2)}</strong> to Organization Left Money and credit <strong>{confirmingClaim.memberName || 'the member'}</strong>&apos;s Master Capital stake.
             </div>
 
             {confirmingClaim.receiptPhotoDataUrl && (

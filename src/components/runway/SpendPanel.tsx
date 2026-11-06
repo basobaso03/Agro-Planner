@@ -290,13 +290,13 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
           <div className="p-2.5 px-3.5 rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xs shrink-0 flex items-center space-x-3">
             <div>
               <span className="text-[10px] font-bold uppercase text-gray-400 block">
-                Money on the Ground
+                Master Treasury Cash (leftMoney)
               </span>
               <span className="text-sm sm:text-base font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
                 ${availableCash.toFixed(2)}
               </span>
             </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Live Organization Treasury Balance" />
           </div>
         </div>
 
@@ -720,17 +720,8 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
 
       {/* Action Footer */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-          {canPropose && (
-            <button
-              type="button"
-              onClick={onProposeAmendment}
-              className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200 transition-colors cursor-pointer"
-            >
-              <FileEdit className="w-4 h-4 text-indigo-500" />
-              <span>Propose Plan Amendment</span>
-            </button>
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+          {/* Propose Plan Amendment hidden for now per request */}
 
           {canSpend && (
             <button

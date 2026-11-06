@@ -29,6 +29,10 @@ import { dataService } from '../services/dataService.ts';
 import { useRunway } from '../hooks/useRunway.ts';
 import { ContributionSheet } from '../sheets/pool/ContributionSheet.tsx';
 import { TargetFundraisingSheet } from '../sheets/pool/TargetFundraisingSheet.tsx';
+import { MemberRoleSheet } from '../sheets/common/MemberRoleSheet.tsx';
+import { PdfExportButton } from './ui/PdfExportButton.tsx';
+import { generateEquityCertificatePdf } from '../services/pdf/generators/shared/equityCertificatePdf.ts';
+import { buildExportFilename } from '../utils/pdfFilename.ts';
 
 interface PoolEquityTabProps {
   memberEquities: MemberEquitySummary[];
@@ -88,6 +92,9 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
   const [cRefId, setCRefId] = useState('');
   const [cNote, setCNote] = useState('');
   const [cError, setCError] = useState('');
+
+  // Role & Clearance Modal State (Admin Only)
+  const [roleModalMember, setRoleModalMember] = useState<OrgMember | null>(null);
 
   // Target Capital Modal State
   const [targetModal, setTargetModal] = useState<{
@@ -255,12 +262,13 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
       <section className="rounded-3xl bg-white border border-[#E8DFCE] p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-slate-500">
                 Organization Master Capital Pool
               </span>
               {!canManageMembers && (
-                <span className="text-[10px] font-mono text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300 font-bold">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/90 whitespace-nowrap shrink-0 shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0" />
                   Member View
                 </span>
               )}
@@ -271,6 +279,23 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <PdfExportButton
+              label="Share Equity PDF"
+              title="Syndicate Capital Equity Statement"
+              filename={buildExportFilename({
+                orgName: activeOrg?.name || 'Syndicate',
+                documentType: 'Syndicate-Equity-Certificate',
+              })}
+              generateDoc={() =>
+                generateEquityCertificatePdf({
+                  organization: activeOrg,
+                  equitySummaries: memberEquities,
+                  totalPool: totalContributedPool,
+                  totalNav: financials.totalNav || financials.totalSyndicateNav || 0,
+                  operatorName: activeMember.fullName,
+                })
+              }
+            />
             {canLogCapital && memberEquities.length > 0 && (
               <button
                 type="button"
@@ -320,7 +345,7 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
             </p>
           </div>
           <div className="bg-[#FAF8F5] p-3 rounded-2xl border border-[#E8DFCE]">
-            <p className="text-[11px] font-bold text-slate-500">Available Liquid Money</p>
+            <p className="text-[11px] font-bold text-slate-500">Available Liquid Money (leftMoney)</p>
             <p className="font-mono font-black text-emerald-800 text-sm mt-0.5">
               {!showNumbers ? '••••••••' : `$${financials.leftMoney.toFixed(2)}`}
             </p>
@@ -332,6 +357,25 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Active Runway Operational Cycle Bridge */}
+        {activePlan && (
+          <div className="p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-black text-indigo-950 block">
+                  Active Operational Runway: {activePlan.name}
+                </span>
+                <span className="text-[11px] text-indigo-700 font-medium">
+                  Status: {activePlan.status} • Member cycle pay-ins directly build this Master Capital Pool &amp; liquid cash.
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 2. INTERACTIVE PROFIT PAYOUT & DIVIDEND CALCULATOR */}
@@ -522,29 +566,42 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                 </div>
 
                 <div className="pt-3 border-t border-[#F0EBE1] flex flex-wrap items-center justify-between gap-2">
-                  {canLogCapital && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenContribModal('ADDITION', eq.member.id)}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer transition-colors"
-                    >
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Add Capital
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canLogCapital && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenContribModal('ADDITION', eq.member.id)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer transition-colors"
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Add Capital
+                      </button>
+                    )}
 
-                  {canPostContra && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenContribModal('CONTRA_REVERSAL', eq.member.id)}
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Adjust Entry
-                    </button>
-                  )}
+                    {canPostContra && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenContribModal('CONTRA_REVERSAL', eq.member.id)}
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Adjust Entry
+                      </button>
+                    )}
 
-                  {!canLogCapital && !canPostContra && (
+                    {canManageMembers && (
+                      <button
+                        type="button"
+                        onClick={() => setRoleModalMember(eq.member)}
+                        className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-slate-800 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                        title="Update user role and permissions"
+                      >
+                        <span>⚙️ Change Role</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!canLogCapital && !canPostContra && !canManageMembers && (
                     <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 py-1 font-bold">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                       Verified Ledger Record
@@ -615,6 +672,15 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           isOpen={Boolean(targetModal)}
           onClose={() => setTargetModal(null)}
           member={memberEquities.find((m) => m.member.id === targetModal.memberId)?.member || activeMember}
+          activeMember={activeMember}
+        />
+      )}
+
+      {roleModalMember && (
+        <MemberRoleSheet
+          isOpen={Boolean(roleModalMember)}
+          onClose={() => setRoleModalMember(null)}
+          member={roleModalMember}
           activeMember={activeMember}
         />
       )}

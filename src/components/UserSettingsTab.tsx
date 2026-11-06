@@ -28,6 +28,7 @@ import {
   Smartphone,
   Info,
   Compass,
+  Loader2,
 } from 'lucide-react';
 import {
   getCelebrationMode,
@@ -50,6 +51,7 @@ import {
   ModernLinkedInIcon,
   ModernWhatsAppIcon,
 } from './DeveloperBrandInfo.tsx';
+import { MemberRoleSheet } from '../sheets/common/MemberRoleSheet.tsx';
 import {
   areSystemNotificationsEnabled,
   checkAsyncNotificationPermission,
@@ -100,9 +102,9 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   locations,
   activeOrg,
   activeFontId = 'font-sans',
-  onSelectFont = () => {},
+  onSelectFont = () => { },
   backgroundIntensity = 'standard',
-  onSelectBackgroundIntensity = () => {},
+  onSelectBackgroundIntensity = () => { },
   onPreviewSplash,
   onCheckUpdates,
   onSignOut,
@@ -115,8 +117,28 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
     }
     if (targetSection === 'profile') return 'PROFILE';
     if (targetSection === 'appearance' || targetSection === 'theme') return 'APPEARANCE';
+    if (targetSection === 'organization' || targetSection === 'org' || targetSection === 'team') return 'ORGANIZATION';
+    if (targetSection === 'notifications' || targetSection === 'alerts') return 'NOTIFICATIONS';
+    if (targetSection === 'about' || targetSection === 'developer') return 'ABOUT';
     return 'OVERVIEW';
   });
+
+  useEffect(() => {
+    if (!targetSection) return;
+    if (targetSection === 'password' || targetSection === 'biometric' || targetSection === 'security') {
+      setActiveCategory('SECURITY');
+    } else if (targetSection === 'profile') {
+      setActiveCategory('PROFILE');
+    } else if (targetSection === 'appearance' || targetSection === 'theme') {
+      setActiveCategory('APPEARANCE');
+    } else if (targetSection === 'organization' || targetSection === 'org' || targetSection === 'team') {
+      setActiveCategory('ORGANIZATION');
+    } else if (targetSection === 'notifications' || targetSection === 'alerts') {
+      setActiveCategory('NOTIFICATIONS');
+    } else if (targetSection === 'about' || targetSection === 'developer') {
+      setActiveCategory('ABOUT');
+    }
+  }, [targetSection]);
 
   // Profile Editor State
   const [fullName, setFullName] = useState(activeMember.fullName);
@@ -142,6 +164,25 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   const [editOrgTarget, setEditOrgTarget] = useState(String(activeOrg?.defaultTargetContributionUsd || 1000));
   const [editOrgPace, setEditOrgPace] = useState<'MONTHLY' | 'MILESTONE' | 'FLEXIBLE'>(activeOrg?.contributionPaceDefault || 'MONTHLY');
   const [isSavingOrg, setIsSavingOrg] = useState(false);
+
+  // Complete Account Deletion State
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleConfirmDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await dataService.deleteAccount(activeMember);
+      setShowDeleteAccountModal(false);
+      onSignOut?.();
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Failed to delete account. Please try again.');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
   const [orgSaveError, setOrgSaveError] = useState('');
 
   useEffect(() => {
@@ -178,6 +219,16 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   const [isSyncingSettings, setIsSyncingSettings] = useState(false);
   const [settingsSyncMsg, setSettingsSyncMsg] = useState<string | null>(null);
 
+  // Team Member Role Management State
+  const [roleModalMember, setRoleModalMember] = useState<OrgMember | null>(null);
+  const [, setMembersListTick] = useState(0);
+
+  useEffect(() => {
+    return dataService.subscribe(() => {
+      setMembersListTick((t) => t + 1);
+    });
+  }, []);
+
   useEffect(() => {
     isBiometricHardwareSupported().then(setBiometricSupported).catch(() => { });
     checkAsyncNotificationPermission().then(setNotifPerm).catch(() => { });
@@ -186,6 +237,11 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   const isAdmin = PERMISSIONS.canManageMembers(activeMember.role);
   const roleMeta = getRoleMeta(activeMember.role);
   const isPasswordConfigured = hasPasswordConfigured(activeMember);
+  const isAgro = activeOrg?.type !== 'GENERAL_VENTURE';
+
+  const orgMembers = dataService.getState().members.filter(
+    (m) => !activeMember.orgId || m.orgId === activeMember.orgId
+  );
 
   const handleCopyInviteCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -342,14 +398,14 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-emerald-700/20 shrink-0">
             {activeMember.fullName.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-black text-slate-950 truncate">{activeMember.fullName}</h1>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${roleMeta.badgeClass}`}>
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-black text-slate-950 break-words">{activeMember.fullName}</h1>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap shrink-0 shadow-2xs ${roleMeta.badgeClass}`}>
                 {roleMeta.label}
               </span>
             </div>
-            <p className="text-xs text-slate-600 font-medium truncate">
+            <p className="text-xs text-slate-600 font-medium break-all">
               {activeMember.email || activeMember.phoneOrEmail}
             </p>
             {activeOrg && (
@@ -398,7 +454,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                     )}
                   </div>
                   <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                    Invitation code, capital targets, and org profile
+                    {isAdmin ? 'Invitation code, capital targets, and org profile' : 'Organization profile, rules and capital targets'}
                   </p>
                 </div>
               </div>
@@ -434,12 +490,15 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <Fingerprint className="w-5 h-5 text-amber-700" />
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <h3 className="text-sm font-black text-slate-950">Security &amp; Biometrics</h3>
                     <span
-                      className={`text-[9px] font-black px-1.5 py-0.2 rounded ${enrolledBio ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 border shadow-2xs ${enrolledBio
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-50 text-amber-900 border-amber-300'
                         }`}
                     >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${enrolledBio ? 'bg-emerald-600' : 'bg-amber-500'}`} />
                       {enrolledBio ? 'Fingerprint Active' : 'Setup Needed'}
                     </span>
                   </div>
@@ -489,7 +548,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-all" />
             </div>
 
-            {/* Category 6: About CapitaSeed & Architecture */}
+            {/* Category 6: About Capital Seed & Architecture */}
             <div
               onClick={() => setActiveCategory('ABOUT')}
               className="p-4 rounded-3xl bg-white border border-[#E8DFCE] hover:border-emerald-500 transition-all cursor-pointer shadow-xs flex items-center justify-between group"
@@ -499,13 +558,36 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <Info className="w-5 h-5 text-purple-700" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-black text-slate-950">About CapitaSeed &amp; Support</h3>
+                  <h3 className="text-sm font-black text-slate-950">About Capital Seed &amp; Support</h3>
                   <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
                     Release notes, security ledger verifier, and developer contact
                   </p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-all" />
+            </div>
+          </div>
+
+          {/* Danger Zone: Permanent Account Deletion */}
+          <div className="pt-2">
+            <div className="p-4 rounded-3xl bg-rose-50/80 border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 text-rose-950 font-black text-xs uppercase tracking-wide">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  <span>Permanent Account Deletion</span>
+                </div>
+                <p className="text-[11px] text-rose-800 font-medium">
+                  Irreversibly delete your account, authentication credentials, and membership documents from cloud and device.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors shrink-0"
+              >
+                Delete Account Completely
+              </button>
             </div>
           </div>
         </div>
@@ -530,7 +612,9 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                   <span>Organization Governance &amp; Registration Details</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  View organization profile parameters, capital rules, and active invitation code
+                  {isAdmin
+                    ? 'View organization profile parameters, team member roles, and active invitation code'
+                    : 'View organization profile parameters and capital rules'}
                 </p>
               </div>
 
@@ -541,31 +625,31 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 </div>
               )}
 
-              {/* Active Organization Invite Code */}
-              <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide">
-                      Active Organization Invite Code
-                    </span>
-                    <div className="text-2xl font-mono font-black text-emerald-900 mt-0.5">
-                      {activeOrg?.currentInviteCode || 'SEED-8492'}
+              {/* Active Organization Invite Code (ADMIN ONLY) */}
+              {isAdmin && (
+                <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-500 tracking-wide">
+                        Active Organization Invite Code
+                      </span>
+                      <div className="text-2xl font-mono font-black text-emerald-900 mt-0.5">
+                        {activeOrg?.currentInviteCode || 'SEED-8492'}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Share this invitation code with new members to join {activeOrg?.name || 'this organization'}.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      Share this invitation code with new members to join {activeOrg?.name || 'this organization'}.
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleCopyInviteCode(activeOrg?.currentInviteCode || 'SEED-8492')}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      {inviteCodeCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{inviteCodeCopied ? 'Code Copied' : 'Copy Invite Code'}</span>
-                    </button>
-                    {isAdmin && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyInviteCode(activeOrg?.currentInviteCode || 'SEED-8492')}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        {inviteCodeCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{inviteCodeCopied ? 'Code Copied' : 'Copy Invite Code'}</span>
+                      </button>
                       <button
                         type="button"
                         disabled={isRefreshingCode}
@@ -575,10 +659,10 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                         <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingCode ? 'animate-spin' : ''}`} />
                         <span>Refresh Code</span>
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Comprehensive Registration Data Summary Card */}
               <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
@@ -587,14 +671,14 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                     Organization Registration Details
                   </h4>
                   <span className="text-[10px] font-mono font-bold text-slate-500">
-                    ID: {activeOrg?.id || 'org-master'}
+                    ID: {activeOrg?.id || 'None'}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase block">Organization Name</span>
-                    <strong className="text-slate-900 font-bold text-sm">{activeOrg?.name || 'CapitaSeed Master Syndicate'}</strong>
+                    <strong className="text-slate-900 font-bold text-sm">{activeOrg?.name || 'No Active Workspace'}</strong>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase block">Workspace Operating Type</span>
@@ -638,14 +722,16 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                         : 'Active Registration'}
                     </span>
                   </div>
-                  <div className="sm:col-span-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Farm Sites / Registered Locations</span>
-                    <span className="text-slate-800 font-medium">
-                      {locations.length > 0
-                        ? `${locations.length} Active Sites (${locations.map((l) => l.name).join(', ')})`
-                        : 'All farm locations available'}
-                    </span>
-                  </div>
+                  {isAgro && (
+                    <div className="sm:col-span-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block">Farm Sites / Registered Locations</span>
+                      <span className="text-slate-800 font-medium">
+                        {locations.length > 0
+                          ? `${locations.length} Active Sites (${locations.map((l) => l.name).join(', ')})`
+                          : 'No farm sites registered'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -740,35 +826,71 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                 </form>
               )}
 
-              {/* Runway Capital Planning Feature Toggle (Admin Only) */}
-              {isAdmin && activeOrg && (
-                <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <div className="text-xs font-black text-slate-950 flex items-center gap-1.5">
-                        <Compass className="w-4 h-4 text-indigo-600" />
-                        <span>Runway Capital Planning &amp; Spend Gate Module</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        Enable multi-layer capital budgeting, member pledges, and spend gate validation for this organization.
+              {/* Team Members & Access Roles (Admin Only) */}
+              {isAdmin && (
+                <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-[#F0EBE1]">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-950 uppercase tracking-wide flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-emerald-700" />
+                        <span>Team Members &amp; Access Roles</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        {isAgro
+                          ? 'Manage member roles, permissions, and farm location assignments'
+                          : 'Manage member roles, operational clearances, and administrative access'}
                       </p>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(activeOrg.features?.runwayModule)}
-                        onChange={(e) => {
-                          dataService.setRunwayModuleEnabled({
-                            orgId: activeOrg.id,
-                            enabled: e.target.checked,
-                            actor: activeMember,
-                          });
-                          setOrgBanner(`Runway Module ${e.target.checked ? 'enabled' : 'disabled'} successfully.`);
-                        }}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
+                    <span className="text-[10px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                      {orgMembers.length} Partners
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {orgMembers.map((member) => {
+                      const isSelf = member.id === activeMember.id;
+                      const memberRoleMeta = getRoleMeta(member.role);
+                      return (
+                        <div
+                          key={member.id}
+                          className="p-3 rounded-xl bg-white border border-[#E8DFCE] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                              {member.fullName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-xs font-black text-slate-950 break-words">
+                                  {member.fullName}
+                                </span>
+                                {isSelf && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                                    You
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 block truncate">
+                                {member.email || member.phoneOrEmail}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap shrink-0 shadow-2xs ${memberRoleMeta.badgeClass}`}>
+                              {memberRoleMeta.label}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setRoleModalMember(member)}
+                              className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-[#F0EBE1] border border-[#E0D7C6] text-slate-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                            >
+                              ⚙️ Change Role
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -853,20 +975,23 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
             <div className="space-y-4">
               {/* Biometrics Panel (Default) */}
               <div className="p-5 sm:p-6 rounded-3xl bg-white border border-[#E8DFCE] space-y-4 shadow-xs">
-                <div className="pb-3 border-b border-[#F0EBE1] flex items-center justify-between">
+                <div className="pb-3 border-b border-[#F0EBE1] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div>
                     <h3 className="text-base font-black text-slate-950 flex items-center gap-2">
-                      <Fingerprint className="w-5 h-5 text-emerald-700" />
-                      <span>Biometric Fingerprint Security (Default)</span>
+                      <Fingerprint className="w-5 h-5 text-emerald-700 shrink-0" />
+                      <span>Biometric Fingerprint Security</span>
                     </h3>
                     <p className="text-xs text-slate-500 font-medium mt-0.5">
                       Fast one-touch authentication using your Android biometric sensor
                     </p>
                   </div>
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-black ${enrolledBio ? 'bg-emerald-100 text-emerald-950' : 'bg-slate-100 text-slate-700'
+                    className={`self-start sm:self-auto px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 border shadow-2xs ${enrolledBio
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-slate-100 text-slate-700 border-slate-300'
                       }`}
                   >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${enrolledBio ? 'bg-emerald-600' : 'bg-slate-400'}`} />
                     {enrolledBio ? 'Enrolled & Active' : 'Not Active'}
                   </span>
                 </div>
@@ -1158,8 +1283,8 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                     }
                   }}
                   className={`px-3.5 py-2 rounded-xl text-xs font-black transition-colors cursor-pointer shadow-xs ${vibrationOn
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
                     }`}
                 >
                   {vibrationOn ? 'Vibration: ON' : 'Vibration: OFF'}
@@ -1267,7 +1392,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <div className="pb-3 border-b border-[#F0EBE1]">
                 <h3 className="text-base font-black text-slate-950 flex items-center gap-2">
                   <Info className="w-5 h-5 text-purple-700" />
-                  <span>About CapitaSeed Platform</span>
+                  <span>About Capital Seed Platform</span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
                   Universal operations &amp; shared pooled capital platform (Agro &amp; General Ventures)
@@ -1277,7 +1402,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-600">Application Version</span>
-                  <span className="font-mono font-black text-slate-950">v1.0.4 Production</span>
+                  <span className="font-mono font-black text-slate-950">v1.0.5 Production</span>
                 </div>
               </div>
 
@@ -1317,6 +1442,70 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-rose-300 space-y-4 text-slate-900">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-300 text-rose-700 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-slate-950">Delete Account Completely?</h3>
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                This action is <strong>permanent and irreversible</strong>. Your user account ({activeMember.email || activeMember.phoneOrEmail}), credentials, and member documents will be deleted completely from Cloud Firestore and Firebase Authentication.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 font-semibold">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-medium">
+              ⚠️ If you wish to rejoin this or any other organization later, you will need to register a new account or be re-invited.
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingAccount}
+                onClick={() => setShowDeleteAccountModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAccount}
+                onClick={handleConfirmDeleteAccount}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                {isDeletingAccount ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Completely</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Member Role & Clearance Management Sheet */}
+      {roleModalMember && (
+        <MemberRoleSheet
+          isOpen={Boolean(roleModalMember)}
+          onClose={() => setRoleModalMember(null)}
+          member={roleModalMember}
+          activeMember={activeMember}
+        />
       )}
     </div>
   );

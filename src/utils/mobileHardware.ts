@@ -440,9 +440,14 @@ export async function initializeNotificationChannels(): Promise<void> {
           id: 'AGRO_OPEN_ACTION',
           actions: [
             {
-              id: 'open_drawer',
-              title: 'View Audit Ledger',
+              id: 'view_details',
+              title: 'View Details',
               foreground: true,
+            },
+            {
+              id: 'mark_read',
+              title: 'Mark as Read',
+              foreground: false,
             },
           ],
         },
@@ -455,12 +460,20 @@ export async function initializeNotificationChannels(): Promise<void> {
   }
 }
 
+export interface NotificationTapPayload {
+  notificationId?: string;
+  actionId?: string;
+  severity?: string;
+}
+
+export type NotificationTapHandler = (event?: NotificationTapPayload) => void;
+
 /**
  * Initializes Firebase Cloud Messaging (FCM) PushNotifications and LocalNotification tap listeners
  * so that the device receives background/closed-app push notifications and opens the notification
- * drawer when tapped.
+ * detail or drawer when tapped.
  */
-export async function initPushNotifications(onNotificationTapped?: () => void): Promise<void> {
+export async function initPushNotifications(onNotificationTapped?: NotificationTapHandler): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
 
   try {
@@ -483,9 +496,15 @@ export async function initPushNotifications(onNotificationTapped?: () => void): 
     if (!pushListenersInitialized) {
       pushListenersInitialized = true;
 
-      await LocalNotifications.addListener('localNotificationActionPerformed', () => {
+      await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
         if (onNotificationTapped) {
-          onNotificationTapped();
+          const notificationId =
+            action.notification?.extra?.notificationId || action.notification?.extra?.tag || '';
+          onNotificationTapped({
+            notificationId,
+            actionId: action.actionId,
+            severity: action.notification?.extra?.severity,
+          });
         }
       });
 
@@ -504,16 +523,20 @@ export async function initPushNotifications(onNotificationTapped?: () => void): 
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
         // When a push arrives while app is in foreground or waking up, mirror it to high-priority local notification
         void dispatchSystemNotification({
-          title: notification.title || 'CapitaSeed Alert',
+          title: notification.title || 'Capital Seed Alert',
           body: notification.body || 'New ledger activity recorded.',
           urgent: true,
           severity: 'URGENT_GROUND',
         });
       });
 
-      await PushNotifications.addListener('pushNotificationActionPerformed', () => {
+      await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
         if (onNotificationTapped) {
-          onNotificationTapped();
+          const notificationId = (action.notification?.data as any)?.notificationId || '';
+          onNotificationTapped({
+            notificationId,
+            actionId: action.actionId || 'tap',
+          });
         }
       });
     }
@@ -640,7 +663,7 @@ export async function requestSystemNotificationPermission(): Promise<Notificatio
 }
 
 /**
- * Dispatches a native or web notification with full headline, body, and expandability
+ * Dispatches a native or web notification with clean headline, body, and expandability
  */
 export async function dispatchSystemNotification(params: {
   title: string;
@@ -649,6 +672,7 @@ export async function dispatchSystemNotification(params: {
   urgent?: boolean;
   severity?: 'URGENT_GROUND' | 'WARNING_CONTRA' | 'FINANCIAL' | 'MILESTONE' | 'INFO';
   sequenceNumber?: number;
+  notificationId?: string;
 }): Promise<boolean> {
   if (!areSystemNotificationsEnabled()) {
     return false;
@@ -657,6 +681,34 @@ export async function dispatchSystemNotification(params: {
   const vibratePattern = params.urgent ? [250, 100, 250, 100, 300] : [150, 80, 150];
   triggerHapticFeedback(vibratePattern);
 
+  // Format clean headline without redundant "Agro Planner · " prefix
+  let cleanTitle = String(params.title || 'Farm Alert').replace(/^Agro Planner\s*[·•-]\s*/i, '').trim();
+  const hasEmoji = /\p{Extended_Pictographic}/u.test(cleanTitle);
+  if (!hasEmoji) {
+    const emoji =
+      params.urgent || params.severity === 'URGENT_GROUND' || params.severity === 'WARNING_CONTRA'
+        ? '🚨 '
+        : params.severity === 'FINANCIAL'
+          ? '💰 '
+          : params.severity === 'MILESTONE'
+            ? '🌟 '
+            : '🔔 ';
+    cleanTitle = `${emoji}${cleanTitle}`;
+  }
+
+  // Generate concise, human-readable 1-sentence summary for the mobile notification tray (max 95 chars)
+  const rawBody = String(params.body || '').trim();
+  let cleanSummary = rawBody
+    .replace(/^[A-Z]{3,4}-\d{3,}-[A-Z0-9]+(\s*\(Ref:[^)]+\))?:\s*/i, '')
+    .replace(/^[A-Z]{3,4}-\d{3,}:\s*/i, '')
+    .trim();
+  const firstSentence = cleanSummary.split(/[\.\n]/)[0].trim();
+  if (firstSentence && firstSentence.length <= 95) {
+    cleanSummary = firstSentence;
+  } else if (cleanSummary.length > 95) {
+    cleanSummary = cleanSummary.slice(0, 94).trim() + '…';
+  }
+
   // Determine appropriate Android notification channel
   let channelId = 'milestones_general';
   if (params.severity === 'URGENT_GROUND' || params.severity === 'WARNING_CONTRA' || params.urgent) {
@@ -664,6 +716,8 @@ export async function dispatchSystemNotification(params: {
   } else if (params.severity === 'FINANCIAL') {
     channelId = 'financial_ledger';
   }
+
+  const notifIdStr = params.notificationId || params.tag || '';
 
   // A. Native Capacitor Implementation (Android / iOS Full Phone Notifications)
   if (Capacitor.isNativePlatform()) {
@@ -676,11 +730,11 @@ export async function dispatchSystemNotification(params: {
         notifications: [
           {
             id: notifId,
-            title: String(params.title || 'Agro Planner Alert'),
-            body: String(params.body || ''),
-            largeBody: String(params.body || ''),
+            title: cleanTitle,
+            body: cleanSummary || cleanTitle,
+            largeBody: rawBody,
             channelId,
-            summaryText: 'Agro Planner Alert',
+            summaryText: 'Agro Planner',
             actionTypeId: 'AGRO_OPEN_ACTION',
             autoCancel: true,
             schedule: {
@@ -690,6 +744,7 @@ export async function dispatchSystemNotification(params: {
             extra: {
               tag: params.tag || '',
               severity: params.severity || 'INFO',
+              notificationId: notifIdStr,
             },
           },
         ],
@@ -710,12 +765,15 @@ export async function dispatchSystemNotification(params: {
           new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1200)),
         ]);
         if (reg && typeof reg.showNotification === 'function') {
-          await reg.showNotification(params.title, {
-            body: params.body,
+          await reg.showNotification(cleanTitle, {
+            body: cleanSummary || cleanTitle,
             icon: 'icon.svg',
             badge: 'icon.svg',
             tag: params.tag || `agro-alert-${Date.now()}`,
             requireInteraction: Boolean(params.urgent),
+            data: {
+              notificationId: notifIdStr,
+            },
           });
           return true;
         }
@@ -724,8 +782,8 @@ export async function dispatchSystemNotification(params: {
       // Check constructor availability before instantiation (in Android WebView, new Notification() throws an Illegal Constructor error)
       try {
         if (typeof Notification === 'function') {
-          new Notification(params.title, {
-            body: params.body,
+          new Notification(cleanTitle, {
+            body: cleanSummary || cleanTitle,
             icon: 'icon.svg',
             tag: params.tag || `agro-alert-${Date.now()}`,
           });

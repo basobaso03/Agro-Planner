@@ -131,7 +131,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
           )}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black">
             <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-            <span>CapitaSeed Workspace Onboarding</span>
+            <span>Capital Seed Workspace Onboarding</span>
           </div>
           <h2 className="text-xl font-black text-slate-950">
             Welcome, {activeMember.fullName}
@@ -295,35 +295,40 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Target Capital Per Member ($)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={targetContribution}
-                  onChange={(e) => setTargetContribution(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-500 focus:bg-white"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-xs font-black text-slate-950 mb-1">
+                    Master Capital Goal / Partner ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={targetContribution}
+                    onChange={(e) => setTargetContribution(e.target.value)}
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-950 mb-1">
-                  Agreed Pace
-                </label>
-                <select
-                  value={pace}
-                  onChange={(e) => setPace(e.target.value as any)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer"
-                >
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="MILESTONE">Milestone-Based</option>
-                  <option value="FLEXIBLE">Flexible / Self-Paced</option>
-                </select>
+                <div>
+                  <label className="block text-xs font-black text-slate-950 mb-1">
+                    Agreed Pace
+                  </label>
+                  <select
+                    value={pace}
+                    onChange={(e) => setPace(e.target.value as any)}
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-2.5 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="MILESTONE">Milestone-Based</option>
+                    <option value="FLEXIBLE">Flexible / Self-Paced</option>
+                  </select>
+                </div>
               </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Baseline equity commitment per partner. Cycle pledges in Runway credit directly toward this master pool.
+              </p>
             </div>
 
             <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs">
@@ -337,7 +342,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
                 <span>Enable Runway Capital Planning Module</span>
               </label>
               <p className="text-[11px] text-indigo-700 pl-6 mt-0.5">
-                Target budgeting, pledges, pay-ins &amp; strict spend gates for capital discipline.
+                Cycle budgets, member pledges &amp; spend gates that seamlessly feed into the Organization&apos;s Master Treasury.
               </p>
             </div>
 

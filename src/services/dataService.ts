@@ -13,6 +13,7 @@ import {
   linkWithCredential,
   updatePassword,
   updateProfile,
+  deleteUser,
   signOut,
   onAuthStateChanged,
   type Auth,
@@ -177,6 +178,7 @@ export interface AuthenticatedSession {
   signedInAt?: number; // Epoch timestamp in ms
   expiresAt?: number;  // Epoch timestamp in ms (default: 3 days after login)
   freshlyAuthenticated?: boolean; // True only during active login turn; false when loaded from storage
+  authLoginType?: 'cloud_google' | 'cloud_password' | 'local_biometric' | 'local_restore';
 }
 
 export const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 Days in milliseconds
@@ -248,12 +250,26 @@ function isLegacySeedId(collectionKey: keyof typeof LEGACY_SEED_IDS, id: string)
 }
 
 function sanitizeSnapshotOfLegacySeed(snapshot: AgroStateSnapshot): AgroStateSnapshot {
+  const cleanOrgs = (snapshot.organizations || []).filter(
+    (x) => x.id !== 'org-master' && x.name !== 'CapitaSeed Master Syndicate'
+  );
+  const cleanActiveOrgId =
+    snapshot.activeOrgId === 'org-master' || snapshot.activeOrgId === 'org-default'
+      ? undefined
+      : snapshot.activeOrgId;
+
   return {
-    organizations: snapshot.organizations || [],
-    activeOrgId: snapshot.activeOrgId,
+    organizations: cleanOrgs,
+    activeOrgId: cleanActiveOrgId,
     customRecipes: snapshot.customRecipes || [],
     locations: (snapshot.locations || []).filter((x) => !isLegacySeedId('locations', x.id)),
-    members: (snapshot.members || []).filter((x) => !isLegacySeedId('members', x.id)),
+    members: (snapshot.members || []).filter((x) => !isLegacySeedId('members', x.id)).map((m) => {
+      if (m.orgId === 'org-master' || m.orgId === 'org-default') {
+        const { orgId, ...rest } = m;
+        return rest;
+      }
+      return m;
+    }),
     capitalContributions: (snapshot.capitalContributions || []).filter(
       (x) => !isLegacySeedId('capitalContributions', x.id)
     ),
@@ -483,7 +499,7 @@ class AgroDataService {
           const cleaned = sanitizeSnapshotOfLegacySeed(parsed);
 
           // Purge requested user accounts from local state and credentials
-          const PURGED_EMAILS = ['neetresearch25@gmail.com'];
+          const PURGED_EMAILS = ['neetresearch25@gmail.com', 'basobasosoftwares@gmail.com'];
           try {
             const storedCreds = getStoredLocalCredentials();
             let credsChanged = false;
@@ -505,7 +521,13 @@ class AgroDataService {
                 window.localStorage.removeItem('agro_planner_active_org_id');
               }
             }
-          } catch {}
+            if (window.localStorage.getItem('agro_active_org_id') === 'org-master') {
+              window.localStorage.removeItem('agro_active_org_id');
+            }
+            if (window.localStorage.getItem('agro_planner_active_org_id') === 'org-master') {
+              window.localStorage.removeItem('agro_planner_active_org_id');
+            }
+          } catch { }
 
           const creds = getStoredLocalCredentials();
           const filteredMembers = (cleaned.members || []).filter((m) => {
@@ -658,10 +680,11 @@ class AgroDataService {
         return null;
       }
 
-      // Loaded from persistent storage: not a fresh active login turn
+      // Loaded from persistent storage: not a fresh active login turn (strict rule: local restore hides numbers)
       return {
         ...session,
         freshlyAuthenticated: false,
+        authLoginType: 'local_restore',
       };
     } catch {
       return null;
@@ -675,7 +698,8 @@ class AgroDataService {
         ...session,
         signedInAt: session.signedInAt || now,
         expiresAt: session.expiresAt || (now + SESSION_TTL_MS),
-        freshlyAuthenticated: session.freshlyAuthenticated ?? true,
+        freshlyAuthenticated: session.freshlyAuthenticated ?? (session.authLoginType === 'cloud_google' || session.authLoginType === 'cloud_password'),
+        authLoginType: session.authLoginType || 'local_restore',
       }
       : null;
 
@@ -740,13 +764,17 @@ class AgroDataService {
     return this.state;
   }
 
-  public getActiveOrgId(): string {
-    return (
-      this.state.activeOrgId ||
-      this.activeSession?.activeOrgId ||
-      this.state.organizations?.[0]?.id ||
-      'org-master'
-    );
+  public getActiveOrgId(): string | undefined {
+    const fromSession = this.activeSession?.activeOrgId;
+    if (fromSession && fromSession !== 'org-master' && fromSession !== 'org-default') return fromSession;
+    const fromState = this.state.activeOrgId;
+    if (fromState && fromState !== 'org-master' && fromState !== 'org-default') return fromState;
+    const firstOrg = (this.state.organizations || []).find((o) => o.id !== 'org-master' && o.id !== 'org-default');
+    return firstOrg?.id;
+  }
+
+  public getActiveOrg(orgId?: string): Organization {
+    return this.getActiveOrganization(orgId);
   }
 
   public computeLivestockStatuses(): LivestockComputedStatus[] {
@@ -785,18 +813,18 @@ class AgroDataService {
     );
     const unifiedMembers = activePlan
       ? members.map((m) => {
-          const pledge = (this.state.runwayPledges || []).find(
-            (p) => p.planId === activePlan.id && p.memberId === m.id
-          );
-          if (pledge && pledge.amount > 0) {
-            return {
-              ...m,
-              targetContributionUsd: pledge.amount,
-              contributionPace: (pledge.pace === 'ONE_OFF' ? 'MILESTONE' : pledge.pace) || m.contributionPace,
-            };
-          }
-          return m;
-        })
+        const pledge = (this.state.runwayPledges || []).find(
+          (p) => p.planId === activePlan.id && p.memberId === m.id
+        );
+        if (pledge && pledge.amount > 0) {
+          return {
+            ...m,
+            targetContributionUsd: pledge.amount,
+            contributionPace: (pledge.pace === 'ONE_OFF' ? 'MILESTONE' : pledge.pace) || m.contributionPace,
+          };
+        }
+        return m;
+      })
       : members;
 
     return computeMemberEquities(unifiedMembers, contributions, financials.leftMoney);
@@ -1238,6 +1266,8 @@ class AgroDataService {
       emailVerified: true,
       providers: mergedProviders,
       isCloudAuth: true,
+      freshlyAuthenticated: true,
+      authLoginType: 'cloud_google',
     };
     this.setActiveSession(session);
 
@@ -1364,6 +1394,8 @@ class AgroDataService {
       emailVerified: isCloudUser,
       providers: ['password'],
       isCloudAuth: true,
+      freshlyAuthenticated: true,
+      authLoginType: 'cloud_password',
     };
     this.setActiveSession(session);
 
@@ -1460,6 +1492,8 @@ class AgroDataService {
       providers,
       isCloudAuth: true,
       activeOrgId: updatedMember.orgId,
+      freshlyAuthenticated: true,
+      authLoginType: 'cloud_password',
     });
 
     this.attachCloudListeners(firestoreDb, user.uid);
@@ -1482,6 +1516,7 @@ class AgroDataService {
       providers,
     });
 
+    // STRICT RULE: Unlocking via local biometric authentication MUST hide numbers automatically by default
     this.setActiveSession({
       uid: member.uid || member.id,
       email: enrolled.email,
@@ -1489,6 +1524,8 @@ class AgroDataService {
       emailVerified: true,
       providers,
       isCloudAuth: Boolean(this.currentUser),
+      freshlyAuthenticated: false,
+      authLoginType: 'local_biometric',
     });
 
     return member;
@@ -1914,11 +1951,89 @@ class AgroDataService {
         const qEmail = query(collection(firestoreDb, 'members'), where('email', '==', norm));
         getDocs(qEmail).then((snap) => {
           snap.forEach((d) => {
-            deleteDoc(doc(firestoreDb!, 'members', d.id)).catch(() => {});
+            deleteDoc(doc(firestoreDb!, 'members', d.id)).catch(() => { });
           });
-        }).catch(() => {});
-      } catch {}
+        }).catch(() => { });
+      } catch { }
     }
+  }
+
+  /**
+   * User-Initiated Complete Account Deletion:
+   * Permanently wipes user profile and credentials from Firebase Auth, Cloud Firestore, and local device.
+   */
+  public async deleteAccount(actor: OrgMember): Promise<void> {
+    const authUid = firebaseAuth?.currentUser?.uid || actor.uid || actor.id;
+    const actorEmail = (actor.email || actor.phoneOrEmail || '').trim().toLowerCase();
+
+    // 1. Delete Firestore cloud member documents
+    if (!firestoreDb) {
+      initFirebaseInstance(this.getCustomFirebaseConfig());
+    }
+    if (firestoreDb) {
+      const deletePromises: Promise<any>[] = [];
+      if (authUid) {
+        deletePromises.push(deleteDoc(doc(firestoreDb, 'members', authUid)).catch(() => { }));
+      }
+      if (actor.id && actor.id !== authUid) {
+        deletePromises.push(deleteDoc(doc(firestoreDb, 'members', actor.id)).catch(() => { }));
+      }
+      if (actorEmail) {
+        try {
+          const qEmail = query(collection(firestoreDb, 'members'), where('email', '==', actorEmail));
+          const snap = await getDocs(qEmail).catch(() => null);
+          if (snap) {
+            snap.forEach((d) => {
+              deletePromises.push(deleteDoc(doc(firestoreDb!, 'members', d.id)).catch(() => { }));
+            });
+          }
+        } catch { }
+      }
+      await Promise.all(deletePromises);
+    }
+
+    // 2. Delete from Firebase Authentication
+    if (firebaseAuth?.currentUser) {
+      try {
+        await deleteUser(firebaseAuth.currentUser);
+      } catch (authErr) {
+        console.warn('Firebase Auth user deletion warning:', authErr);
+      }
+    }
+
+    // 3. Purge local storage credentials & active session
+    if (typeof window !== 'undefined') {
+      try {
+        const creds = getStoredLocalCredentials();
+        if (actorEmail && creds[actorEmail]) {
+          delete creds[actorEmail];
+          window.localStorage.setItem(LOCAL_CREDENTIALS_STORAGE_KEY, JSON.stringify(creds));
+        }
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        window.localStorage.removeItem('agro_active_org_id');
+        window.localStorage.removeItem('agro_planner_active_org_id');
+      } catch { }
+
+      try {
+        window.localStorage.removeItem('agro_planner_biometric_credential_v1');
+      } catch { }
+    }
+
+    // 4. Update memory state and notify subscribers
+    const nextMembers = (this.state.members || []).filter((m) => {
+      const mEmail = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
+      if (m.id === actor.id) return false;
+      if (authUid && (m.uid === authUid || m.id === authUid)) return false;
+      if (actorEmail && mEmail === actorEmail) return false;
+      return true;
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      members: nextMembers,
+    };
+    this.saveLocalState(nextState);
+    this.setActiveSession(null);
   }
 
   /**
@@ -2003,7 +2118,7 @@ class AgroDataService {
 
     const genesisAudit: AuditNotificationEvent = {
       id: `AUD-001-${Date.now().toString(36).toUpperCase()}`,
-      orgId: actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: actor.orgId || this.getActiveOrgId() || '',
       sequenceNumber: 1,
       timestamp: now,
       actorId: actor.id,
@@ -2014,7 +2129,7 @@ class AgroDataService {
       eventType: 'SYSTEM_LEDGER_RESET',
       severity: 'MILESTONE',
       title: 'Clean Production Ledger Initialized',
-      message: `All legacy demo records purged by ${actor.fullName}. Zero-Trust SHA-256 ledger initialized at Sequence #1.`,
+      message: `All legacy demo records purged by ${actor.fullName}. Zero-Trust verified ledger initialized at Sequence 1.`,
       previousHash: GENESIS_SHORT,
       currentHash: genesisHash,
       readByMemberIds: [actor.id],
@@ -2219,8 +2334,10 @@ class AgroDataService {
   }
 
   private processIncomingAuditNotifications(rawDocs: unknown[]): void {
+    const activeOrgId = this.getActiveOrgId();
     const valid = (rawDocs as AuditNotificationEvent[])
       .filter((x) => x && x.id && !isLegacySeedId('auditNotifications', x.id))
+      .filter((x) => !activeOrgId || !x.orgId || x.orgId === activeOrgId)
       .map((n) => ({
         ...n,
         readByMemberIds: Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [],
@@ -2307,9 +2424,10 @@ class AgroDataService {
       // Dispatch in chronological order (oldest missed first, newest on top)
       for (const item of [...toDispatch].reverse()) {
         void dispatchSystemNotification({
-          title: `Agro Planner · ${item.title || 'Broadcast'}`,
+          title: item.title || 'Farm Alert',
           body: item.message || '',
           tag: item.id,
+          notificationId: item.id,
           urgent: item.severity === 'URGENT_GROUND' || item.severity === 'WARNING_CONTRA',
           severity: item.severity,
           sequenceNumber: item.sequenceNumber,
@@ -2512,11 +2630,24 @@ class AgroDataService {
             );
           },
         },
+        {
+          path: 'organizations',
+          apply: (docs) => {
+            const orgs = docs as Organization[];
+            if (orgs.length > 0) {
+              const currentOrgs = this.state.organizations || [];
+              const mergedMap = new Map<string, Organization>();
+              currentOrgs.forEach((o) => mergedMap.set(o.id, o));
+              orgs.forEach((o) => mergedMap.set(o.id, o));
+              this.state.organizations = Array.from(mergedMap.values());
+            }
+          },
+        },
       ];
 
     collectionsMap.forEach(({ path, apply }) => {
       const targetQuery =
-        path === 'locations' || path === 'members' || !activeOrgId
+        path === 'locations' || path === 'members' || path === 'organizations' || !activeOrgId
           ? collection(db, path)
           : query(collection(db, path), where('orgId', '==', activeOrgId));
 
@@ -2549,6 +2680,7 @@ class AgroDataService {
     }
 
     const collections = [
+      'organizations',
       'locations',
       'members',
       'capital_contributions',
@@ -2580,7 +2712,7 @@ class AgroDataService {
     const activeOrgId = this.getActiveOrgId();
     const fetchCol = async (colPath: string) => {
       const q =
-        colPath === 'locations' || colPath === 'members' || !activeOrgId
+        colPath === 'locations' || colPath === 'members' || colPath === 'organizations' || !activeOrgId
           ? collection(firestoreDb!, colPath)
           : query(collection(firestoreDb!, colPath), where('orgId', '==', activeOrgId));
       try {
@@ -2603,7 +2735,16 @@ class AgroDataService {
 
     for (const { colPath, docs } of results) {
       totalSynced += docs.length;
-      if (colPath === 'locations') {
+      if (colPath === 'organizations') {
+        const serverOrgs = docs as Organization[];
+        if (serverOrgs.length > 0) {
+          const currentOrgs = this.state.organizations || [];
+          const mergedMap = new Map<string, Organization>();
+          currentOrgs.forEach((o) => mergedMap.set(o.id, o));
+          serverOrgs.forEach((o) => mergedMap.set(o.id, o));
+          this.state.organizations = Array.from(mergedMap.values());
+        }
+      } else if (colPath === 'locations') {
         this.state.locations = (docs as FarmLocation[]).filter((x) => !isLegacySeedId('locations', x.id));
       } else if (colPath === 'members') {
         this.state.members = this.mergeAndDeduplicateCloudMembers(docs);
@@ -2753,14 +2894,12 @@ class AgroDataService {
       .trim()
       .toLowerCase();
     const localMember =
-      this.findMemberByUidOrEmail(authUid, sessionEmail || undefined) ||
-      (this.state.activeOrgId ? this.state.members.find((m) => m.orgId === this.state.activeOrgId) : null) ||
-      this.state.members[0];
+      this.findMemberByUidOrEmail(authUid, sessionEmail || undefined);
 
     const resolvedOrgId =
-      targetOrgId ||
-      localMember?.orgId ||
-      this.activeSession?.activeOrgId;
+      (targetOrgId && targetOrgId !== 'org-master' ? targetOrgId : undefined) ||
+      (localMember?.orgId && localMember.orgId !== 'org-master' ? localMember.orgId : undefined) ||
+      (this.activeSession?.activeOrgId && this.activeSession.activeOrgId !== 'org-master' ? this.activeSession.activeOrgId : undefined);
 
     if (!resolvedOrgId) {
       // Do not synthesize or force a default organization on a member who is onboarding
@@ -2800,12 +2939,12 @@ class AgroDataService {
     if (cleanData.imageUrl && typeof cleanData.imageUrl === 'string' && cleanData.imageUrl.length > 150000) {
       try {
         cleanData.imageUrl = await compressImage(cleanData.imageUrl, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
-      } catch {}
+      } catch { }
     }
     if (cleanData.photoUrl && typeof cleanData.photoUrl === 'string' && cleanData.photoUrl.length > 150000) {
       try {
         cleanData.photoUrl = await compressImage(cleanData.photoUrl, { maxWidth: 800, maxHeight: 800, quality: 0.65 });
-      } catch {}
+      } catch { }
     }
     if (Array.isArray(cleanData.gallery) && cleanData.gallery.length > 0) {
       const recent = cleanData.gallery.slice(-6);
@@ -2838,13 +2977,13 @@ class AgroDataService {
               (cleanData.email &&
                 firebaseAuth?.currentUser?.email &&
                 cleanData.email.trim().toLowerCase() ===
-                  firebaseAuth.currentUser.email.trim().toLowerCase()))
+                firebaseAuth.currentUser.email.trim().toLowerCase()))
           ) {
             await setDoc(doc(firestoreDb, 'members', authUid), {
               ...cleanData,
               id: authUid,
               uid: authUid,
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
         // Protect against demoting an already approved member on app reinstall or new phone:
@@ -2947,7 +3086,7 @@ class AgroDataService {
 
     const newAuditEvent: AuditNotificationEvent = {
       id: `AUD-${String(sequenceNumber).padStart(3, '0')}-${Date.now().toString(36).toUpperCase()}`,
-      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: params.actor.orgId || this.getActiveOrgId() || '',
       sequenceNumber,
       timestamp,
       actorId: params.actor.id,
@@ -2990,9 +3129,10 @@ class AgroDataService {
 
     if (areSystemNotificationsEnabled()) {
       void dispatchSystemNotification({
-        title: `Agro Planner · ${newAuditEvent.title}`,
+        title: newAuditEvent.title,
         body: newAuditEvent.message,
         tag: newAuditEvent.id,
+        notificationId: newAuditEvent.id,
         urgent:
           newAuditEvent.severity === 'URGENT_GROUND' ||
           newAuditEvent.severity === 'WARNING_CONTRA',
@@ -3019,7 +3159,7 @@ class AgroDataService {
     const id = `loc-${Date.now().toString(36)}`;
     const newLoc: FarmLocation = {
       id,
-      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: params.actor.orgId || this.getActiveOrgId() || '',
       name: params.name.trim().slice(0, 120),
       region: params.region.trim().slice(0, 120),
       gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) || '-17.8292, 31.0522',
@@ -3166,7 +3306,7 @@ class AgroDataService {
 
     const newMember: OrgMember = {
       id,
-      orgId: params.actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: params.actor.orgId || this.getActiveOrgId() || '',
       email: isEmail ? contact.toLowerCase() : undefined,
       fullName: params.fullName.trim().slice(0, 120),
       phoneOrEmail: contact,
@@ -3292,7 +3432,7 @@ class AgroDataService {
 
     const newEvent: CapitalContributionEvent = {
       id,
-      orgId: member.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master',
+      orgId: member.orgId || params.actor.orgId || this.getActiveOrgId() || '',
       memberId: member.id,
       memberName: member.fullName,
       direction: params.direction,
@@ -3379,7 +3519,7 @@ class AgroDataService {
       ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
       : undefined;
 
-    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
 
     let runwayPlanId: string | undefined;
     let runwayLineId: string | undefined;
@@ -3536,7 +3676,7 @@ class AgroDataService {
   }
 
   public getCurrentOrgLeftMoney(orgId?: string): number {
-    const targetOrgId = orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = orgId || this.getActiveOrgId() || '';
     const orgContributions = (this.state.capitalContributions || []).filter(
       (c) => !c.orgId || c.orgId === targetOrgId
     );
@@ -3626,7 +3766,7 @@ class AgroDataService {
       params.targetDurationUnit
     );
 
-    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
     const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
 
     // Strict Overdraft & Funding Source Validation Guard:
@@ -3711,7 +3851,7 @@ class AgroDataService {
       const debtNote = `Supplier credit for acquisition of ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}. Creditor: ${creditor}.`;
       const debtEvent: DebtLiabilityEvent = {
         id: debtId,
-        orgId: newEntry.orgId || 'org-master',
+        orgId: newEntry.orgId || this.getActiveOrgId() || '',
         creditorName: creditor,
         category: 'SUPPLIER_CREDIT',
         principalAmount: Number(params.purchaseCostTotal.toFixed(2)),
@@ -3835,7 +3975,7 @@ class AgroDataService {
 
     const newEvent: LivestockLifecycleEvent = {
       id,
-      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || entry.orgId || params.actor.orgId || 'org-master',
+      orgId: entry.orgId || params.actor.orgId || this.getActiveOrgId() || this.state.organizations?.[0]?.id || '',
       livestockId: entry.id,
       livestockName: entry.nameOrTag,
       locationId: entry.locationId,
@@ -4039,7 +4179,7 @@ class AgroDataService {
 
     const newEvent: LivestockLifecycleEvent = {
       id,
-      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || entry.orgId || params.actor.orgId || 'org-master',
+      orgId: entry.orgId || params.actor.orgId || this.getActiveOrgId() || this.state.organizations?.[0]?.id || '',
       livestockId: entry.id,
       livestockName: entry.nameOrTag,
       locationId: entry.locationId,
@@ -4230,7 +4370,7 @@ class AgroDataService {
 
     const now = new Date().toISOString();
     const id = `DEBT-${Date.now().toString(36).toUpperCase()}`;
-    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
     const amount = Number(params.principalAmount.toFixed(2));
 
     const newDebt: DebtLiabilityEvent = {
@@ -4398,7 +4538,7 @@ class AgroDataService {
       throw new Error('Mandatory purpose explanation (at least 4 characters) is required.');
     }
 
-    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
     const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
     if (params.principalAmount > currentLeftMoney) {
       throw new Error(`Insufficient funds in Left Money ($${currentLeftMoney.toFixed(2)} available) to issue loan of $${params.principalAmount.toFixed(2)}.`);
@@ -4663,7 +4803,7 @@ class AgroDataService {
 
     const now = new Date().toISOString();
     const id = `CSALE-${Date.now().toString(36).toUpperCase()}`;
-    const targetOrgId = params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
 
     const lifecycleEvents: LivestockLifecycleEvent[] = [];
     let primaryLivestockEntry: LivestockEntry | undefined;
@@ -5030,7 +5170,7 @@ class AgroDataService {
       ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
       : undefined;
 
-    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
 
     const newAssetEvent: FixedAssetLedgerEvent = {
       id,
@@ -5186,7 +5326,7 @@ class AgroDataService {
     const inId = `AST-TR-IN-${Date.now().toString(36).toUpperCase()}`;
     const cleanNote = params.note.trim().slice(0, 450);
 
-    const targetOrgId = fromLoc.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = fromLoc.orgId || params.actor.orgId || this.getActiveOrgId() || '';
 
     const outEvent: FixedAssetLedgerEvent = {
       id: outId,
@@ -5281,7 +5421,7 @@ class AgroDataService {
 
     const newFeedEvent: FeedLedgerEvent = {
       id,
-      orgId: this.state.activeOrgId || this.state.organizations?.[0]?.id || params.actor.orgId || loc.orgId || 'org-master',
+      orgId: params.actor.orgId || loc.orgId || this.getActiveOrgId() || this.state.organizations?.[0]?.id || '',
       locationId: loc.id,
       feedType: cleanFeedType.slice(0, 120),
       direction: 'DAILY_CONSUMPTION',
@@ -5381,7 +5521,7 @@ class AgroDataService {
 
     const newFeedEvent: FeedLedgerEvent = {
       id,
-      orgId: params.actor.orgId || loc.orgId || this.state.activeOrgId || 'org-master',
+      orgId: params.actor.orgId || loc.orgId || this.getActiveOrgId() || '',
       locationId: loc.id,
       feedType: params.feedType.trim().slice(0, 120),
       direction: params.direction,
@@ -5583,43 +5723,97 @@ class AgroDataService {
   }
 
   public getActiveOrganization(orgId?: string): Organization {
-    const targetId = orgId || this.state.activeOrgId || 'org-master';
-    const found = (this.state.organizations || []).find((o) => o.id === targetId);
-    if (found) return found;
+    const rawTarget = orgId || this.getActiveOrgId() || this.state.activeOrgId;
+    const targetId = rawTarget && rawTarget !== 'org-master' && rawTarget !== 'org-default' ? rawTarget : undefined;
+
+    if (targetId) {
+      const found = (this.state.organizations || []).find((o) => o.id === targetId);
+      if (found) return found;
+
+      if (firestoreDb) {
+        getDoc(doc(firestoreDb, 'organizations', targetId))
+          .then((snap) => {
+            if (snap.exists()) {
+              const orgData = snap.data() as Organization;
+              const curOrgs = (this.state.organizations || []).filter((o) => o.id !== 'org-master' && o.name !== 'CapitaSeed Master Syndicate');
+              const idx = curOrgs.findIndex((o) => o.id === orgData.id);
+              const nextOrgs = idx >= 0 ? curOrgs.map((o) => (o.id === orgData.id ? orgData : o)) : [...curOrgs, orgData];
+              this.saveLocalState({
+                ...this.state,
+                organizations: nextOrgs,
+                activeOrgId: orgData.id,
+              });
+            }
+          })
+          .catch((e) => console.warn('Cloud org lookup notice:', e));
+      }
+
+      const now = Date.now();
+      const placeholderOrg: Organization = {
+        id: targetId,
+        name: 'Workspace Organization',
+        type: 'AGRO_FARMING',
+        adminMemberId: '',
+        adminEmail: '',
+        createdAt: new Date(now).toISOString(),
+        updatedAt: new Date(now).toISOString(),
+        currentInviteCode: '',
+        inviteCodeCreatedAt: new Date(now).toISOString(),
+        inviteCodeExpiresAt: new Date(now).toISOString(),
+        defaultTargetContributionUsd: 1000,
+        contributionPaceDefault: 'MONTHLY',
+        currency: 'USD',
+        currencySymbol: '$',
+        description: '',
+        features: {
+          livestockModule: true,
+          farmSitesModule: true,
+          feedInventoryModule: true,
+          multiSigApprovals: false,
+          publicAuditVerifier: false,
+          runwayModule: false,
+        },
+      };
+
+      const curOrgs = (this.state.organizations || []).filter((o) => o.id !== 'org-master' && o.name !== 'CapitaSeed Master Syndicate');
+      this.saveLocalState({
+        ...this.state,
+        organizations: [...curOrgs, placeholderOrg],
+      });
+      return placeholderOrg;
+    }
+
+    const firstValidOrg = (this.state.organizations || []).find((o) => o.id !== 'org-master' && o.id !== 'org-default');
+    if (firstValidOrg && !targetId) {
+      return firstValidOrg;
+    }
 
     const now = Date.now();
-    const fallbackOrg: Organization = {
-      id: targetId,
-      name: 'CapitaSeed Master Syndicate',
-      type: 'AGRO_FARMING',
-      adminMemberId: 'mem-admin',
-      adminEmail: 'admin@capitaseed.local',
-      createdAt: new Date(now - 30 * 86400000).toISOString(),
+    return {
+      id: '',
+      name: 'No Active Workspace',
+      type: 'GENERAL_VENTURE',
+      adminMemberId: '',
+      adminEmail: '',
+      createdAt: new Date(now).toISOString(),
       updatedAt: new Date(now).toISOString(),
-      currentInviteCode: 'SEED-8492',
+      currentInviteCode: '',
       inviteCodeCreatedAt: new Date(now).toISOString(),
-      inviteCodeExpiresAt: new Date(now + 365 * 86400000).toISOString(),
-      defaultTargetContributionUsd: 1000,
+      inviteCodeExpiresAt: new Date(now).toISOString(),
+      defaultTargetContributionUsd: 0,
       contributionPaceDefault: 'MONTHLY',
       currency: 'USD',
       currencySymbol: '$',
-      description: 'Primary Agro-Farming & Joint Investment Workspace',
+      description: '',
       features: {
-        livestockModule: true,
-        farmSitesModule: true,
-        feedInventoryModule: true,
-        multiSigApprovals: true,
-        publicAuditVerifier: true,
+        livestockModule: false,
+        farmSitesModule: false,
+        feedInventoryModule: false,
+        multiSigApprovals: false,
+        publicAuditVerifier: false,
+        runwayModule: false,
       },
     };
-
-    const nextState: AgroStateSnapshot = {
-      ...this.state,
-      organizations: [...(this.state.organizations || []), fallbackOrg],
-      activeOrgId: targetId,
-    };
-    this.saveLocalState(nextState);
-    return fallbackOrg;
   }
 
   public updateOrganization(params: {
@@ -5728,8 +5922,8 @@ class AgroDataService {
         params.contributionPace === 'MONTHLY'
           ? 'MONTHLY'
           : params.contributionPace === 'MILESTONE'
-          ? 'MILESTONE'
-          : 'FLEXIBLE';
+            ? 'MILESTONE'
+            : 'FLEXIBLE';
 
       if (existingPledge) {
         const eventType = cleanTarget >= existingPledge.amount ? 'INCREASE' : 'DECREASE';
@@ -6184,7 +6378,7 @@ class AgroDataService {
     const id = `recipe-${Date.now().toString(36)}`;
     const template: FarmRecipeTemplate = {
       id,
-      orgId: params.actor.orgId || 'org-master',
+      orgId: params.actor.orgId || this.getActiveOrgId() || '',
       name: params.name.trim().slice(0, 120),
       species: params.species.trim(),
       recommendedDurationDays: params.recommendedDurationDays,
@@ -6232,6 +6426,32 @@ class AgroDataService {
         updateDoc(doc(firestoreDb, 'audit_notifications', n.id), {
           readByMemberIds: nextRead,
         }).catch((err) => console.warn('Cloud notification read update warning:', err));
+      }
+      target = { ...n, readByMemberIds: nextRead };
+      return target;
+    });
+
+    this.saveLocalState({
+      ...this.state,
+      auditNotifications: updated,
+    });
+    return target;
+  }
+
+  public markNotificationUnread(notificationId: string, memberId: string): AuditNotificationEvent | null {
+    let target: AuditNotificationEvent | null = null;
+    const updated = this.state.auditNotifications.map((n) => {
+      if (n.id !== notificationId) return n;
+      const readList = Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [];
+      if (!readList.includes(memberId)) {
+        target = n;
+        return n;
+      }
+      const nextRead = readList.filter((id) => id !== memberId);
+      if (firestoreDb && !n.id.startsWith('local-')) {
+        updateDoc(doc(firestoreDb, 'audit_notifications', n.id), {
+          readByMemberIds: nextRead,
+        }).catch((err) => console.warn('Cloud notification unread update warning:', err));
       }
       target = { ...n, readByMemberIds: nextRead };
       return target;
@@ -6298,7 +6518,7 @@ class AgroDataService {
 
     // 3. Match active plan by orgId (supporting multi-tenant aliases)
     const candidateOrgIds = new Set<string>(
-      [params.orgId, params.actor?.orgId, this.state.activeOrgId, 'org-master'].filter(
+      [params.orgId, params.actor?.orgId, this.getActiveOrgId()].filter(
         Boolean
       ) as string[]
     );
@@ -6444,7 +6664,7 @@ class AgroDataService {
     if (!PERMISSIONS.canEnableRunwayModule(params.actor.role)) {
       throw new Error('Access Denied: Only Organization Admins can toggle the Runway Planning module.');
     }
-    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
     if (params.actor.orgId && params.actor.orgId !== targetOrgId) {
       throw new Error('Tenant Boundary Violation: Actor cannot modify another organization.');
     }
@@ -6482,9 +6702,15 @@ class AgroDataService {
       timestamp: now,
     });
 
+    const curOrgs = (this.state.organizations || []).filter((o) => o.id !== 'org-master' && o.name !== 'CapitaSeed Master Syndicate');
+    const idx = curOrgs.findIndex((o) => o.id === updatedOrg.id);
+    const nextOrgs = idx >= 0
+      ? curOrgs.map((o) => (o.id === updatedOrg.id ? updatedOrg : o))
+      : [...curOrgs, updatedOrg];
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
-      organizations: (this.state.organizations || []).map((o) => (o.id === org.id ? updatedOrg : o)),
+      organizations: nextOrgs,
       auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
@@ -6512,9 +6738,15 @@ class AgroDataService {
       updatedAt: now.toISOString(),
     };
 
+    const curOrgs = (this.state.organizations || []).filter((o) => o.id !== 'org-master' && o.name !== 'CapitaSeed Master Syndicate');
+    const idx = curOrgs.findIndex((o) => o.id === updatedOrg.id);
+    const nextOrgs = idx >= 0
+      ? curOrgs.map((o) => (o.id === updatedOrg.id ? updatedOrg : o))
+      : [...curOrgs, updatedOrg];
+
     const nextState: AgroStateSnapshot = {
       ...this.state,
-      organizations: (this.state.organizations || []).map((o) => (o.id === org.id ? updatedOrg : o)),
+      organizations: nextOrgs,
     };
 
     this.saveLocalState(nextState);
@@ -6552,7 +6784,7 @@ class AgroDataService {
     if (!PERMISSIONS.canCreateRunwayPlan(params.actor.role)) {
       throw new Error('Access Denied: Only Organization Admins can create a Runway Plan.');
     }
-    const targetOrgId = params.orgId || params.actor.orgId || this.state.activeOrgId || 'org-master';
+    const targetOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
     if (params.actor.orgId && params.actor.orgId !== targetOrgId) {
       throw new Error('Tenant Boundary Violation: Actor cannot create a plan for another organization.');
     }
@@ -7107,10 +7339,10 @@ class AgroDataService {
       params.pace === 'MONTHLY'
         ? 'MONTHLY'
         : params.pace === 'MILESTONE'
-        ? 'MILESTONE'
-        : params.pace === 'ONE_OFF'
-        ? 'MILESTONE'
-        : 'FLEXIBLE';
+          ? 'MILESTONE'
+          : params.pace === 'ONE_OFF'
+            ? 'MILESTONE'
+            : 'FLEXIBLE';
 
     const updatedMember: OrgMember = {
       ...member,
@@ -7671,7 +7903,7 @@ class AgroDataService {
   public async checkDueProtocolReminders(actor?: OrgMember): Promise<number> {
     const defaultActor: OrgMember = actor || this.state.members[0] || {
       id: 'mem-system-protocol',
-      orgId: (this.state.organizations && this.state.organizations[0]?.id) || 'org-master',
+      orgId: (this.state.organizations && this.state.organizations[0]?.id) || '',
       fullName: 'Protocol Automation System',
       email: 'system@agro.local',
       role: 'ADMIN',

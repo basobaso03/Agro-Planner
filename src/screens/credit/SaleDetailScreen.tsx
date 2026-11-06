@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Phone, Calendar, Clock, DollarSign, Share2, CalendarClock, CreditCard, Bell, Users, Radio } from 'lucide-react';
+import { Phone, Calendar, Clock, DollarSign, Share2, CalendarClock, CreditCard, Bell, Users, Radio, FileText } from 'lucide-react';
 import { formatMoney } from '../../utils/currency.ts';
 import { nativeAppLauncher } from '../../native/appLauncher.ts';
 import { nativeShare } from '../../native/share.ts';
@@ -8,6 +8,9 @@ import { useToast } from '../../components/ui/Toast.tsx';
 import { EmptyState } from '../../components/ui/EmptyState.tsx';
 import { RecordPaymentSheet } from '../../sheets/credit/RecordPaymentSheet.tsx';
 import { ExtendDueDateSheet } from '../../sheets/credit/ExtendDueDateSheet.tsx';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateInvoicePdf } from '../../services/pdf/generators/shared/invoicePdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import type { CreditSaleEvent, OrgMember } from '../../types/agro.ts';
 
 export interface SaleDetailScreenProps {
@@ -132,36 +135,55 @@ export const SaleDetailScreen: React.FC<SaleDetailScreenProps> = ({
           </span>
         </div>
 
-        {/* Call & WhatsApp Quick Buttons */}
-        {sale.customerPhone && (
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 pt-2 border-t border-[#F0EBE1]">
-            <button
-              type="button"
-              onClick={() => void nativeAppLauncher.dialPhone(sale.customerPhone)}
-              className="flex-1 min-w-[140px] py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">Call ({sale.customerPhone})</span>
-            </button>
+        {/* Quick Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#F0EBE1]">
+          {sale.customerPhone && (
+            <>
+              <button
+                type="button"
+                onClick={() => void nativeAppLauncher.dialPhone(sale.customerPhone)}
+                className="flex-1 min-w-[130px] py-2 px-3 rounded-xl border border-slate-200 bg-[#FAF8F5] hover:bg-slate-100 text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Call</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                void nativeAppLauncher.openWhatsApp(
-                  sale.customerPhone,
-                  `Hello ${sale.customerName}, this is a friendly reminder regarding your outstanding balance of $${sale.creditBalanceRemaining.toFixed(
-                    2
-                  )} for ${itemsSummary} due on ${new Date(
-                    sale.agreedSettlementDate
-                  ).toLocaleDateString()}. Thank you.`
-                )
-              }
-              className="py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-            >
-              <span>WhatsApp</span>
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                onClick={() =>
+                  void nativeAppLauncher.openWhatsApp(
+                    sale.customerPhone,
+                    `Hello ${sale.customerName}, this is a friendly reminder regarding your outstanding balance of $${sale.creditBalanceRemaining.toFixed(
+                      2
+                    )} for ${itemsSummary} due on ${new Date(
+                      sale.agreedSettlementDate
+                    ).toLocaleDateString()}. Thank you.`
+                  )
+                }
+                className="py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <span>WhatsApp</span>
+              </button>
+            </>
+          )}
+
+          <PdfExportButton
+            label="Share Invoice PDF"
+            title={`Invoice ${sale.id}`}
+            filename={buildExportFilename({
+              orgName: dataService.getActiveOrg()?.name,
+              documentType: 'Invoice',
+              entityName: `${sale.id}-${sale.customerName}`,
+            })}
+            generateDoc={() =>
+              generateInvoicePdf({
+                organization: dataService.getActiveOrg(),
+                sale,
+                operatorName: activeMember.fullName,
+              })
+            }
+          />
+        </div>
       </div>
 
       {/* Due Date & Active Reminder Schedule Card */}
@@ -169,13 +191,12 @@ export const SaleDetailScreen: React.FC<SaleDetailScreenProps> = ({
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className={`p-2.5 rounded-2xl shrink-0 ${
-                isSettled
+              className={`p-2.5 rounded-2xl shrink-0 ${isSettled
                   ? 'bg-emerald-50 text-emerald-700'
                   : isOverdue
                     ? 'bg-rose-50 text-rose-600'
                     : 'bg-amber-50 text-amber-700'
-              }`}
+                }`}
             >
               <Bell className="w-4 h-4" />
             </div>
@@ -195,13 +216,12 @@ export const SaleDetailScreen: React.FC<SaleDetailScreenProps> = ({
           </div>
 
           <span
-            className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${
-              isSettled
+            className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 ${isSettled
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : isOverdue
                   ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
                   : 'bg-amber-100 text-amber-900 border-amber-300 font-black'
-            }`}
+              }`}
           >
             {dueRelativeText}
           </span>

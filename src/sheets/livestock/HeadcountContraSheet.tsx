@@ -89,7 +89,7 @@ export const HeadcountContraSheet: React.FC<HeadcountContraSheetProps> = ({
     >
       <div className="space-y-4">
         <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
-          Under financial and livestock integrity rules, records cannot be silently deleted. All corrections are appended as cryptographic contra entries.
+          Under financial and livestock integrity rules, records cannot be silently deleted. All corrections are appended as audit contra entries.
         </div>
 
         <Field label="Correction Direction" required>
@@ -97,22 +97,20 @@ export const HeadcountContraSheet: React.FC<HeadcountContraSheetProps> = ({
             <button
               type="button"
               onClick={() => form.setValue('direction', 'ADDITION')}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                form.values.direction === 'ADDITION'
+              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${form.values.direction === 'ADDITION'
                   ? 'bg-emerald-500 text-white border-emerald-600'
                   : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-              }`}
+                }`}
             >
               + Restore / Add Stock
             </button>
             <button
               type="button"
               onClick={() => form.setValue('direction', 'DEDUCTION')}
-              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
-                form.values.direction === 'DEDUCTION'
+              className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${form.values.direction === 'DEDUCTION'
                   ? 'bg-rose-500 text-white border-rose-600'
                   : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-              }`}
+                }`}
             >
               - Deduct Miscounted Stock
             </button>

@@ -75,20 +75,17 @@ function recordPageVisit(routeId: RouteId, params?: Record<string, string>, titl
     'feedInventory',
     'siteCompare',
     'site-compare',
-  ].includes(routeId);
-
-  const isGeneralRoute = [
+    'creditSales',
+    'credit-sales',
+    'saleDetail',
+    'sale-detail',
     'stockInventory',
     'operations-inventory',
     'stockMovementLedger',
     'operations-stock-ledger',
   ].includes(routeId);
 
-  const workspaceMode = isAgroRoute
-    ? 'AGRO_FARMING'
-    : isGeneralRoute
-      ? 'GENERAL_VENTURE'
-      : 'BOTH';
+  const workspaceMode = isAgroRoute ? 'AGRO_FARMING' : 'BOTH';
 
   const metaMap: Record<string, { title: string; subtitle: string; icon: string }> = {
     batchDetail: {
@@ -182,8 +179,8 @@ function recordPageVisit(routeId: RouteId, params?: Record<string, string>, titl
       icon: 'Users',
     },
     auditLedger: {
-      title: 'Cryptographic Audit Log',
-      subtitle: 'Hash-Chained Operations Ledger',
+      title: 'Audit Trail',
+      subtitle: 'Tamper-Evident Operations Ledger',
       icon: 'ShieldCheck',
     },
     broadcastCenter: {
@@ -220,7 +217,7 @@ function recordPageVisit(routeId: RouteId, params?: Record<string, string>, titl
 
   const meta = metaMap[routeId] || {
     title: title || routeId,
-    subtitle: 'CapitaSeed Navigation',
+    subtitle: 'Capital Seed Navigation',
     icon: 'Compass',
   };
 
@@ -376,10 +373,23 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 };
 
-export function useNavigation() {
+const fallbackNavigation: NavigationContextType = {
+  activeTab: 'overview',
+  currentRoute: { id: 'overview', key: 'overview_fallback', title: 'Overview' },
+  switchTab: () => { },
+  navigate: () => { },
+  pop: () => false,
+  goBack: () => false,
+  canPop: false,
+  activeSheet: null,
+  openSheet: () => { },
+  closeSheet: () => { },
+};
+
+export function useNavigation(): NavigationContextType {
   const ctx = useContext(NavigationContext);
   if (!ctx) {
-    throw new Error('useNavigation must be used within NavigationProvider');
+    return fallbackNavigation;
   }
   return ctx;
 }

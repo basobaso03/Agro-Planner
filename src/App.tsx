@@ -24,6 +24,7 @@ import {
 } from './utils/calculations.ts';
 import type { RunwayAllocation } from './types/runway.ts';
 import { NotificationDrawer } from './components/NotificationDrawer.tsx';
+import { NotificationDetailModal } from './components/NotificationDetailModal.tsx';
 import { ShieldAlert, LogOut } from 'lucide-react';
 import { AuthGatePage } from './components/AuthGatePage.tsx';
 import { OrgOnboardingModal } from './components/OrgOnboardingModal.tsx';
@@ -37,6 +38,7 @@ import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { useBackHandler } from './navigation/useBackHandler.ts';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal.tsx';
 import { PrivacyUnlockModal } from './components/PrivacyUnlockModal.tsx';
+import { setPrivacyMask } from './utils/currency.ts';
 import {
   authenticateOrEnrollBiometric,
   getEnrolledBiometricRecord,
@@ -72,6 +74,7 @@ export default function App() {
   );
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeNotificationDetail, setActiveNotificationDetail] = useState<AuditNotificationEvent | null>(null);
   const [mobileFrameMode, setMobileFrameMode] = useState(false);
   const [cloudUserEmail, setCloudUserEmail] = useState<string | null>(null);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -79,10 +82,19 @@ export default function App() {
   // Deep-linking target section inside Settings tab (e.g. 'biometrics', 'password', 'profile')
   const [settingsTargetSection, setSettingsTargetSection] = useState<string | null>(null);
 
-  // Number Privacy Masking: Show on fresh login, default to hide (••••••) on restored local session
-  const [showNumbers, setShowNumbers] = useState<boolean>(() =>
-    Boolean(dataService.getActiveSession()?.freshlyAuthenticated)
-  );
+  // STRICT SECURITY RULE:
+  // When opened via local authentication (biometric, local session restore, PIN, etc.),
+  // numbers MUST be hidden automatically. ONLY full cloud Google login or Email/Password login
+  // reveals numbers automatically on entry.
+  const [showNumbers, setShowNumbers] = useState<boolean>(() => {
+    const session = dataService.getActiveSession();
+    const isCloudFresh = Boolean(
+      session?.freshlyAuthenticated &&
+      (session.authLoginType === 'cloud_google' || session.authLoginType === 'cloud_password')
+    );
+    setPrivacyMask(!isCloudFresh);
+    return isCloudFresh;
+  });
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
   const [privacyModalError, setPrivacyModalError] = useState<string | null>(null);
   const [privacyModalMode, setPrivacyModalMode] = useState<'password' | 'setup'>('password');
@@ -169,7 +181,21 @@ export default function App() {
     // Initialize Android Notification Channels, Push Notifications, and tap handler
     void nativeStatusBar.setLightStyle();
     void initializeNotificationChannels();
-    void initPushNotifications(() => {
+    void initPushNotifications((event) => {
+      if (event?.actionId === 'mark_read' && event.notificationId) {
+        const mem = dataService.getState().members.find((m) => m.id === activeMember?.id) || activeMember;
+        if (mem?.id) {
+          dataService.markNotificationRead(event.notificationId, mem.id);
+        }
+        return;
+      }
+      if (event?.notificationId) {
+        const found = (dataService.getState().auditNotifications || []).find((n) => n.id === event.notificationId);
+        if (found) {
+          setActiveNotificationDetail(found);
+          return;
+        }
+      }
       setDrawerOpen(true);
     });
 
@@ -189,7 +215,7 @@ export default function App() {
           if (currentSession) {
             const hasBio = await nativeBiometrics.isAvailable();
             if (hasBio) {
-              const success = await nativeBiometrics.authenticate('CapitaSeed Inactivity Challenge: Confirm Identity');
+              const success = await nativeBiometrics.authenticate('Capital Seed Inactivity Challenge: Confirm Identity');
               if (success) {
                 setShowNumbers(true);
               } else {
@@ -221,10 +247,17 @@ export default function App() {
     const unsubSession = dataService.subscribeSession((session) => {
       setActiveSession(session);
       if (session) {
-        // If newly logged in freshly, set showNumbers to true; if restored from storage, freshlyAuthenticated is false
-        setShowNumbers(Boolean(session.freshlyAuthenticated));
+        // STRICT RULE: Only show numbers if actively logged in via Google or Email/Password.
+        // If opened using local authentication (biometrics, restored local session, etc.), numbers MUST be hidden automatically.
+        const isCloudFresh = Boolean(
+          session.freshlyAuthenticated &&
+          (session.authLoginType === 'cloud_google' || session.authLoginType === 'cloud_password')
+        );
+        setShowNumbers(isCloudFresh);
+        setPrivacyMask(!isCloudFresh);
       } else {
         setShowNumbers(false);
+        setPrivacyMask(true);
         setSelectedLocationId('ALL');
         setDrawerOpen(false);
         setShowPrivacyModal(false);
@@ -260,8 +293,15 @@ export default function App() {
       matches.find((m) => m.approvalStatus === 'APPROVED' || m.active) ||
       matches[0];
 
+    const filterLegacyOrg = (orgId?: string | null) => {
+      if (!orgId) return undefined;
+      const clean = orgId.trim();
+      if (!clean || clean === 'org-master' || clean === 'org-default') return undefined;
+      return clean;
+    };
+
     if (found) {
-      const userOrgId = found.orgId || activeSession.activeOrgId || undefined;
+      const userOrgId = filterLegacyOrg(found.orgId) || filterLegacyOrg(activeSession.activeOrgId);
       return {
         ...found,
         orgId: userOrgId,
@@ -279,7 +319,7 @@ export default function App() {
       phoneOrEmail: normEmail,
       role: 'MEMBER',
       approvalStatus: 'APPROVED',
-      orgId: activeSession.activeOrgId || undefined,
+      orgId: filterLegacyOrg(activeSession.activeOrgId),
       authProviders: activeSession.providers,
       hasPasswordSetup: activeSession.providers.includes('password'),
       joinedAt: new Date().toISOString(),
@@ -289,7 +329,7 @@ export default function App() {
 
   // Resolve Active Organization
   const activeOrg = useMemo(() => {
-    if (!activeMember?.orgId) return null;
+    if (!activeMember?.orgId || activeMember.orgId === 'org-master') return null;
     return (
       (state.organizations || []).find((o) => o.id === activeMember.orgId) ||
       dataService.getActiveOrganization(activeMember.orgId)
@@ -305,9 +345,13 @@ export default function App() {
   const [showSiteManagerModal, setShowSiteManagerModal] = useState(false);
 
   // First-Login Biometric Fingerprint Enrollment Prompt State
+  // STRICT RULE: Biometric enrollment is only prompted AFTER the user has completed organization onboarding.
   const [showFirstLoginBioPrompt, setShowFirstLoginBioPrompt] = useState(false);
   useEffect(() => {
-    if (!activeMember) return;
+    if (!activeMember || !activeMember.orgId || activeMember.orgId === 'org-master') {
+      setShowFirstLoginBioPrompt(false);
+      return;
+    }
     const promptKey = `first_login_bio_prompt_seen_${activeMember.id}`;
     if (typeof window !== 'undefined' && !localStorage.getItem(promptKey)) {
       void isBiometricHardwareSupported().then((supported) => {
@@ -317,7 +361,7 @@ export default function App() {
         }
       });
     }
-  }, [activeMember?.id]);
+  }, [activeMember?.id, activeMember?.orgId]);
 
 
 
@@ -356,6 +400,10 @@ export default function App() {
         setShowUpdateModal(false);
         return true;
       }
+      if (activeNotificationDetail) {
+        setActiveNotificationDetail(null);
+        return true;
+      }
       if (drawerOpen) {
         setDrawerOpen(false);
         return true;
@@ -366,13 +414,14 @@ export default function App() {
       }
       return false;
     },
-    [showThemeModal, showPrivacyModal, showUpdateModal, isForcedUpdate, drawerOpen, settingsTargetSection]
+    [showThemeModal, showPrivacyModal, showUpdateModal, isForcedUpdate, activeNotificationDetail, drawerOpen, settingsTargetSection]
   );
 
   const handleToggleShowNumbers = async () => {
     if (showNumbers) {
       // Direct hide without authentication
       setShowNumbers(false);
+      setPrivacyMask(true);
       return;
     }
 
@@ -409,6 +458,7 @@ export default function App() {
         });
         // Biometric verification succeeded!
         setShowNumbers(true);
+        setPrivacyMask(false);
         setIsAuthenticatingPrivacy(false);
         return;
       } catch (err: unknown) {
@@ -611,11 +661,16 @@ export default function App() {
   ]);
 
   const visibleNotifications = useMemo(() => {
-    if (selectedLocationId === 'ALL') return state.auditNotifications;
-    return state.auditNotifications.filter(
+    const orgId = activeMember?.orgId;
+    const orgAudit = orgId
+      ? (state.auditNotifications || []).filter((n) => !n.orgId || n.orgId === orgId)
+      : (state.auditNotifications || []);
+
+    if (selectedLocationId === 'ALL') return orgAudit;
+    return orgAudit.filter(
       (n: AuditNotificationEvent) => n.locationId === 'ALL' || n.locationId === selectedLocationId
     );
-  }, [state.auditNotifications, selectedLocationId]);
+  }, [state.auditNotifications, selectedLocationId, activeMember?.orgId]);
 
   const latestBroadcast = useMemo(() => {
     return visibleNotifications.find(
@@ -648,118 +703,124 @@ export default function App() {
   // GATE 1: Unauthenticated users must sign in or register
   if (!activeSession || !activeMember) {
     return (
-      <>
-        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
-        {previewSplash && (
-          <SplashScreen
-            isManualPreview
-            duration={5000}
-            onFinish={() => setPreviewSplash(false)}
-          />
-        )}
-        {showUpdateModal && updateConfig && (
-          <ForceUpdateModal
-            config={updateConfig}
-            isForced={isForcedUpdate}
-            isBelowMin={isBelowMinVersion}
-            onClose={() => {
-              if (!isForcedUpdate) {
-                setShowUpdateModal(false);
-                markReleaseNotesSeenForVersion(updateConfig.latestVersion);
-              }
-            }}
-          />
-        )}
-        <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
-          <FarmTerrainBackground intensity={bgIntensity} />
-          <AuthGatePage />
-        </div>
-      </>
+      <NavigationProvider>
+        <ToastProvider>
+          {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+          {previewSplash && (
+            <SplashScreen
+              isManualPreview
+              duration={5000}
+              onFinish={() => setPreviewSplash(false)}
+            />
+          )}
+          {showUpdateModal && updateConfig && (
+            <ForceUpdateModal
+              config={updateConfig}
+              isForced={isForcedUpdate}
+              isBelowMin={isBelowMinVersion}
+              onClose={() => {
+                if (!isForcedUpdate) {
+                  setShowUpdateModal(false);
+                  markReleaseNotesSeenForVersion(updateConfig.latestVersion);
+                }
+              }}
+            />
+          )}
+          <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
+            <FarmTerrainBackground intensity={bgIntensity} />
+            <AuthGatePage />
+          </div>
+        </ToastProvider>
+      </NavigationProvider>
     );
   }
 
   // GATE 2: Organization Onboarding Check
-  // If the authenticated user is not attached to any organization yet, present the onboarding modal (Create Org or Join with 24-hr Code)
-  if (!activeMember.orgId) {
+  // STRICT RULE: If the authenticated user is not attached to any organization yet (or has legacy fallback), present the onboarding modal (Create Org or Join with 24-hr Code)
+  if (!activeMember.orgId || activeMember.orgId === 'org-master' || activeMember.orgId === 'org-default') {
     return (
-      <>
-        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
-        {previewSplash && (
-          <SplashScreen
-            isManualPreview
-            duration={5000}
-            onFinish={() => setPreviewSplash(false)}
-          />
-        )}
-        <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
-          <FarmTerrainBackground intensity={bgIntensity} />
-          <OrgOnboardingModal
-            activeMember={activeMember}
-            onOrganizationSelected={() => {
-              // State updates automatically via reactive dataService subscription
-            }}
-            onSignOut={handleSignOut}
-          />
-        </div>
-      </>
+      <NavigationProvider>
+        <ToastProvider>
+          {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+          {previewSplash && (
+            <SplashScreen
+              isManualPreview
+              duration={5000}
+              onFinish={() => setPreviewSplash(false)}
+            />
+          )}
+          <div className={`min-h-screen relative flex flex-col ${activeFontCss}`}>
+            <FarmTerrainBackground intensity={bgIntensity} />
+            <OrgOnboardingModal
+              activeMember={activeMember}
+              onOrganizationSelected={() => {
+                // State updates automatically via reactive dataService subscription
+              }}
+              onSignOut={handleSignOut}
+            />
+          </div>
+        </ToastProvider>
+      </NavigationProvider>
     );
   }
 
   // GATE 3: Zero-Trust Clearance Check (Only explicitly suspended members of an organization are blocked)
   if (activeMember.approvalStatus === 'SUSPENDED') {
     return (
-      <>
-        {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
-        {previewSplash && (
-          <SplashScreen
-            isManualPreview
-            duration={5000}
-            onFinish={() => setPreviewSplash(false)}
-          />
-        )}
-        {showUpdateModal && updateConfig && (
-          <ForceUpdateModal
-            config={updateConfig}
-            isForced={isForcedUpdate}
-            isBelowMin={isBelowMinVersion}
-            onClose={() => {
-              if (!isForcedUpdate) {
-                setShowUpdateModal(false);
-                markReleaseNotesSeenForVersion(updateConfig.latestVersion);
-              }
-            }}
-          />
-        )}
-        <div className={`min-h-screen relative flex items-center justify-center p-4 ${activeFontCss}`}>
-          <FarmTerrainBackground intensity={bgIntensity} />
-          <div className="w-full max-w-md bg-white border border-[#E8DFCE] rounded-3xl p-6 sm:p-7 shadow-2xl text-slate-950 space-y-4 relative z-10 text-center animate-fade-in">
-            <div className="w-14 h-14 rounded-2xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 mx-auto">
-              <ShieldAlert className="w-8 h-8 text-rose-600" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-lg font-black text-slate-950">
-                Account Suspended
-              </h2>
-              <p className="text-xs text-slate-600 font-medium">
-                Your membership in <strong>{activeOrg?.name || 'the organization'}</strong> has been temporarily suspended by an administrator.
-              </p>
-            </div>
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-950 text-left font-medium leading-relaxed">
-              Access to organization ledgers, operational sites, and assets is restricted while suspended. Please contact your organization administrator or founder to restore active status.
-            </div>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-black transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out of Account</span>
-              </button>
+      <NavigationProvider>
+        <ToastProvider>
+          {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+          {previewSplash && (
+            <SplashScreen
+              isManualPreview
+              duration={5000}
+              onFinish={() => setPreviewSplash(false)}
+            />
+          )}
+          {showUpdateModal && updateConfig && (
+            <ForceUpdateModal
+              config={updateConfig}
+              isForced={isForcedUpdate}
+              isBelowMin={isBelowMinVersion}
+              onClose={() => {
+                if (!isForcedUpdate) {
+                  setShowUpdateModal(false);
+                  markReleaseNotesSeenForVersion(updateConfig.latestVersion);
+                }
+              }}
+            />
+          )}
+          <div className={`min-h-screen relative flex items-center justify-center p-4 ${activeFontCss}`}>
+            <FarmTerrainBackground intensity={bgIntensity} />
+            <div className="w-full max-w-md bg-white border border-[#E8DFCE] rounded-3xl p-6 sm:p-7 shadow-2xl text-slate-950 space-y-4 relative z-10 text-center animate-fade-in">
+              <div className="w-14 h-14 rounded-2xl bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 mx-auto">
+                <ShieldAlert className="w-8 h-8 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-lg font-black text-slate-950">
+                  Account Suspended
+                </h2>
+                <p className="text-xs text-slate-600 font-medium">
+                  Your membership in <strong>{activeOrg?.name || 'the organization'}</strong> has been temporarily suspended by an administrator.
+                </p>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-950 text-left font-medium leading-relaxed">
+                Access to organization ledgers, operational sites, and assets is restricted while suspended. Please contact your organization administrator or founder to restore active status.
+              </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-black transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out of Account</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </>
+        </ToastProvider>
+      </NavigationProvider>
     );
   }
 
@@ -804,14 +865,14 @@ export default function App() {
           {/* Android-Native AppBar with hardware back button & site selector */}
           <AppBar
             orgName={activeOrg?.name}
-            locations={orgLocations}
+            locations={isAgroEnabled ? orgLocations : []}
             selectedLocationId={selectedLocationId}
-            onSelectLocation={setSelectedLocationId}
+            onSelectLocation={isAgroEnabled ? setSelectedLocationId : undefined}
             showNumbers={showNumbers}
             onToggleShowNumbers={handleToggleShowNumbers}
             unreadNotificationsCount={unreadCount}
             onOpenNotifications={() => setDrawerOpen(true)}
-            onOpenSiteManager={() => setShowSiteManagerModal(true)}
+            onOpenSiteManager={isAgroEnabled ? () => setShowSiteManagerModal(true) : undefined}
           />
 
           {/* Main Viewport rendering Active Screen within Multi-Stack Navigation */}
@@ -828,6 +889,7 @@ export default function App() {
               feedSummaries={feedSummaries}
               isAgroEnabled={isAgroEnabled}
               showNumbers={showNumbers}
+              onToggleShowNumbers={handleToggleShowNumbers}
               cloudUserEmail={cloudUserEmail}
               onRefresh={async () => {
                 await dataService.syncWithCloudServer();
@@ -837,7 +899,9 @@ export default function App() {
               onRecordSale={() => setShowRecordSaleSheet(true)}
               onAddLoanDebt={() => setShowNewDebtSheet(true)}
               onBroadcast={() => setShowBroadcastSheet(true)}
-              onOpenSiteManager={() => setShowSiteManagerModal(true)}
+              onOpenSiteManager={isAgroEnabled ? () => setShowSiteManagerModal(true) : undefined}
+              onOpenNotifications={() => setDrawerOpen(true)}
+              onSelectNotification={(item) => setActiveNotificationDetail(item)}
             />
           </main>
 
@@ -887,9 +951,22 @@ export default function App() {
             activeMember={activeMember}
             locations={orgLocations}
             onMarkAllRead={() => dataService.markAllNotificationsRead(activeMember.id)}
+            onMarkRead={(id) => dataService.markNotificationRead(id, activeMember.id)}
+            onMarkUnread={(id) => dataService.markNotificationUnread(id, activeMember.id)}
+            onOpenDetails={(item) => setActiveNotificationDetail(item)}
             onPostBroadcast={(data) =>
               dataService.postGroundBroadcast({ ...data, actor: activeMember })
             }
+          />
+
+          {/* Dedicated Rich Notification Detail Modal */}
+          <NotificationDetailModal
+            isOpen={Boolean(activeNotificationDetail)}
+            onClose={() => setActiveNotificationDetail(null)}
+            notification={activeNotificationDetail}
+            activeMember={activeMember}
+            onMarkRead={(id) => dataService.markNotificationRead(id, activeMember.id)}
+            onMarkUnread={(id) => dataService.markNotificationUnread(id, activeMember.id)}
           />
 
           {/* Security Re-Authentication for Unhiding System Numbers */}
@@ -908,6 +985,7 @@ export default function App() {
             initialMode={privacyModalMode}
             onSuccess={() => {
               setShowNumbers(true);
+              setPrivacyMask(false);
               setShowPrivacyModal(false);
               setPrivacyModalError(null);
             }}

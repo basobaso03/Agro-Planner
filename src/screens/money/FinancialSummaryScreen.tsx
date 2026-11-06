@@ -1,14 +1,21 @@
 import React, { useState } from 'react';
 import { dataService } from '../../services/dataService.ts';
 import { formatMoney, isPrivacyMasked } from '../../utils/currency.ts';
+import { PdfExportButton } from '../../components/ui/PdfExportButton.tsx';
+import { generateBalanceSheetPdf } from '../../services/pdf/generators/shared/balanceSheetPdf.ts';
+import { buildExportFilename } from '../../utils/pdfFilename.ts';
 import type { OrgMember } from '../../types/agro.ts';
 
 export interface FinancialSummaryScreenProps {
   activeMember: OrgMember;
+  showNumbers?: boolean;
 }
 
-export const FinancialSummaryScreen: React.FC<FinancialSummaryScreenProps> = () => {
-  const [masked] = useState(isPrivacyMasked());
+export const FinancialSummaryScreen: React.FC<FinancialSummaryScreenProps> = ({
+  activeMember,
+  showNumbers,
+}) => {
+  const masked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
 
   const fin = dataService.computeFinancialSummary();
   const equities = dataService.computeMemberEquitySummaries();
@@ -22,7 +29,24 @@ export const FinancialSummaryScreen: React.FC<FinancialSummaryScreenProps> = () 
     <div className="flex-1 flex flex-col p-4 pb-24 max-w-2xl mx-auto w-full space-y-4">
       {/* Header Statement */}
       <div className="bg-white border border-[#E8DFCE] p-5 rounded-2xl shadow-xs space-y-3">
-        <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Consolidated Financial Statement</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-slate-600 font-bold uppercase tracking-wider">Consolidated Financial Statement</div>
+          <PdfExportButton
+            label="Share Balance Sheet PDF"
+            title="9-Pillars Balance Sheet"
+            filename={buildExportFilename({
+              orgName: dataService.getActiveOrg()?.name,
+              documentType: '9-Pillars-Balance-Sheet',
+            })}
+            generateDoc={() =>
+              generateBalanceSheetPdf({
+                organization: dataService.getActiveOrg(),
+                summary: fin as any,
+                operatorName: activeMember?.fullName || 'Authorized Treasurer',
+              })
+            }
+          />
+        </div>
         <div className="grid grid-cols-2 gap-4 pt-1">
           <div>
             <div className="text-xs text-slate-600 font-medium">Net Venture Worth (NAV)</div>

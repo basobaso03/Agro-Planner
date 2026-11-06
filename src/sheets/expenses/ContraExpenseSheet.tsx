@@ -66,7 +66,7 @@ export const ContraExpenseSheet: React.FC<ContraExpenseSheetProps> = ({
         <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-1">
           <div className="font-bold">Strict Immutability Rule:</div>
           <p className="text-amber-800">
-            Past ledger records are cryptographically sealed and cannot be edited or deleted. This contra reversal
+            Past ledger records are sealed and immutable, and cannot be edited or deleted. This contra reversal
             will create an offsetting positive credit of {formatMoney(expense.amount)} returning liquid cash to the
             pool.
           </p>

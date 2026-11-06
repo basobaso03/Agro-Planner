@@ -110,9 +110,11 @@ service cloud.firestore {
                     && isValidId(memberId)
                     && (
                       // Org Admin updating a member within their own organization (promotions, demotions, suspensions, site assignments)
-                      (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                       && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
-                       && getMemberData().orgId == resource.data.orgId)
+                      isOrgAdmin(resource.data.orgId)
+                      || isOrgAdmin(request.resource.data.orgId)
+                      || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                          && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
+                          && (getMemberData().orgId == resource.data.orgId || resource.data.orgId == null || !('orgId' in resource.data)))
                       // Self update of personal profile or initial/switch organization onboarding (when not suspended)
                       || (request.auth.uid == memberId
                           && resource.data.approvalStatus != 'SUSPENDED')
@@ -121,9 +123,11 @@ service cloud.firestore {
                           && request.auth.token.email.lower() == resource.data.email.lower()
                           && resource.data.approvalStatus != 'SUSPENDED')
                     );
-      allow delete: if exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                    && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
-                    && getMemberData().orgId == resource.data.orgId;
+      allow delete: if isOrgAdmin(resource.data.orgId)
+                    || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                        && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
+                        && getMemberData().orgId == resource.data.orgId)
+                    || (request.auth.uid == memberId);
     }
 
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS

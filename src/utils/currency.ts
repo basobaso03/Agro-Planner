@@ -42,26 +42,33 @@ export function togglePrivacyMask(): boolean {
   if (typeof localStorage === 'undefined') return false;
   const current = isPrivacyMasked();
   const next = !current;
-  localStorage.setItem(PRIVACY_MASK_KEY, String(next));
+  setPrivacyMask(next);
   return next;
 }
 
 export function setPrivacyMask(masked: boolean): void {
   if (typeof localStorage === 'undefined') return;
   localStorage.setItem(PRIVACY_MASK_KEY, String(masked));
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('capita_privacy_changed', { detail: { masked } }));
+    }
+  } catch {
+    // Non-browser fallback
+  }
 }
 
 export function formatMoney(
   amount: number,
   options?: boolean | { mask?: boolean; currency?: CurrencyConfig }
 ): string {
-  let mask = false;
+  let mask = isPrivacyMasked();
   let customCurrency: CurrencyConfig | undefined;
 
   if (typeof options === 'boolean') {
     mask = !options;
   } else if (options && typeof options === 'object') {
-    mask = Boolean(options.mask);
+    mask = options.mask !== undefined ? Boolean(options.mask) : isPrivacyMasked();
     customCurrency = options.currency;
   }
 
@@ -74,4 +81,24 @@ export function formatMoney(
   });
   const prefix = amount < 0 ? `-${curr.symbol}` : curr.symbol;
   return `${prefix}${formatted}`;
+}
+
+export const formatCurrency = formatMoney;
+
+export function formatMaskableNumber(
+  val: number | string,
+  options?: boolean | { mask?: boolean; suffix?: string }
+): string {
+  let mask = isPrivacyMasked();
+  let suffix = '';
+
+  if (typeof options === 'boolean') {
+    mask = !options;
+  } else if (options && typeof options === 'object') {
+    mask = options.mask !== undefined ? Boolean(options.mask) : isPrivacyMasked();
+    suffix = options.suffix || '';
+  }
+
+  if (mask) return `••••${suffix ? ` ${suffix}` : ''}`;
+  return `${val}${suffix ? ` ${suffix}` : ''}`;
 }

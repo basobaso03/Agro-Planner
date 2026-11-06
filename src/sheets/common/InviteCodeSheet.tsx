@@ -21,14 +21,15 @@ export const InviteCodeSheet: React.FC<InviteCodeSheetProps> = ({
   const { showToast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const orgId = activeMember.orgId || dataService.getState().activeOrgId || 'org-master';
+  const orgId = activeMember.orgId || dataService.getState().activeOrgId || '';
   const org = (dataService.getState().organizations || []).find((o) => o.id === orgId);
 
-  const inviteCode = org?.currentInviteCode || 'SEED-8492';
+  const inviteCode = org?.currentInviteCode || '';
   const expiresAt = org?.inviteCodeExpiresAt ? new Date(org.inviteCodeExpiresAt) : null;
   const isExpired = expiresAt ? expiresAt.getTime() < Date.now() : false;
 
   const canRefresh = PERMISSIONS.canRefreshInviteCode(activeMember.role);
+  const isAdmin = canRefresh;
 
   const handleCopy = async () => {
     const success = await copyToClipboard(inviteCode);
@@ -43,7 +44,7 @@ export const InviteCodeSheet: React.FC<InviteCodeSheetProps> = ({
 
   const handleShare = async () => {
     const orgName = org?.name || 'OmniVentures';
-    const message = `Join our organization "${orgName}" on Capitaseed / OmniVentures!\n\nEnter 24-hr Invite Code: ${inviteCode}\n(Valid for 24 hours).`;
+    const message = `Join our organization "${orgName}" on Capital Seed!\n\nEnter 24-hr Invite Code: ${inviteCode}\n(Valid for 24 hours).`;
     await shareContent({
       title: `Invite Code for ${orgName}`,
       text: message,
@@ -73,6 +74,31 @@ export const InviteCodeSheet: React.FC<InviteCodeSheetProps> = ({
       setIsRefreshing(false);
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <BottomSheet isOpen={isOpen} onClose={onClose} title="Access Restricted" maxHeight="40dvh">
+        <div className="p-6 text-center space-y-3">
+          <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto text-xl">
+            🔒
+          </div>
+          <h3 className="text-sm font-black text-slate-900">Administrator Access Required</h3>
+          <p className="text-xs text-slate-600">
+            Only organization administrators have authority to view and share member invitation codes.
+          </p>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
+    );
+  }
 
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="Organization Invite Code" maxHeight="80dvh">
