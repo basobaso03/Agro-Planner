@@ -1519,35 +1519,38 @@
               WhatsApp.</p>
           </div>
 
-          <form onsubmit="handleInquirySubmit(event)" class="space-y-4">
+          <form id="contact-inquiry-form" onsubmit="handleInquirySubmit(event)" class="space-y-4">
+            <!-- Hidden honeypot field for spam prevention -->
+            <input type="text" id="c-honey" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label for="c-name" class="block text-xs font-semibold text-slate-700 mb-1">Your Full Name *</label>
-                <input id="c-name" type="text" required placeholder="e.g. Marlvin Basera"
+                <input id="c-name" name="name" type="text" required placeholder="e.g. Marlvin Basera"
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
               <div>
                 <label for="c-email" class="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
-                <input id="c-email" type="email" required placeholder="you@domain.com"
+                <input id="c-email" name="email" type="email" required placeholder="you@domain.com"
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
               <div>
                 <label for="c-phone" class="block text-xs font-semibold text-slate-700 mb-1">Phone / WhatsApp Number
                   *</label>
-                <input id="c-phone" type="tel" required placeholder="+263 788 123 047"
+                <input id="c-phone" name="phone" type="tel" required placeholder="+263 788 123 047"
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
               <div>
                 <label for="c-org" class="block text-xs font-semibold text-slate-700 mb-1">Organization / Venture
                   Name</label>
-                <input id="c-org" type="text" placeholder="e.g. Sunrise Holdings"
+                <input id="c-org" name="organization" type="text" placeholder="e.g. Sunrise Holdings"
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
             </div>
 
             <div>
               <label for="c-subject" class="block text-xs font-semibold text-slate-700 mb-1">Inquiry Topic</label>
-              <select id="c-subject"
+              <select id="c-subject" name="topic"
                 class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-amber-500">
                 <option value="Enterprise Capital Seed Deployment">Enterprise Capital Seed Deployment</option>
                 <option value="Custom Venture Configuration">Custom Venture Configuration</option>
@@ -1558,19 +1561,30 @@
 
             <div>
               <label for="c-msg" class="block text-xs font-semibold text-slate-700 mb-1">Detailed Message *</label>
-              <textarea id="c-msg" rows="4" required
+              <textarea id="c-msg" name="message" rows="4" required
                 placeholder="Describe your organization requirements, capital planning goals, or deployment timeline..."
                 class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500"></textarea>
             </div>
 
+            <!-- In-form dynamic status & feedback container -->
+            <div id="contact-status-banner" class="hidden transition-all"></div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <button type="submit"
-                class="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer">
-                Send via WhatsApp
+              <button type="submit" id="btn-send-email"
+                class="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
+                <svg id="email-btn-icon" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                </svg>
+                <span id="email-btn-text">Send Direct to Email</span>
               </button>
-              <button type="button" onclick="sendViaEmail()"
-                class="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer">
-                Send via Email
+              <button type="button" onclick="sendViaWhatsApp()"
+                class="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm">
+                <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                  <path
+                    d="M12.031 2C6.5 2 2.012 6.48 2.012 12A9.97 9.97 0 003.5 17.5L2 22l4.63-1.46A9.95 9.95 0 0012.03 22c5.52 0 10-4.48 10-10s-4.48-10-10-10zm5.82 14.28c-.25.7-.82 1.3-1.48 1.54-.45.16-1.03.27-2.98-.55-2.5-1.04-4.1-3.6-4.22-3.77-.13-.17-1.02-1.35-1.02-2.58 0-1.22.64-1.83.87-2.07.23-.25.5-.31.67-.31.17 0 .34 0 .49.01.16.01.37-.06.58.44.22.52.75 1.83.82 1.96.07.14.11.3.02.48-.09.18-.14.29-.27.45-.14.16-.29.35-.42.47-.14.14-.29.3-.12.59.16.29.73 1.2 1.56 1.94 1.07.95 1.98 1.25 2.27 1.39.29.14.46.12.63-.08.18-.2.75-.87.95-1.17.2-.3.4-.25.68-.15.27.1 1.74.82 2.04.97.3.15.5.23.57.35.08.13.08.77-.17 1.47z" />
+                </svg>
+                <span>Send via WhatsApp</span>
               </button>
             </div>
           </form>
@@ -1738,40 +1752,160 @@
       if (menu) menu.classList.toggle('hidden');
     }
 
-    function handleInquirySubmit(e) {
-      e.preventDefault();
-      const name = document.getElementById('c-name').value;
-      const email = document.getElementById('c-email').value;
-      const phone = document.getElementById('c-phone').value;
-      const org = document.getElementById('c-org').value || 'N/A';
-      const subject = document.getElementById('c-subject').value;
-      const msg = document.getElementById('c-msg').value;
+    function showContactStatus(htmlContent, type) {
+      const banner = document.getElementById('contact-status-banner');
+      if (!banner) return;
 
-      const url = `https://wa.me/263788123047?text=${encodeURIComponent(
-        `*Capital Seed Inquiry (${subject})*\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\nOrganization: ${org}\n\n${msg}`
-      )}`;
-      window.open(url, '_blank');
+      banner.className = 'p-4 rounded-2xl text-xs transition-all block ';
+      if (type === 'success') {
+        banner.className += 'bg-emerald-50 border border-emerald-200 text-emerald-900';
+      } else if (type === 'error') {
+        banner.className += 'bg-rose-50 border border-rose-200 text-rose-900';
+      } else {
+        banner.className += 'bg-amber-50 border border-amber-200 text-amber-900';
+      }
+      banner.innerHTML = htmlContent;
     }
 
-    function sendViaEmail() {
-      const name = document.getElementById('c-name').value;
-      const email = document.getElementById('c-email').value;
-      const phone = document.getElementById('c-phone').value;
-      const org = document.getElementById('c-org').value || 'N/A';
-      const subject = document.getElementById('c-subject').value;
-      const msg = document.getElementById('c-msg').value;
+    function handleInquirySubmit(e) {
+      if (e) e.preventDefault();
+      sendViaEmail();
+    }
 
-      if (!name || !email || !msg) {
-        alert('Please fill in your Name, Email, and Message before sending.');
+    async function sendViaEmail() {
+      const name = (document.getElementById('c-name')?.value || '').trim();
+      const email = (document.getElementById('c-email')?.value || '').trim();
+      const phone = (document.getElementById('c-phone')?.value || '').trim();
+      const org = (document.getElementById('c-org')?.value || '').trim() || 'N/A';
+      const subject = document.getElementById('c-subject')?.value || 'General Engineering Inquiry';
+      const msg = (document.getElementById('c-msg')?.value || '').trim();
+      const honey = document.getElementById('c-honey')?.value || '';
+
+      // Silent honeypot rejection for automated spam scripts
+      if (honey) {
         return;
       }
 
-      const mailtoUrl = `mailto:baseramarlvin@gmail.com?subject=${encodeURIComponent(
-        `[Capital Seed] ${subject} - ${name}`
-      )}&body=${encodeURIComponent(
-        `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nOrganization: ${org}\n\nMessage:\n${msg}`
+      if (!name || !email || !phone || !msg) {
+        showContactStatus('⚠️ Please fill in all required fields (Name, Email, Phone, and Message) before sending.', 'error');
+        return;
+      }
+
+      // Email address syntax validation
+      if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        showContactStatus('⚠️ Please enter a valid email address so we can reply back to you.', 'error');
+        return;
+      }
+
+      const emailBtn = document.getElementById('btn-send-email');
+      const emailBtnText = document.getElementById('email-btn-text');
+      const originalText = emailBtnText ? emailBtnText.textContent : 'Send Direct to Email';
+
+      if (emailBtn) {
+        emailBtn.disabled = true;
+        emailBtn.classList.add('opacity-75', 'cursor-not-allowed');
+      }
+      if (emailBtnText) {
+        emailBtnText.textContent = 'Transmitting Message...';
+      }
+      showContactStatus('⏳ Transmitting your message directly to BASOBASO SOFTWARES engineering desk (baseramarlvin@gmail.com)...', 'info');
+
+      try {
+        const payload = {
+          name: name,
+          email: email,
+          phone: phone,
+          organization: org,
+          inquiry_topic: subject,
+          message: msg,
+          _subject: `[Capital Seed Inquiry] ${subject} - from ${name}`,
+          _template: 'table',
+          _captcha: 'false'
+        };
+
+        const res = await fetch('https://formsubmit.co/ajax/baseramarlvin@gmail.com', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (res.ok && (data.success === 'true' || data.success === true || res.status === 200)) {
+          showContactStatus(`
+            <div class="flex items-start gap-2.5">
+              <span class="text-base text-emerald-600 font-black">✔</span>
+              <div class="space-y-0.5">
+                <div class="font-bold text-emerald-950 text-sm">Message Delivered Successfully!</div>
+                <div class="text-[11px] text-emerald-800 leading-relaxed">
+                  Your inquiry has been dispatched directly to <strong>baseramarlvin@gmail.com</strong>.
+                  Our systems engineering team will review your message and reply to <strong>${email}</strong> shortly.
+                </div>
+              </div>
+            </div>
+          `, 'success');
+
+          // Reset message input
+          const msgField = document.getElementById('c-msg');
+          if (msgField) msgField.value = '';
+        } else {
+          throw new Error(data.message || 'Form submission returned non-success');
+        }
+      } catch (err) {
+        console.warn('Direct email dispatch encountered an issue, enabling backup mailto link', err);
+        const mailtoUrl = `mailto:baseramarlvin@gmail.com?subject=${encodeURIComponent(
+          `[Capital Seed] ${subject} - ${name}`
+        )}&body=${encodeURIComponent(
+          `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nOrganization: ${org}\n\nMessage:\n${msg}`
+        )}`;
+
+        showContactStatus(`
+          <div class="space-y-2">
+            <div class="text-rose-900 font-bold">Network notice: Automated delivery encountered an issue.</div>
+            <div class="text-[11px] text-rose-800 leading-relaxed">
+              You can send this message right now using your local email client or message our engineering desk directly via WhatsApp:
+            </div>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <a href="${mailtoUrl}" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs inline-flex items-center gap-1.5">
+                Open in Email App ↗
+              </a>
+              <button type="button" onclick="sendViaWhatsApp()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs inline-flex items-center gap-1.5">
+                Send via WhatsApp ↗
+              </button>
+            </div>
+          </div>
+        `, 'error');
+      } finally {
+        if (emailBtn) {
+          emailBtn.disabled = false;
+          emailBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+        if (emailBtnText) {
+          emailBtnText.textContent = originalText;
+        }
+      }
+    }
+
+    function sendViaWhatsApp() {
+      const name = (document.getElementById('c-name')?.value || '').trim();
+      const email = (document.getElementById('c-email')?.value || '').trim();
+      const phone = (document.getElementById('c-phone')?.value || '').trim();
+      const org = (document.getElementById('c-org')?.value || '').trim() || 'N/A';
+      const subject = document.getElementById('c-subject')?.value || 'General Engineering Inquiry';
+      const msg = (document.getElementById('c-msg')?.value || '').trim();
+
+      if (!name || !msg) {
+        showContactStatus('⚠️ Please enter at least your Name and Message before dispatching to WhatsApp.', 'error');
+        return;
+      }
+
+      const url = `https://wa.me/263788123047?text=${encodeURIComponent(
+        `*Capital Seed Inquiry (${subject})*\nName: ${name}\nEmail: ${email || 'N/A'}\nPhone: ${phone || 'N/A'}\nOrganization: ${org}\n\n${msg}`
       )}`;
-      window.location.href = mailtoUrl;
+      window.open(url, '_blank');
     }
 
     // =========================================================================
