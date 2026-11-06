@@ -278,8 +278,8 @@ export const TutorialScreen: React.FC = () => {
             type="button"
             onClick={() => setSelectedCategory(cat.id)}
             className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat.id
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-white border border-[#E8DFCE] text-slate-700 hover:bg-[#FAF8F5]'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-white border border-[#E8DFCE] text-slate-700 hover:bg-[#FAF8F5]'
               }`}
           >
             {cat.label}

@@ -691,13 +691,19 @@ export default function App() {
   const activeFontCss =
     FONT_OPTIONS.find((f) => f.id === activeFontId)?.cssClass || 'font-style-android';
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setShowNumbers(false);
     setSelectedLocationId('ALL');
     setDrawerOpen(false);
     setShowPrivacyModal(false);
     setPrivacyModalError(null);
-    void dataService.signOutCloud();
+    try {
+      await dataService.signOutCloud();
+    } finally {
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    }
   };
 
   // GATE 1: Unauthenticated users must sign in or register

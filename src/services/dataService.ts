@@ -2180,6 +2180,26 @@ class AgroDataService {
     try {
       this.detachCloudListeners();
 
+      // Synchronously clear local storage immediately so no state survives an abrupt kill
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+          window.localStorage.removeItem(STORAGE_KEY);
+          window.localStorage.removeItem(OUTBOX_STORAGE_KEY);
+          window.localStorage.removeItem('agro_active_org_id');
+          window.localStorage.removeItem('agro_planner_active_org_id');
+          window.localStorage.removeItem('agro_planner_biometric_credential_v1');
+          window.localStorage.clear();
+        } catch { }
+        try {
+          window.sessionStorage.clear();
+        } catch { }
+      }
+
+      this.currentUser = null;
+      this.activeSession = null;
+      outboxService.clearQueue();
+
       if (Capacitor.isNativePlatform()) {
         try {
           await FirebaseAuthentication.signOut();
@@ -2196,32 +2216,15 @@ class AgroDataService {
         }
       }
 
-      this.currentUser = null;
-      this.activeSession = null;
-
-      // Clear persistent outbox queue and high-capacity IndexedDB appStorage
-      outboxService.clearQueue();
+      // Purge IndexedDB and caches
       await appStorage.clearAll();
+      await appStorage.purgeAllIndexedDatabases();
 
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && 'caches' in window) {
         try {
-          window.localStorage.clear();
-        } catch {
-          // Ignore storage clear error
-        }
-        try {
-          window.sessionStorage.clear();
-        } catch {
-          // Ignore session storage clear error
-        }
-        if ('caches' in window) {
-          try {
-            const keys = await window.caches.keys();
-            await Promise.all(keys.map((k) => window.caches.delete(k)));
-          } catch {
-            // Ignore cache clear error
-          }
-        }
+          const keys = await window.caches.keys();
+          await Promise.all(keys.map((k) => window.caches.delete(k)));
+        } catch { }
       }
 
       const emptyState = createEmptyProductionSnapshot();
@@ -2231,6 +2234,19 @@ class AgroDataService {
       this.notifyListeners();
     } finally {
       this.isSigningOut = false;
+    }
+  }
+
+  /**
+   * Complete Factory Reset:
+   * Flushes all local data, wipes LocalStorage, IndexedDB, Cache API, and forces a clean restart.
+   */
+  public async factoryResetDeviceData(): Promise<void> {
+    await this.signOutCloud();
+    if (typeof window !== 'undefined') {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+      window.location.reload();
     }
   }
 
