@@ -175,6 +175,21 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         </div>
       </div>
 
+      {/* Help & User Guide */}
+      <div className="space-y-1">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-600 px-2">
+          Help & User Guide
+        </div>
+        <div className="bg-white border border-[#E8DFCE] rounded-2xl divide-y divide-[#F0EBE1] shadow-xs overflow-hidden">
+          <ListRow
+            icon="📖"
+            title="User Guide & Tutorials"
+            subtitle="Step-by-step guides for registration, 24-hr invites, pledges & runway"
+            onClick={() => navigate('helpOnboarding')}
+          />
+        </div>
+      </div>
+
       {/* Engineered by BASOBASO SOFTWARES & Direct Developer Contact */}
       <div className="bg-white border border-[#E8DFCE] rounded-3xl p-5 shadow-xs space-y-4 text-center">
         {/* Engineered by gradient badge as styled in Splash Screen */}
@@ -255,7 +270,7 @@ export const MoreScreen: React.FC<MoreScreenProps> = ({
         <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between text-[11px] text-slate-500">
           <span className="font-semibold text-slate-600">Capital Seed Platform</span>
           <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-            v1.0.5 Production
+            v1.0.5
           </span>
         </div>
       </div>

@@ -56,7 +56,9 @@ export type RouteId =
   | 'currencyLocale'
   | 'currency-locale'
   | 'settings'
-  | 'helpOnboarding';
+  | 'helpOnboarding'
+  | 'tutorials'
+  | 'tutorial';
 
 export interface RouteEntry {
   key: string; // Unique instance key

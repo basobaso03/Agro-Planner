@@ -145,6 +145,9 @@
         <button onclick="switchTab('features')"
           class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
           data-target="features">Core Engines</button>
+        <button onclick="switchTab('tutorials')"
+          class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
+          data-target="tutorials">Guides &amp; Tutorials</button>
         <button onclick="switchTab('download')"
           class="nav-btn px-4 py-2 rounded-xl text-xs font-bold transition-all text-slate-700 hover:bg-white hover:text-slate-900"
           data-target="download">Download Android APK</button>
@@ -201,6 +204,9 @@
       <button onclick="switchTab('features')"
         class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Core
         Engines</button>
+      <button onclick="switchTab('tutorials')"
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Guides
+        &amp; Tutorials</button>
       <button onclick="switchTab('download')"
         class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Download
         Android App (APK)</button>
@@ -225,7 +231,7 @@
           <div class="lg:col-span-7 space-y-6">
             <div
               class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-wider uppercase">
-              <span>★ Capital Seed Platform · <span class="apk-version-display">v1.0.5</span> Production Release</span>
+              <span>★ Capital Seed Platform · <span class="apk-version-display">v1.0.5</span> Release</span>
             </div>
 
             <h1 class="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-[1.1] text-balance">
@@ -264,6 +270,11 @@
               <button onclick="switchTab('features')"
                 class="px-5 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
                 <span>Core Engines</span>
+              </button>
+
+              <button onclick="switchTab('tutorials')"
+                class="px-5 py-4 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
+                <span>Guides &amp; Tutorials</span>
               </button>
             </div>
           </div>
@@ -749,7 +760,455 @@
     </section>
 
     <!-- =========================================================================
-         TAB 4: DOWNLOAD (DETAILED ANDROID INSTALLATION & SPECIFICATIONS)
+         TAB 4: GUIDES & TUTORIALS (STEP-BY-STEP USER WALKTHROUGHS)
+    ========================================================================= -->
+    <section id="tab-tutorials" class="tab-content">
+      <div class="max-w-7xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10 space-y-10">
+        <!-- Section Hero Card -->
+        <div class="public-dark-surface rounded-3xl p-6 sm:p-10 text-white space-y-4 shadow-md">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-wider uppercase">
+            <span>Official User Guide &amp; Master Walkthrough</span>
+          </div>
+          <h1 class="text-2xl sm:text-4xl font-black text-white leading-tight">
+            Mastering Capital Seed: Onboarding, 24-Hour Invites, Treasuries &amp; Runway
+          </h1>
+          <p class="text-xs sm:text-base text-emerald-100/90 max-w-3xl leading-relaxed">
+            Everything you need to know about registering your account, establishing dual-mode workspaces, generating 24-hour expiring secret invite codes, enforcing capital target pledges, and preventing overdrafts with runway spend-gating.
+          </p>
+
+          <!-- Quick Jump Navigation Badges -->
+          <div class="pt-2 flex flex-wrap gap-2 text-xs">
+            <a href="#t-registration" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 font-bold transition-colors">1. Registration &amp; Auth</a>
+            <a href="#t-split" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 font-bold transition-colors">2. Dual Org Creation</a>
+            <a href="#t-invitations" class="px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 border border-amber-400/40 font-bold transition-colors">3. 24-Hr Invite Codes</a>
+            <a href="#t-joining" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 font-bold transition-colors">4. Joining an Org</a>
+            <a href="#t-pledges" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 font-bold transition-colors">5. Capital Pledges &amp; Proofs</a>
+            <a href="#t-runway" class="px-3 py-1.5 rounded-xl bg-emerald-400/20 hover:bg-emerald-400/30 text-emerald-200 border border-emerald-400/40 font-bold transition-colors">6. Runway Spend-Gating</a>
+            <a href="#t-privacy" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 border border-white/20 font-bold transition-colors">7. Privacy &amp; Audit Logs</a>
+          </div>
+        </div>
+
+        <!-- Guides Grid -->
+        <div class="space-y-8">
+          <!-- Guide 1: Registration -->
+          <div id="t-registration" class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-black text-sm border border-emerald-200">
+                  01
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wider block">ONBOARDING &amp; AUTHENTICATION</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">User Account Registration &amp; Sign-In</h2>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">Recommended for All Users</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold">1</span>
+                  Google 1-Tap Sign-In
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Tap <strong>"Continue with Google"</strong> to immediately authenticate with your verified Google account. No manual password creation, zero SMS waiting, and instant cloud profile initialization.
+                </p>
+                <div class="text-[11px] font-mono text-emerald-700 font-bold pt-1">✓ Zero Password Setup Needed</div>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold">2</span>
+                  Email &amp; Secure Password
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Prefer direct credentials? Choose <strong>"Sign Up with Email"</strong>. Enter your full name, working email address, and strong password. A secure recovery link is always available if forgotten.
+                </p>
+                <div class="text-[11px] font-mono text-slate-600 font-bold pt-1">✓ Encrypted Credential Vault</div>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold">3</span>
+                  Biometric Fingerprint Lock
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  On your initial login, Capital Seed invites you to link your Android hardware fingerprint sensor. Once configured, you can unlock your ledger with a touch in under 200ms.
+                </p>
+                <div class="text-[11px] font-mono text-emerald-700 font-bold pt-1">✓ Hardware Key Backed</div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-start gap-3 text-xs text-emerald-950">
+              <span class="text-emerald-700 text-base font-bold shrink-0">💡</span>
+              <p class="leading-relaxed">
+                <strong>Pro Tip:</strong> If your organization uses shared tablets in the field or office, you can set a fallback 6-digit Master PIN from <em>User Settings</em> to protect financial entries while offline.
+              </p>
+            </div>
+          </div>
+
+          <!-- Guide 2: Dual Business Split Org Creation -->
+          <div id="t-split" class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-amber-50 text-amber-900 flex items-center justify-center font-black text-sm border border-amber-200">
+                  02
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-amber-700 uppercase tracking-wider block">WORKSPACE ARCHITECTURE</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">Creating an Organization (Dual Business Split)</h2>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold font-mono">AGRO vs GENERAL</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-amber-50/50 border border-amber-200 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-black text-amber-950 text-sm">Mode A: General Business Venture</span>
+                  <span class="px-2 py-0.5 rounded bg-amber-200 text-amber-900 font-mono text-[10px] font-bold">Non-Agro</span>
+                </div>
+                <p class="text-slate-700 leading-relaxed text-xs">
+                  Designed for investment clubs, trade syndicates, retail stores, property ventures, and tech startups. Automatically hides agricultural fields (pens, paddocks, animal health, feed rations) to give you an uncluttered corporate treasury.
+                </p>
+                <ul class="space-y-1 text-slate-600 text-xs">
+                  <li class="flex items-center gap-2"><span class="text-amber-600 font-bold">✓</span> Member Capital Target Pledges &amp; Equity %</li>
+                  <li class="flex items-center gap-2"><span class="text-amber-600 font-bold">✓</span> Milestone Runway Wizard to Break-Even</li>
+                  <li class="flex items-center gap-2"><span class="text-amber-600 font-bold">✓</span> Liquidity Spend-Gating &amp; Receipt Proofs</li>
+                </ul>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-black text-emerald-950 text-sm">Mode B: Commercial Agro-Farming</span>
+                  <span class="px-2 py-0.5 rounded bg-emerald-200 text-emerald-900 font-mono text-[10px] font-bold">Agro &amp; Livestock</span>
+                </div>
+                <p class="text-slate-700 leading-relaxed text-xs">
+                  Includes full general treasury capabilities plus comprehensive agricultural field tracking: cattle/poultry inventory, paddock management, veterinary withdrawal timers, feed batch conversions, and crop harvest yields.
+                </p>
+                <ul class="space-y-1 text-slate-600 text-xs">
+                  <li class="flex items-center gap-2"><span class="text-emerald-700 font-bold">✓</span> Full Livestock &amp; Crop Lifecycle Tracking</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-700 font-bold">✓</span> Veterinary Health Logs &amp; Meat Safety Holds</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-700 font-bold">✓</span> Feed Conversion Ratios &amp; Production NAV</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2 text-xs">
+              <div class="font-bold text-slate-900">How to create a new organization:</div>
+              <ol class="list-decimal list-inside space-y-1.5 text-slate-600 text-xs">
+                <li>Upon first launch or by tapping <strong>"Switch Workspace"</strong>, choose <strong>"Create New Organization"</strong>.</li>
+                <li>Enter your Organization Name (e.g. <em>Apex Ventures</em> or <em>Greenfield Valley Farm</em>).</li>
+                <li>Toggle between <strong>General Business Venture</strong> and <strong>Agro-Farming &amp; Livestock</strong>.</li>
+                <li>Input your starting ground cash and tap <strong>"Create Workspace"</strong>. You are automatically crowned <em>Organization Administrator</em>.</li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- Guide 3: 24-Hour Secret Invite Codes -->
+          <div id="t-invitations" class="bg-white border-2 border-amber-400/80 rounded-3xl p-6 sm:p-8 space-y-6 shadow-md">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-amber-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                  03
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-amber-700 uppercase tracking-wider block">GOVERNANCE &amp; SECURITY</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">24-Hour Expiring Invite Codes &amp; Member Onboarding</h2>
+                </div>
+              </div>
+              <span class="px-3.5 py-1.5 rounded-full bg-amber-500 text-white text-xs font-extrabold shadow-xs">Critical Workflow</span>
+            </div>
+
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Traditional platforms rely on permanent invite links that get leaked or left active indefinitely, causing security leaks and endless pending approval queues. Capital Seed solves this with <strong>24-Hour Expiring Cryptographic Invite Codes</strong>.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold">1</span>
+                  Access the Invite Code
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Organization Admins navigate to the <strong>More Screen</strong> and tap <strong>"24-Hour Invite Code"</strong> (or go to <em>Organization Settings &gt; Membership</em>).
+                </p>
+                <div class="text-[11px] font-mono text-amber-800 font-bold bg-amber-100/60 p-1.5 rounded border border-amber-200/60">
+                  Example: <span class="tracking-widest">SEED-8492</span>
+                </div>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold">2</span>
+                  Share Instantly via WhatsApp
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Tap <strong>"Share via WhatsApp"</strong> or <strong>"Copy to Clipboard"</strong>. The app prepares a professional invitation message with your organization name and instructions.
+                </p>
+                <div class="text-[11px] font-mono text-emerald-700 font-bold pt-1">✓ One-Tap Dispatch</div>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold">3</span>
+                  Automatic 24-Hr TTL &amp; Refresh
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  The code expires exactly 24 hours after generation. If expired, or if you want to revoke access immediately, simply tap <strong>"Refresh Invite Code"</strong> to issue a fresh code.
+                </p>
+                <div class="text-[11px] font-mono text-rose-700 font-bold pt-1">✓ Cost-Optimized &amp; Secure</div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 text-xs space-y-2 text-amber-950">
+              <div class="font-extrabold flex items-center gap-2">
+                <span class="text-amber-600 text-base">🛡️</span>
+                <span>Why 24-Hour Expiration Protects Your Capital:</span>
+              </div>
+              <p class="leading-relaxed text-slate-700">
+                1. <strong>Zero Persistent Backdoors:</strong> If a phone is lost or an invitation message is forwarded to an untrusted party, an expired code cannot grant access.<br>
+                2. <strong>Zero Approval Friction:</strong> As long as the code is active within its 24-hour window, the invited partner joins immediately without waiting for an admin to approve a queue.<br>
+                3. <strong>Instant Revocation:</strong> Tapping <em>"Refresh Invite Code"</em> instantly invalidates the prior token across all devices worldwide.
+              </p>
+            </div>
+          </div>
+
+          <!-- Guide 4: Joining an Existing Org -->
+          <div id="t-joining" class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-sky-50 text-sky-800 flex items-center justify-center font-black text-sm border border-sky-200">
+                  04
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-sky-700 uppercase tracking-wider block">MEMBER ONBOARDING</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">Joining an Existing Organization with Secret Code</h2>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-bold">Fast-Track Entry</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-sky-700 text-white flex items-center justify-center text-xs font-bold">1</span>
+                  Select "Join Existing Organization"
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Upon downloading the app and signing in, tap <strong>"Join an Existing Organization"</strong> on the welcome screen (or tap <em>Switch Org &gt; + Join Org</em>).
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-sky-700 text-white flex items-center justify-center text-xs font-bold">2</span>
+                  Paste 6-Character Code
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Paste or type the secret invite code sent by your Organization Admin (e.g. <code>SEED-8492</code>) and tap <strong>"Verify Code &amp; Join"</strong>.
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-sky-700 text-white flex items-center justify-center text-xs font-bold">3</span>
+                  Instant Sync &amp; Briefing
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  The app decodes the ledger token, syncs organization data into local SQLite/indexed storage, and opens your personalized Member Dashboard with full visibility.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guide 5: Capital Targets, Pledges & Receipts -->
+          <div id="t-pledges" class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-black text-sm border border-emerald-200">
+                  05
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wider block">EQUITY &amp; CONTRIBUTIONS</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">Member Capital Targets, Pledges &amp; Receipt Uploads</h2>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold font-mono">100% Traceable</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-3">
+                <div class="font-bold text-slate-900 text-sm">How Capital Targets Work</div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Every partner in the organization is assigned a target capital contribution (e.g. $1,000 USD). As partners make installment pay-ins or lump-sum deposits:
+                </p>
+                <ul class="space-y-1.5 text-slate-600 text-xs">
+                  <li class="flex items-start gap-2">
+                    <span class="text-emerald-600 font-bold shrink-0">●</span>
+                    <span><strong>Live Progress Bars:</strong> Each member profile displays visual percentages of target completed vs balance due.</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="text-emerald-600 font-bold shrink-0">●</span>
+                    <span><strong>Automated Equity Calculations:</strong> Partner equity shares adjust mathematically in real time based on cumulative validated capital.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-3">
+                <div class="font-bold text-slate-900 text-sm">Uploading Receipts &amp; Proof of Payment</div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Zero-trust means no unverified claims. When recording a contribution:
+                </p>
+                <ul class="space-y-1.5 text-slate-600 text-xs">
+                  <li class="flex items-start gap-2">
+                    <span class="text-emerald-600 font-bold shrink-0">●</span>
+                    <span><strong>Attach Proof:</strong> Snap a photo of the bank transfer slip, EcoCash confirmation SMS, or signed cash receipt.</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="text-emerald-600 font-bold shrink-0">●</span>
+                    <span><strong>Treasury Verification:</strong> The deposit is marked as verified once corroborated by the treasury admin, locking it into the audit chain.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Guide 6: Runway Planning & Spend-Gating -->
+          <div id="t-runway" class="bg-white border-2 border-emerald-500/80 rounded-3xl p-6 sm:p-8 space-y-6 shadow-md">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-emerald-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                  06
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-emerald-700 uppercase tracking-wider block">TREASURY PROTECTION ENGINE</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">Runway Capital Planning &amp; Strict Liquidity Spend Gating</h2>
+                </div>
+              </div>
+              <span class="px-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-extrabold shadow-xs">Zero Overdraft</span>
+            </div>
+
+            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Most businesses fail because they commit to capital expenses before pledged partner money actually arrives in the account. Capital Seed eliminates this with a <strong>dual-check spend gate</strong>.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">1</span>
+                  Map Milestones &amp; Costs
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Use the 5-step Runway Wizard to map out operational phases (Phase 1 Setup, Phase 2 Inventory/Feed, Phase 3 Go-To-Market) with mandatory 10% contingency buffers.
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">2</span>
+                  Calculate Pledge Splits
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  The wizard calculates each partner's required financial pledge down to the cent, subtracting any opening cash already adopted from the treasury.
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-bold">3</span>
+                  Enforce Spend Gates
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  When logging an expense, the app verifies: (1) Does the cost line have remaining budget? AND (2) Is there sufficient physical cash in the treasury? If not, the transaction is rejected!
+                </p>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-300 text-xs text-emerald-950 space-y-1">
+              <div class="font-bold flex items-center gap-2">
+                <span class="text-emerald-700">●</span>
+                <span>The Golden Rule: Never Spend Uncollected Pledges</span>
+              </div>
+              <p class="text-slate-700 leading-relaxed text-xs">
+                Capital Seed ensures that even if a purchase was budgeted, your team cannot overdraw physical bank or cash vaults. You always know exactly how many months of true runway remain.
+              </p>
+            </div>
+          </div>
+
+          <!-- Guide 7: Privacy, Audit Logs & PDF Reports -->
+          <div id="t-privacy" class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-sm">
+                  07
+                </div>
+                <div>
+                  <span class="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider block">SECURITY &amp; COMPLIANCE</span>
+                  <h2 class="text-lg sm:text-2xl font-black text-slate-900">Biometric Eye-Shield Privacy, SHA-256 Audit &amp; Clean PDF Exports</h2>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold font-mono">Zero Tampering</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs sm:text-sm">
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold">1</span>
+                  Eye-Shield Privacy Mode
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Tap the eye icon on the header to immediately mask sensitive financial figures (balances, revenue, individual payouts) with dots (••••) when working in public places.
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold">2</span>
+                  SHA-256 Audit Trail
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Every financial deposit, expense withdrawal, and membership change is hashed into an immutable cryptographic chain. Any unauthorized modification breaks the chain hash immediately.
+                </p>
+              </div>
+
+              <div class="p-5 rounded-2xl bg-[#FAF8F5] border border-slate-200 space-y-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-2">
+                  <span class="w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold">3</span>
+                  11 Zero-Underscore PDFs
+                </div>
+                <p class="text-slate-600 leading-relaxed text-xs">
+                  Generate professional, audit-ready PDF statements with clean underscore-free titles (e.g. <em>Runway Financial Plan - Q2 2026.pdf</em>) formatted for institutional banking and stakeholders.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tutorial CTA Banner -->
+        <div class="bg-gradient-to-r from-emerald-800 to-emerald-950 rounded-3xl p-6 sm:p-10 text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-lg">
+          <div class="space-y-2 text-center md:text-left">
+            <h3 class="text-xl sm:text-2xl font-black text-white">Ready to Put Capital Seed into Action?</h3>
+            <p class="text-xs sm:text-sm text-emerald-200 max-w-xl">
+              Download the standalone Android APK or contact our engineering desk for custom enterprise onboarding.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <a href="apk/capital-seed.apk" download="capital-seed.apk" class="px-6 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-extrabold shadow-md transition-all flex items-center gap-2">
+              <span>Download Android APK</span>
+              <span class="apk-size-display text-xs font-mono bg-amber-700/60 px-2 py-0.5 rounded">13.71 MB</span>
+            </a>
+            <button onclick="switchTab('contact')" class="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs sm:text-sm font-extrabold transition-colors">
+              Talk to Engineering Desk
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         TAB 5: DOWNLOAD (DETAILED ANDROID INSTALLATION & SPECIFICATIONS)
     ========================================================================= -->
     <section id="tab-download" class="tab-content">
       <div class="max-w-7xl mx-auto py-8 sm:py-14 px-4 sm:px-6 lg:px-10 space-y-8">
@@ -759,7 +1218,7 @@
           <div class="lg:col-span-7 space-y-5">
             <div
               class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800">
-              <span>Capital Seed Production Build · <span class="apk-version-display">v1.0.5</span></span>
+              <span>Capital Seed Official Build · <span class="apk-version-display">v1.0.5</span></span>
             </div>
 
             <h1 class="text-2xl sm:text-4xl font-black text-slate-900 leading-tight">
@@ -841,7 +1300,7 @@
                   class="w-6 h-6 rounded-lg bg-emerald-600 text-white font-mono font-bold flex items-center justify-center shrink-0">1</span>
                 <div>
                   <div class="font-bold text-slate-900">Download the Official APK</div>
-                  <p class="text-slate-500 mt-0.5">Click the green download button above to save the production package
+                  <p class="text-slate-500 mt-0.5">Click the green download button above to save the installation package
                     (<span class="apk-size-display">13.71 MB</span>) directly to your device.</p>
                 </div>
               </li>
@@ -1326,8 +1785,9 @@
 
     // Hash navigation
     const hash = window.location.hash.replace('#', '');
-    if (['home', 'split', 'features', 'download', 'contact', 'terms'].includes(hash)) {
-      switchTab(hash);
+    if (['home', 'split', 'features', 'tutorials', 'tutorial', 'guide', 'guides', 'download', 'contact', 'terms'].includes(hash)) {
+      const target = (hash === 'tutorial' || hash === 'guide' || hash === 'guides') ? 'tutorials' : hash;
+      switchTab(target);
     }
   </script>
 </body>

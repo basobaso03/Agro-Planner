@@ -1402,7 +1402,7 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
               <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-600">Application Version</span>
-                  <span className="font-mono font-black text-slate-950">v1.0.5 Production</span>
+                  <span className="font-mono font-black text-slate-950">v1.0.5</span>
                 </div>
               </div>
 

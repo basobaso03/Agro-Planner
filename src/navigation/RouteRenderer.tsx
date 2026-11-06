@@ -27,6 +27,7 @@ import { StorageManagerScreen } from '../screens/more/StorageManagerScreen.tsx';
 import { NotificationPrefsScreen } from '../screens/more/NotificationPrefsScreen.tsx';
 import { CurrencyLocaleScreen } from '../screens/more/CurrencyLocaleScreen.tsx';
 import { RecentScreen } from '../screens/more/RecentScreen.tsx';
+import { TutorialScreen } from '../screens/more/TutorialScreen.tsx';
 import { ExpensesFeedTab } from '../components/ExpensesFeedTab.tsx';
 import { PoolEquityTab } from '../components/PoolEquityTab.tsx';
 import { AssetsTab } from '../components/AssetsTab.tsx';
@@ -334,7 +335,6 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
         );
 
       case 'settings':
-      case 'helpOnboarding':
         return (
           <div className="px-3.5 sm:px-5 py-3">
             <UserSettingsTab
@@ -347,6 +347,11 @@ export const RouteRenderer: React.FC<RouteRendererProps> = ({
             />
           </div>
         );
+
+      case 'helpOnboarding':
+      case 'tutorials':
+      case 'tutorial':
+        return <TutorialScreen />;
 
       default:
         return (

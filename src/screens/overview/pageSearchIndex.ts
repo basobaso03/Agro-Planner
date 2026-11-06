@@ -36,6 +36,7 @@ import {
   MapPin,
   Sliders,
   Info,
+  HelpCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -73,6 +74,18 @@ export const PAGE_SEARCH_INDEX: SearchIndexItem[] = [
     iconBg: 'bg-emerald-50 border-emerald-200',
     routeId: 'overview',
     keywords: ['home', 'dashboard', 'overview', 'summary', 'main', 'nav', 'balance', 'banking', 'start'],
+  },
+  {
+    id: 'page-user-guide',
+    title: 'User Guide & Tutorials',
+    subtitle: 'Step-by-step guides for registration, 24-hr invites, pledges, runway & biometrics',
+    category: 'Core',
+    kind: 'page',
+    icon: HelpCircle,
+    iconColor: 'text-amber-700',
+    iconBg: 'bg-amber-50 border-amber-200',
+    routeId: 'helpOnboarding',
+    keywords: ['tutorial', 'guide', 'help', 'onboarding', 'walkthrough', 'register', 'invitation', 'invite code', 'steps', 'how to'],
   },
   {
     id: 'page-operations-agro',
