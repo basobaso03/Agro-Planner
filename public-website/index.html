@@ -80,6 +80,20 @@
       background: radial-gradient(120% 120% at 50% 0%, #064E3B 0%, #022C22 55%, #051B14 100%);
     }
 
+    /* ============ MODERN BUTTONS ============ */
+    .cs-btn { display:inline-flex; align-items:center; justify-content:center; gap:.6rem; padding:.95rem 1.6rem; border-radius:9999px; font-size:.875rem; font-weight:800; letter-spacing:.01em; color:#fff; cursor:pointer; border:1px solid transparent; transition:transform .2s ease, box-shadow .2s ease, filter .2s ease; text-decoration:none; }
+    .cs-btn:hover { transform:translateY(-2px); filter:brightness(1.06); }
+    .cs-btn:active { transform:translateY(0); }
+    .cs-btn-primary { background:linear-gradient(135deg,#10b981,#047857); box-shadow:0 8px 22px -6px rgba(16,185,129,.55), inset 0 1px 0 rgba(255,255,255,.25); }
+    .cs-btn-accent { background:linear-gradient(135deg,#fbbf24,#d97706); box-shadow:0 8px 22px -6px rgba(245,158,11,.55), inset 0 1px 0 rgba(255,255,255,.3); }
+    .cs-btn-ghost { background:rgba(255,255,255,.9); color:#0f172a; border-color:#cbd5e1; backdrop-filter:blur(6px); }
+    .cs-btn-ghost:hover { background:#fff7e6; border-color:#f59e0b; }
+
+    /* ============ GUIDE HERO READABILITY ============ */
+    #tab-tutorials .public-dark-surface::after { content:""; position:absolute; inset:0; z-index:1; border-radius:inherit; pointer-events:none; background:linear-gradient(180deg, rgba(2,20,15,.82) 0%, rgba(2,20,15,.72) 100%); }
+    #tab-tutorials .public-dark-surface h1, #tab-tutorials .public-dark-surface p { color:#fff !important; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+    #tab-tutorials .public-dark-surface a[href^="#t-"] { background:rgba(2,20,15,.75) !important; color:#fff !important; border:1px solid rgba(255,255,255,.45) !important; text-shadow:none; backdrop-filter:blur(4px); }
+    #tab-tutorials .public-dark-surface a[href^="#t-"]:hover { background:#f59e0b !important; color:#1c1917 !important; }
     .tab-content {
       display: none;
     }
@@ -87,10 +101,119 @@
     .tab-content.active {
       display: block;
     }
+
+    /* ============ MODERN MOTION LAYER ============ */
+    html { scroll-behavior: smooth; }
+    body {
+      background:
+        radial-gradient(60rem 40rem at 0% 0%, rgba(16,185,129,.10), transparent 60%),
+        radial-gradient(50rem 36rem at 100% 30%, rgba(245,158,11,.10), transparent 60%),
+        #F8FAF8;
+      background-attachment: fixed;
+    }
+
+    /* Scroll progress bar */
+    #scroll-progress {
+      position: fixed; top: 0; left: 0; width: 100%; height: 4px; z-index: 9999;
+      background: rgba(15,23,42,.06); pointer-events: none;
+    }
+    #scroll-progress-bar {
+      height: 100%; width: 100%; transform-origin: 0 50%; transform: scaleX(0);
+      background: linear-gradient(90deg, #10B981, #FBBF24, #F59E0B);
+      box-shadow: 0 0 12px rgba(245,158,11,.7), 0 0 4px rgba(16,185,129,.8);
+      border-radius: 0 4px 4px 0; will-change: transform;
+    }
+
+    /* Glass navbar */
+    header.sticky { background: rgba(255,255,255,.78) !important; backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); transition: box-shadow .3s, background .3s; }
+    header.sticky.scrolled { box-shadow: 0 10px 30px -12px rgba(2,44,34,.25); background: rgba(255,255,255,.92) !important; }
+
+    /* Image hero surfaces: lazy bg + fading gradient */
+    .public-dark-surface { position: relative; overflow: hidden; isolation: isolate; }
+    .public-dark-surface > *:not(.bg-layer):not(.bg-grad):not(.bg-glow) { position: relative; z-index: 2; }
+    .bg-layer {
+      position: absolute; inset: -8% 0; z-index: 0; background-size: cover; background-position: center;
+      opacity: 0; transform: scale(1.08) translate3d(0, var(--py, 0px), 0);
+      transition: opacity 1.6s ease; will-change: transform, opacity;
+      animation: kenburns 28s ease-in-out infinite alternate;
+    }
+    .bg-layer.loaded { opacity: 1; }
+    .bg-grad {
+      position: absolute; inset: 0; z-index: 1;
+      background:
+        linear-gradient(180deg, rgba(2,44,34,.10) 0%, rgba(2,44,34,.18) 100%),
+        linear-gradient(115deg, rgba(5,150,105,.05), rgba(245,158,11,.03) 60%, rgba(2,44,34,.05));
+      background-size: 100% 100%, 200% 200%;
+      animation: gradshift 14s ease-in-out infinite alternate;
+    }
+    .bg-glow {
+      position: absolute; z-index: 1; width: 28rem; height: 28rem; border-radius: 50%; filter: blur(70px);
+      background: radial-gradient(circle, rgba(251,191,36,.35), transparent 70%);
+      top: -8rem; right: -6rem; animation: floaty 9s ease-in-out infinite alternate;
+    }
+    @keyframes kenburns { from { background-position: 50% 50%; scale: 1; } to { background-position: 55% 45%; scale: 1.08; } }
+    @keyframes gradshift { from { background-position: 0 0, 0% 50%; } to { background-position: 0 0, 100% 50%; } }
+    @keyframes floaty { from { transform: translate(0,0) scale(1); } to { transform: translate(-40px,30px) scale(1.15); } }
+
+    /* Typing animation */
+    .typed-wrap { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: clamp(.9rem, 2.2vw, 1.2rem); color: #FDE68A; min-height: 1.8em; }
+    .typed-wrap .prefix { color: #6EE7B7; }
+    .typed-cursor { display: inline-block; width: .55ch; height: 1.1em; margin-left: 2px; vertical-align: -.15em; background: #FBBF24; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Scroll reveal */
+    .reveal { opacity: 0; transform: translateY(34px) scale(.98); filter: blur(6px);
+      transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1), filter .8s ease; transition-delay: var(--d, 0ms); }
+    .reveal.from-left { transform: translateX(-40px); }
+    .reveal.from-right { transform: translateX(40px); }
+    .reveal.in { opacity: 1; transform: none; filter: none; }
+
+    /* Card polish */
+    .tab-content .bg-white.rounded-3xl, .tab-content .bg-white.rounded-2xl { transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s, border-color .35s; }
+    .tab-content .bg-white.rounded-3xl:hover { transform: translateY(-6px); box-shadow: 0 24px 50px -20px rgba(4,120,87,.35); border-color: rgba(16,185,129,.5); }
+    .tab-content a[download], .tab-content button.cursor-pointer { position: relative; overflow: hidden; }
+    .tab-content a[download]::after, .tab-content button.cursor-pointer::after {
+      content: ''; position: absolute; top: 0; left: -120%; width: 60%; height: 100%;
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent); transform: skewX(-20deg); transition: left .7s;
+    }
+    .tab-content a[download]:hover::after, .tab-content button.cursor-pointer:hover::after { left: 140%; }
+    .tab-content.active { animation: tabin .6s ease both; }
+    @keyframes tabin { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+    /* Parallax image band */
+    .photo-band { position: relative; overflow: hidden; isolation: isolate; color: #fff; }
+    .photo-band .bg-layer.loaded { opacity: 1; }
+    .photo-band .bg-grad {
+      background:
+        linear-gradient(180deg, #F8FAF8 0%, rgba(248,250,248,0) 18%, rgba(248,250,248,0) 82%, #F8FAF8 100%),
+        linear-gradient(110deg, rgba(2,44,34,.25), rgba(6,78,59,.12) 55%, rgba(180,83,9,.08));
+    }
+    .photo-band .content { position: relative; z-index: 2; }
+    .stat-card { background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: 1.5rem; padding: 1.5rem; }
+    .gradient-text { background: linear-gradient(90deg, #6EE7B7, #FDE68A, #FBBF24); -webkit-background-clip: text; background-clip: text; color: transparent; background-size: 200% auto; animation: shine 6s linear infinite; }
+    @keyframes shine { to { background-position: 200% center; } }
+
+    /* Back to top */
+    #to-top { position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+      background: conic-gradient(#F59E0B var(--p, 0%), rgba(255,255,255,.9) 0); border: 0; cursor: pointer; opacity: 0; transform: translateY(20px); pointer-events: none; transition: .3s; box-shadow: 0 10px 25px -8px rgba(0,0,0,.4); }
+    #to-top::before { content: '↑'; width: 40px; height: 40px; border-radius: 50%; background: #064E3B; color: #fff; display: grid; place-items: center; font-weight: 900; }
+    #to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; filter: none; transition: none; }
+      .bg-layer, .bg-grad, .bg-glow, .gradient-text, .tab-content.active { animation: none !important; }
+    }
   </style>
 </head>
 
 <body class="min-h-screen flex flex-col justify-between">
+
+  <!-- Scroll progress indicator -->
+  <div id="scroll-progress" role="progressbar" aria-label="Page scroll progress" aria-valuemin="0" aria-valuemax="100"
+    aria-valuenow="0">
+    <div id="scroll-progress-bar"></div>
+  </div>
+  <button id="to-top" aria-label="Back to top"></button>
 
   <!-- ==================== STICKY TOP BRAND NAVBAR ==================== -->
   <header class="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
@@ -225,19 +348,16 @@
               Unified Financial Runway, Transparent Group Treasuries &amp; Agro-Farming Intelligence.
             </h1>
 
+            <div class="typed-wrap" aria-live="off"><span class="prefix">&gt; </span><span id="typed-text"></span><span
+                class="typed-cursor"></span></div>
+
             <p class="text-sm sm:text-base lg:text-lg text-emerald-100/90 leading-relaxed max-w-2xl">
-              Built by <strong>BASOBASO SOFTWARES</strong>, <strong>Capital Seed</strong> merges two powerful business
-              architectures into one unified, tamper-proof platform: a verified financial treasury for <em>collaborative
-                business
-                ventures</em>, and an enterprise biological management suite for <em>commercial livestock and
-                farms</em>.
-              Plan your capital runway to break-even, track member pledges, verify SHA-256 audit trails, and export
-              tamper-proof reports — 100% offline-ready.
+              Built by <strong>BASOBASO SOFTWARES</strong>, <strong>Capital Seed</strong> brings two business tools together in one secure platform. It includes a verified treasury for <em>shared business ventures</em> and a complete management system for <em>livestock and commercial farms</em>. Plan your cash runway to break-even, track member pledges, check audit trails, and export protected reports. It also works fully offline.
             </p>
 
             <div class="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5">
               <a href="apk/capital-seed.apk" download="capital-seed.apk"
-                class="px-6 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-extrabold flex items-center justify-center gap-2.5 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
+                class="cs-btn cs-btn-primary">
                 <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
@@ -249,20 +369,11 @@
               </a>
 
               <button onclick="switchTab('split')"
-                class="px-6 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-xl transition-all hover:scale-[1.02] cursor-pointer">
+                class="cs-btn cs-btn-accent">
                 <span>Explore Dual Business Split</span>
                 <span class="text-base">→</span>
               </button>
 
-              <button onclick="switchTab('features')"
-                class="px-5 py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
-                <span>Core Engines</span>
-              </button>
-
-              <button onclick="switchTab('tutorials')"
-                class="px-5 py-4 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer backdrop-blur-xs">
-                <span>Guides &amp; Tutorials</span>
-              </button>
             </div>
           </div>
 
@@ -317,6 +428,27 @@
                 withdrawal unless actual, paid member cash is physically on the ground.
               </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Parallax Photo Band with animated counters -->
+      <div class="photo-band py-16 sm:py-24 px-4 sm:px-6 lg:px-10">
+        <div class="bg-layer" data-bg="img/wheat.jpg"></div>
+        <div class="bg-grad"></div>
+        <div class="content max-w-7xl mx-auto space-y-10">
+          <div class="max-w-2xl space-y-3">
+            <div class="text-xs font-extrabold uppercase tracking-widest text-amber-300">From Seed to Harvest</div>
+            <h2 class="text-3xl sm:text-5xl font-black leading-tight">Plan every season with <span
+                class="gradient-text">total clarity</span>.</h2>
+            <p class="text-sm sm:text-base text-emerald-50/90 leading-relaxed">Capital Seed keeps every shilling, every
+              pledge and every animal accounted for — online or offline.</p>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <div class="stat-card reveal"><div class="text-3xl sm:text-5xl font-black font-mono text-amber-300"><span data-count="11">0</span></div><div class="text-xs sm:text-sm font-bold mt-1 text-emerald-50">Standardized PDF reports</div></div>
+            <div class="stat-card reveal"><div class="text-3xl sm:text-5xl font-black font-mono text-amber-300"><span data-count="256">0</span>-bit</div><div class="text-xs sm:text-sm font-bold mt-1 text-emerald-50">SHA audit chain</div></div>
+            <div class="stat-card reveal"><div class="text-3xl sm:text-5xl font-black font-mono text-amber-300"><span data-count="24">0</span>h</div><div class="text-xs sm:text-sm font-bold mt-1 text-emerald-50">Expiring invite codes</div></div>
+            <div class="stat-card reveal"><div class="text-3xl sm:text-5xl font-black font-mono text-amber-300"><span data-count="100">0</span>%</div><div class="text-xs sm:text-sm font-bold mt-1 text-emerald-50">Offline-ready</div></div>
           </div>
         </div>
       </div>
@@ -1347,7 +1479,7 @@
 
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
               <a id="direct-apk-download-btn" href="apk/capital-seed.apk" download="capital-seed.apk"
-                class="px-6 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.02] cursor-pointer">
+                class="cs-btn cs-btn-primary">
                 <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
@@ -1360,13 +1492,13 @@
 
               <a href="https://wa.me/263788123047?text=Hello%20BASOBASO%20SOFTWARES%2C%20please%20send%20me%20the%20official%20Capital%20Seed%20Android%20APK%20package."
                 target="_blank" rel="noopener noreferrer"
-                class="px-5 py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm transition-colors">
+                class="cs-btn cs-btn-accent">
                 <span>Request on WhatsApp</span>
                 <span class="text-base">→</span>
               </a>
 
               <a href="mailto:baseramarlvin@gmail.com?subject=Capital%20Seed%20APK%20Request&body=Please%20send%20the%20Capital%20Seed%20Android%20APK%20package."
-                class="px-4 py-4 rounded-2xl bg-[#FAF8F5] hover:bg-amber-50 border border-slate-300 text-slate-900 text-sm font-extrabold flex items-center justify-center gap-2 transition-colors">
+                class="cs-btn cs-btn-ghost">
                 <span>Email Package</span>
               </a>
             </div>
@@ -2018,6 +2150,119 @@
       const target = (hash === 'tutorial' || hash === 'guide' || hash === 'guides') ? 'tutorials' : hash;
       switchTab(target);
     }
+  </script>
+  <script>
+    /* ============ MODERN MOTION LAYER (progress bar, parallax, lazy bg, typing, reveal, counters) ============ */
+    (function () {
+      var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var $ = function (s, c) { return (c || document).querySelector(s); };
+      var $$ = function (s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); };
+
+      /* 1. Scroll progress + header shadow + back to top + parallax */
+      var bar = $('#scroll-progress-bar'), prog = $('#scroll-progress'), toTop = $('#to-top'), header = $('header.sticky');
+      var ticking = false;
+      function onScroll() {
+        var h = document.documentElement;
+        var max = h.scrollHeight - h.clientHeight;
+        var p = max > 0 ? Math.min(1, Math.max(0, h.scrollTop / max)) : 0;
+        bar.style.transform = 'scaleX(' + p + ')';
+        prog.setAttribute('aria-valuenow', Math.round(p * 100));
+        toTop.style.setProperty('--p', (p * 100) + '%');
+        toTop.classList.toggle('show', h.scrollTop > 600);
+        if (header) header.classList.toggle('scrolled', h.scrollTop > 10);
+        if (!reduce) {
+          var vh = window.innerHeight;
+          $$('.bg-layer').forEach(function (el) {
+            var r = el.parentNode.getBoundingClientRect();
+            if (r.bottom < 0 || r.top > vh) return;
+            el.style.setProperty('--py', ((r.top + r.height / 2 - vh / 2) * -0.12).toFixed(1) + 'px');
+          });
+        }
+        ticking = false;
+      }
+      window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+      window.addEventListener('resize', onScroll);
+      toTop.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+      /* 2. Image backgrounds on dark hero surfaces (lazy loaded, fading gradient overlay) */
+      var heroImages = {
+        'tab-home': 'img/hero.jpg', 'split': 'img/fields.jpg', 'tab-features': 'img/livestock.jpg', 'tab-tutorials': 'img/growth.jpg'
+      };
+      $$('.public-dark-surface').forEach(function (el) {
+        var sec = el.closest('section');
+        var src = heroImages[sec ? sec.id : ''] || 'img/hero.jpg';
+        var layer = document.createElement('div'); layer.className = 'bg-layer'; layer.dataset.bg = src;
+        var grad = document.createElement('div'); grad.className = 'bg-grad';
+        var glow = document.createElement('div'); glow.className = 'bg-glow';
+        el.insertBefore(glow, el.firstChild); el.insertBefore(grad, el.firstChild); el.insertBefore(layer, el.firstChild);
+      });
+      var lazyIO = 'IntersectionObserver' in window ? new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          var layer = e.target; lazyIO.unobserve(layer);
+          var img = new Image();
+          img.onload = function () { layer.style.backgroundImage = 'url("' + layer.dataset.bg + '")'; requestAnimationFrame(function () { layer.classList.add('loaded'); }); };
+          img.src = layer.dataset.bg;
+        });
+      }, { rootMargin: '300px 0px' }) : null;
+      $$('.bg-layer').forEach(function (l) {
+        if (lazyIO) lazyIO.observe(l); else { l.style.backgroundImage = 'url("' + l.dataset.bg + '")'; l.classList.add('loaded'); }
+      });
+
+      /* 3. Typing animation */
+      var typedEl = $('#typed-text');
+      if (typedEl) {
+        var phrases = ['Plan your capital runway.', 'Track every member pledge.', 'Verify SHA-256 audit trails.', 'Manage farms & livestock offline.', 'Export tamper-proof PDF reports.'];
+        if (reduce) { typedEl.textContent = phrases[0]; }
+        else {
+          var pi = 0, ci = 0, del = false;
+          (function tick() {
+            var full = phrases[pi];
+            ci += del ? -1 : 1;
+            typedEl.textContent = full.slice(0, ci);
+            var wait = del ? 28 : 65;
+            if (!del && ci === full.length) { del = true; wait = 1700; }
+            else if (del && ci === 0) { del = false; pi = (pi + 1) % phrases.length; wait = 350; }
+            setTimeout(tick, wait);
+          })();
+        }
+      }
+
+      /* 4. Scroll reveal (auto-applied to cards, headings and grid children) */
+      var targets = [];
+      $$('.tab-content').forEach(function (sec) {
+        $$('.rounded-3xl, .rounded-2xl, h2, .stat-card', sec).forEach(function (el) {
+          if (el.parentNode.closest('.reveal')) return;
+          var ds = el.closest('.public-dark-surface'); if (ds && ds !== el) return;
+          if (el.classList.contains('reveal')) { targets.push(el); return; }
+          var idx = Array.prototype.indexOf.call(el.parentNode.children, el);
+          el.style.setProperty('--d', Math.min(idx, 5) * 90 + 'ms');
+          el.classList.add('reveal');
+          if (el.parentNode.className && /grid-cols-2|lg:grid-cols-2/.test(el.parentNode.className)) el.classList.add(idx % 2 ? 'from-right' : 'from-left');
+          targets.push(el);
+        });
+      });
+      $$('.photo-band .reveal').forEach(function (el, i) { el.style.setProperty('--d', i * 100 + 'ms'); });
+      // Reveal observer also watches the first-loaded stat cards
+      function countUp(el) {
+        var end = +el.dataset.count, start = performance.now(), dur = 1600;
+        (function step(t) {
+          var k = Math.min(1, (t - start) / dur);
+          el.textContent = Math.round(end * (1 - Math.pow(1 - k, 3)));
+          if (k < 1) requestAnimationFrame(step);
+        })(start);
+      }
+      var revealIO = 'IntersectionObserver' in window ? new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          e.target.classList.add('in'); revealIO.unobserve(e.target);
+          $$('[data-count]', e.target).forEach(function (c) { reduce ? (c.textContent = c.dataset.count) : countUp(c); });
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }) : null;
+      $$('.reveal').forEach(function (el) { if (revealIO) revealIO.observe(el); else el.classList.add('in'); });
+
+      onScroll();
+    })();
   </script>
 </body>
 
