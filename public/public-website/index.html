@@ -41,6 +41,16 @@
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap"
     rel="stylesheet" />
 
+  <!-- Suppress CDN Production Warning -->
+  <script>
+    (function () {
+      var origWarn = console.warn;
+      console.warn = function () {
+        if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].indexOf('cdn.tailwindcss.com') !== -1) return;
+        origWarn.apply(console, arguments);
+      };
+    })();
+  </script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -156,7 +166,8 @@
           </svg>
           <span>Download APK</span>
           <span
-            class="apk-size-display text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">13.71 MB</span>
+            class="apk-size-display text-[10px] sm:text-[11px] font-mono font-bold bg-emerald-800/60 px-1.5 py-0.5 rounded">13.71
+            MB</span>
         </a>
 
         <button onclick="toggleMobileMenu()"
@@ -185,15 +196,20 @@
       <button onclick="switchTab('home')"
         class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Overview</button>
       <button onclick="switchTab('split')"
-        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Dual Business Split</button>
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Dual
+        Business Split</button>
       <button onclick="switchTab('features')"
-        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Core Engines</button>
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Core
+        Engines</button>
       <button onclick="switchTab('download')"
-        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Download Android App (APK)</button>
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Download
+        Android App (APK)</button>
       <button onclick="switchTab('contact')"
-        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Engineering Support</button>
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Engineering
+        Support</button>
       <button onclick="switchTab('terms')"
-        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Zero-Trust Rules</button>
+        class="w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100">Zero-Trust
+        Rules</button>
     </div>
   </header>
 
@@ -218,8 +234,10 @@
 
             <p class="text-sm sm:text-base lg:text-lg text-emerald-100/90 leading-relaxed max-w-2xl">
               Built by <strong>BASOBASO SOFTWARES</strong>, <strong>Capital Seed</strong> merges two powerful business
-              architectures into one zero-trust platform: a transparent financial treasury for <em>collaborative business
-              ventures</em>, and an enterprise biological management suite for <em>commercial livestock and farms</em>.
+              architectures into one zero-trust platform: a transparent financial treasury for <em>collaborative
+                business
+                ventures</em>, and an enterprise biological management suite for <em>commercial livestock and
+                farms</em>.
               Plan your capital runway to break-even, track member pledges, verify SHA-256 audit trails, and export
               tamper-proof reports — 100% offline-ready.
             </p>
@@ -232,7 +250,8 @@
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                 </svg>
                 <span>Download Official Android APK</span>
-                <span class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded">13.71 MB</span>
+                <span class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded">13.71
+                  MB</span>
                 <span class="text-base">↓</span>
               </a>
 
@@ -254,7 +273,8 @@
             class="lg:col-span-5 bg-white text-slate-900 rounded-3xl p-6 sm:p-8 border-2 border-amber-400/80 shadow-2xl space-y-5">
             <div class="pb-3 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <span class="text-xs font-black uppercase tracking-wider text-amber-700 block">Bank-Grade Zero Trust</span>
+                <span class="text-xs font-black uppercase tracking-wider text-amber-700 block">Bank-Grade Zero
+                  Trust</span>
                 <span class="text-sm font-bold text-slate-900">Capital Seed Multi-Venture Core</span>
               </div>
               <span
@@ -423,7 +443,8 @@
                   <span>Instant Receipt-Backed Expense Deductions</span>
                 </div>
                 <p class="text-xs text-slate-600 leading-relaxed">
-                  When a partner buys equipment or pays an operational expense, they attach the receipt and note. Money is
+                  When a partner buys equipment or pays an operational expense, they attach the receipt and note. Money
+                  is
                   instantly deducted from the collective pool, providing complete transparency.
                 </p>
               </div>
@@ -445,7 +466,8 @@
                   <span>Clean UI Stripped of Farming Overhead</span>
                 </div>
                 <p class="text-xs text-slate-600 leading-relaxed">
-                  Agricultural modules like livestock paddocks, animal credit sales, and feed inventory are cleanly hidden
+                  Agricultural modules like livestock paddocks, animal credit sales, and feed inventory are cleanly
+                  hidden
                   so you focus solely on commercial cashflow and assets.
                 </p>
               </div>
@@ -484,7 +506,8 @@
                   <span>Automated Move-In Date &amp; Stage Tracking</span>
                 </div>
                 <p class="text-xs text-slate-600 leading-relaxed">
-                  Enter the animal move-in date and target duration; Capital Seed automatically derives exact current age,
+                  Enter the animal move-in date and target duration; Capital Seed automatically derives exact current
+                  age,
                   days left to harvest, and active protocol checkpoints.
                 </p>
               </div>
@@ -543,7 +566,8 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-amber-700">ENGINE 01</span>
-                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Financial Runway</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Financial
+                  Runway</span>
               </div>
               <h2 class="text-lg font-bold text-slate-900">Runway Capital Planning &amp; Spend Gating</h2>
               <ul class="space-y-2 text-xs text-slate-600">
@@ -573,7 +597,8 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-emerald-700">ENGINE 02</span>
-                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Treasury &amp; Equity</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Treasury &amp;
+                  Equity</span>
               </div>
               <h2 class="text-lg font-bold text-slate-900">Master Capital Pool &amp; Pro-Rata Equity</h2>
               <ul class="space-y-2 text-xs text-slate-600">
@@ -603,7 +628,8 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-slate-700">ENGINE 03</span>
-                <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold">Code Onboarding</span>
+                <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-[11px] font-bold">Code
+                  Onboarding</span>
               </div>
               <h2 class="text-lg font-bold text-slate-900">24-Hour Expiring Secure Invite Codes</h2>
               <ul class="space-y-2 text-xs text-slate-600">
@@ -633,7 +659,8 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-amber-700">ENGINE 04</span>
-                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Compliance Exports</span>
+                <span class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold">Compliance
+                  Exports</span>
               </div>
               <h2 class="text-lg font-bold text-slate-900">11 Standardized Zero-Underscore PDFs</h2>
               <ul class="space-y-2 text-xs text-slate-600">
@@ -663,7 +690,8 @@
             <div class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-mono font-extrabold text-emerald-700">ENGINE 05</span>
-                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Audit Ledger</span>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 text-[11px] font-bold">Audit
+                  Ledger</span>
               </div>
               <h2 class="text-lg font-bold text-slate-900">Cryptographic SHA-256 Audit Stream</h2>
               <ul class="space-y-2 text-xs text-slate-600">
@@ -739,7 +767,8 @@
             </h1>
 
             <p class="text-xs sm:text-base text-slate-600 leading-relaxed">
-              Install the official standalone Capital Seed Android APK engineered by <strong>BASOBASO SOFTWARES</strong>.
+              Install the official standalone Capital Seed Android APK engineered by <strong>BASOBASO
+                SOFTWARES</strong>.
               Enjoy complete offline capability, biometric fingerprint access, and real-time multi-tenant collaboration
               for your business venture or commercial farm.
             </p>
@@ -750,11 +779,16 @@
                 Capital Seed Update (v1.0.5)
               </div>
               <div class="text-xs text-slate-700 leading-relaxed space-y-1 release-notes-display">
-                <p>• <strong>Capital Seed Rebrand:</strong> Official transition with modernized identity and interface styling.</p>
-                <p>• <strong>Dual Business Split:</strong> Clean workspace separation for Agro-Farming &amp; Livestock vs General Business Ventures.</p>
-                <p>• <strong>Runway Capital Planning:</strong> Milestone budgeting up to break-even, contingency buffer, and spend gating.</p>
-                <p>• <strong>11 Zero-Underscore PDFs:</strong> Standardized business reports with guaranteed zero-underscore filenames.</p>
-                <p>• <strong>Actionable Audit Trail:</strong> Interactive SHA-256 chain verification, single-block inspector, and proof exports.</p>
+                <p>• <strong>Capital Seed Rebrand:</strong> Official transition with modernized identity and interface
+                  styling.</p>
+                <p>• <strong>Dual Business Split:</strong> Clean workspace separation for Agro-Farming &amp; Livestock
+                  vs General Business Ventures.</p>
+                <p>• <strong>Runway Capital Planning:</strong> Milestone budgeting up to break-even, contingency buffer,
+                  and spend gating.</p>
+                <p>• <strong>11 Zero-Underscore PDFs:</strong> Standardized business reports with guaranteed
+                  zero-underscore filenames.</p>
+                <p>• <strong>Actionable Audit Trail:</strong> Interactive SHA-256 chain verification, single-block
+                  inspector, and proof exports.</p>
               </div>
             </div>
 
@@ -767,7 +801,8 @@
                 </svg>
                 <span>Download Official Android APK</span>
                 <span
-                  class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded ml-1">13.71 MB</span>
+                  class="apk-size-display text-xs font-mono font-bold bg-emerald-800/60 px-2 py-0.5 rounded ml-1">13.71
+                  MB</span>
               </a>
 
               <a href="https://wa.me/263788123047?text=Hello%20BASOBASO%20SOFTWARES%2C%20please%20send%20me%20the%20official%20Capital%20Seed%20Android%20APK%20package."
@@ -826,7 +861,8 @@
                   class="w-6 h-6 rounded-lg bg-amber-500 text-white font-mono font-bold flex items-center justify-center shrink-0">3</span>
                 <div>
                   <div class="font-bold text-slate-900">Join via 24-Hr Organization Code</div>
-                  <p class="text-slate-500 mt-0.5">Launch Capital Seed, enter your 24-hr secret invite code from your admin,
+                  <p class="text-slate-500 mt-0.5">Launch Capital Seed, enter your 24-hr secret invite code from your
+                    admin,
                     and enable optional fingerprint unlock.</p>
                 </div>
               </li>
@@ -838,12 +874,14 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
             <div class="font-extrabold text-slate-900 text-sm">Offline Field Resilience</div>
-            <p class="text-slate-600 leading-relaxed">Full offline caching allows operations teams to log expenses, feeds,
+            <p class="text-slate-600 leading-relaxed">Full offline caching allows operations teams to log expenses,
+              feeds,
               and livestock events in remote field locations without cellular signal.</p>
           </div>
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
             <div class="font-extrabold text-slate-900 text-sm">Biometric Fingerprint Lock</div>
-            <p class="text-slate-600 leading-relaxed">Enables instant biometric login and automatically activates privacy
+            <p class="text-slate-600 leading-relaxed">Enables instant biometric login and automatically activates
+              privacy
               number masking when unlocking in public settings.</p>
           </div>
           <div class="bg-white border border-slate-200 rounded-3xl p-6 space-y-2">
@@ -870,7 +908,8 @@
               BASOBASO SOFTWARES
             </h1>
             <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Contact our engineering studio for enterprise deployments, custom venture configurations, feature requests,
+              Contact our engineering studio for enterprise deployments, custom venture configurations, feature
+              requests,
               or dedicated technical support.
             </p>
           </div>
@@ -891,7 +930,8 @@
             <div class="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-3">
               <div>
                 <div class="text-[11px] font-semibold text-slate-500">Call &amp; WhatsApp Direct Line</div>
-                <div class="font-mono font-extrabold text-slate-900 text-sm tabular-nums">+263 788 123 047 / 0788123047</div>
+                <div class="font-mono font-extrabold text-slate-900 text-sm tabular-nums">+263 788 123 047 / 0788123047
+                </div>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <a href="tel:0788123047"
@@ -944,7 +984,8 @@
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
               <div>
-                <label for="c-org" class="block text-xs font-semibold text-slate-700 mb-1">Organization / Venture Name</label>
+                <label for="c-org" class="block text-xs font-semibold text-slate-700 mb-1">Organization / Venture
+                  Name</label>
                 <input id="c-org" type="text" placeholder="e.g. Sunrise Holdings"
                   class="w-full bg-[#FAF8F5] border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-500" />
               </div>
@@ -991,8 +1032,10 @@
         <div class="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xs space-y-7">
           <div class="pb-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div class="text-xs font-bold uppercase tracking-wider text-amber-700">Governance &amp; Immutability Rules</div>
-              <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">Capital Seed Governance Specification</h1>
+              <div class="text-xs font-bold uppercase tracking-wider text-amber-700">Governance &amp; Immutability Rules
+              </div>
+              <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">Capital Seed Governance Specification
+              </h1>
             </div>
             <span class="text-xs font-mono text-slate-500 tabular-nums">
               Release: <span class="apk-version-display">v1.0.5</span> · BASOBASO SOFTWARES
@@ -1012,7 +1055,8 @@
             <div class="space-y-1.5">
               <h2 class="text-base font-bold text-slate-900">02. Tamper-Proof Immutability Law</h2>
               <p>
-                Capital Seed is built on strict transparency. Once an equity contribution, runway expense, debt liability,
+                Capital Seed is built on strict transparency. Once an equity contribution, runway expense, debt
+                liability,
                 or livestock transaction is posted to the ledger, it cannot be silently modified or deleted. Any
                 corrections must be recorded as explicit contra adjustment entries accompanied by a mandatory audit
                 explanation note. All actions are cryptographically sealed in sequential SHA-256 hash chains.
@@ -1040,7 +1084,8 @@
             <div class="space-y-1.5">
               <h2 class="text-base font-bold text-slate-900">05. Intellectual Property &amp; Developer Attribution</h2>
               <p>
-                All algorithms, runway math models, UI layouts, and export generators in Capital Seed are the intellectual
+                All algorithms, runway math models, UI layouts, and export generators in Capital Seed are the
+                intellectual
                 property of <strong>BASOBASO SOFTWARES</strong> (Lead Engineer: <a
                   href="https://www.linkedin.com/in/marlvin-basera-359939286" target="_blank" rel="noopener noreferrer"
                   class="font-bold text-[#0A66C2] hover:underline">Marlvin Basera</a> · Email: <span

@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="application-name" content="Capital Seed" />
   <meta name="apple-mobile-web-app-title" content="Capital Seed" />
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="icon" type="image/png" sizes="64x64" href="favicon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
@@ -43,88 +43,24 @@
   <meta name="twitter:description"
     content="Dual-purpose agriculture, operations, and pooled capital management platform. Built by BASOBASO SOFTWARES." />
   <meta name="twitter:image" content="https://basobaso03.github.io/Agro-Planner/icon.png" />
-  <style>
-    #public-website-view {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      border: none;
-      z-index: 99999;
-      background: #FAF8F5;
-    }
-  </style>
+  <!-- GitHub Pages Automatic Router to Public Marketing & Download Website -->
+  <script>
+    (function () {
+      if (window.location.hostname.includes('github.io')) {
+        var hash = window.location.hash || '';
+        window.location.replace('public-website/index.html' + hash);
+      }
+    })();
+  </script>
 </head>
 
 <body>
-  <!-- Full-Window Public Presentation Website (Loads by default on GitHub Pages root) -->
-  <iframe id="public-website-view" src="public-website/index.html"
-    title="Agro Planner Public Website &amp; Technical Specifications" style="display: none;"></iframe>
-
   <!-- React Application Container -->
   <div id="root"></div>
   <div id="sheet-root"></div>
   <div id="toast-root"></div>
 
-  <script>
-    (function () {
-      var params = new URLSearchParams(window.location.search);
-      var hash = window.location.hash || '';
-      var isGitHubPages = window.location.hostname.includes('github.io');
-      var isCapacitorNative = Boolean(
-        (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ||
-        window.location.protocol === 'capacitor:' ||
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        !isGitHubPages
-      );
-
-      // On non-GitHub environments (Android APK, local development, emulator, etc.), ALWAYS show the app!
-      // On GitHub Pages, default to presentation website unless ?app=true or #app is provided.
-      var wantsApp = isCapacitorNative || params.get('app') === 'true' || hash === '#app';
-      var wantsWebsite = isGitHubPages && (params.get('website') === 'true' || hash === '#website' || hash === '#download' || hash === '#features' || hash === '#contact');
-
-      if (!isGitHubPages) {
-        wantsApp = true;
-        wantsWebsite = false;
-      }
-
-      var iframe = document.getElementById('public-website-view');
-      var rootDiv = document.getElementById('root');
-
-      if (wantsApp || !wantsWebsite) {
-        if (iframe) iframe.style.display = 'none';
-        if (rootDiv) rootDiv.style.display = 'block';
-        try { localStorage.setItem('agro_view_mode', 'app'); } catch (e) { }
-      } else {
-        // Default to public website view only on GitHub Pages root
-        if (iframe) {
-          iframe.style.display = 'block';
-          if (hash && hash !== '#website') {
-            iframe.src = 'public-website/index.html' + hash;
-          }
-        }
-        if (rootDiv) rootDiv.style.display = 'none';
-        try { localStorage.setItem('agro_view_mode', 'website'); } catch (e) { }
-      }
-
-      // Handle message event from iframe when user clicks "Launch Web App"
-      window.addEventListener('message', function (event) {
-        if (event.data && event.data.type === 'LAUNCH_AGRO_APP') {
-          if (iframe) iframe.style.display = 'none';
-          if (rootDiv) rootDiv.style.display = 'block';
-          try { localStorage.setItem('agro_view_mode', 'app'); } catch (e) { }
-          try {
-            var u = new URL(window.location.href);
-            u.searchParams.set('app', 'true');
-            window.history.pushState({}, '', u.toString());
-          } catch (e) { }
-        }
-      });
-    })();
-  </script>
-  <script type="module" src="/src/main.tsx"></script>
+  <script type="module" src="./src/main.tsx"></script>
 </body>
 
 </html>

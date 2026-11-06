@@ -82,7 +82,7 @@ try {
       const parsed = JSON.parse(fs.readFileSync(rootVerPath, 'utf-8'));
       if (parsed.latestVersion) currentVersion = parsed.latestVersion;
     }
-  } catch {}
+  } catch { }
 
   // Automatically update dynamic size & version config in public website HTML files
   try {
