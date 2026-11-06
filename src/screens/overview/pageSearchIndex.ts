@@ -326,7 +326,7 @@ export const PAGE_SEARCH_INDEX: SearchIndexItem[] = [
   {
     id: 'page-storage-manager',
     title: 'Device Storage Manager',
-    subtitle: 'High-capacity IndexedDB local storage, cache reset, quota diagnostics',
+    subtitle: 'Device ledger storage, cache pruning, and database reset',
     category: 'System',
     kind: 'page',
     icon: HardDrive,

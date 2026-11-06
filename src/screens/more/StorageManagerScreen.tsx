@@ -11,7 +11,6 @@ import {
   Receipt,
   PlaneTakeoff,
   Binary,
-  Layers,
 } from 'lucide-react';
 import { appStorage } from '../../services/storage.ts';
 import { dataService } from '../../services/dataService.ts';
@@ -28,7 +27,6 @@ interface StorageDiagnostics {
   localStorageKeys: number;
   snapshotBytes: number;
   totalUsageBytes: number;
-  quotaBytes: number;
   recordCounts: {
     organizations: number;
     members: number;
@@ -57,7 +55,6 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
     localStorageKeys: 0,
     snapshotBytes: 0,
     totalUsageBytes: 0,
-    quotaBytes: 0,
     recordCounts: {
       organizations: 0,
       members: 0,
@@ -104,7 +101,6 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
         localStorageKeys: storageDiag.localStorageKeys,
         snapshotBytes,
         totalUsageBytes: totalDetectedBytes,
-        quotaBytes: storageDiag.quotaBytes,
         recordCounts: {
           organizations: orgCount,
           members: memberCount,
@@ -226,9 +222,6 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
     }
   };
 
-  const quotaMb =
-    diag.quotaBytes > 0 ? (diag.quotaBytes / (1024 * 1024)).toFixed(0) : 'Unlimited';
-
   return (
     <div className="flex-1 flex flex-col p-4 pb-28 max-w-2xl mx-auto w-full space-y-4">
       {/* Hero: Storage Diagnostics */}
@@ -258,7 +251,7 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
           <div className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]/80 space-y-0.5">
             <div className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1">
               <Database className="w-3 h-3 text-amber-700" />
@@ -279,17 +272,6 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
               {formatBytes(diag.localStorageBytes)}
             </div>
             <div className="text-[10px] text-slate-500">{diag.localStorageKeys} keys stored</div>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#E8DFCE]/80 space-y-0.5 col-span-2 sm:col-span-1">
-            <div className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1">
-              <Layers className="w-3 h-3 text-blue-700" />
-              <span>Device Quota</span>
-            </div>
-            <div className="text-sm font-mono font-black text-slate-950">
-              ~{quotaMb} {diag.quotaBytes > 0 ? 'MB' : ''}
-            </div>
-            <div className="text-[10px] text-slate-500">IndexedDB Capacity</div>
           </div>
         </div>
       </div>
