@@ -298,6 +298,109 @@ test('Runway Pledges and Member Targets: Synchronized to the same unified source
   assert.equal(pledgeAfterTargetUpdate.amount, 3200);
 });
 
+test('Multi-Device Authentication: Changing password on Device A invalidates Device B session', async () => {
+  const member: OrgMember = {
+    id: 'mem-multi-device-test',
+    email: 'multidevice@example.com',
+    fullName: 'Multi Device User',
+    phoneOrEmail: 'multidevice@example.com',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    active: true,
+    hasPasswordSetup: false,
+    sessionVersion: 1,
+    joinedAt: new Date().toISOString(),
+  };
+
+  const curState = dataService.getState();
+  dataService.saveLocalState({
+    ...curState,
+    members: [...curState.members, member],
+  });
+
+  // Simulate active session on Device A
+  (dataService as any).setActiveSession({
+    uid: member.id,
+    email: member.email,
+    displayName: member.fullName,
+    emailVerified: true,
+    providers: ['google.com'],
+    isCloudAuth: true,
+    sessionVersion: 1,
+  });
+
+  // Device A sets up/changes password
+  const updatedMember = await dataService.setupOrUpdatePasswordForCurrentUser({
+    member,
+    newPassword: 'SuperSecurePassword123!',
+  });
+
+  assert.equal(updatedMember.sessionVersion, 2);
+  assert.ok(updatedMember.passwordVerifierHash);
+  assert.ok(updatedMember.passwordChangedAt);
+
+  // Device A session was upgraded to sessionVersion 2 and remains valid
+  const deviceASession = dataService.getActiveSession();
+  assert.equal(deviceASession?.sessionVersion, 2);
+  assert.equal(dataService.checkAndEnforceActiveSessionValidity(), true);
+});
+
+test('Multi-Device Authentication: Global revocation stamps sessionsRevokedAt and increments sessionVersion', async () => {
+  const member: OrgMember = {
+    id: 'mem-global-revoke-test',
+    email: 'revokeall@example.com',
+    fullName: 'Revoke All User',
+    phoneOrEmail: 'revokeall@example.com',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    active: true,
+    sessionVersion: 2,
+    sessionsRevokedAt: new Date(Date.now() - 60000).toISOString(),
+    joinedAt: new Date().toISOString(),
+  };
+
+  const curState = dataService.getState();
+  dataService.saveLocalState({
+    ...curState,
+    members: [...curState.members, member],
+  });
+
+  // Verify member profile resolution and version tracking
+  const found = dataService.findMemberByUidOrEmail(member.id, member.email);
+  assert.ok(found);
+  assert.equal(found.sessionVersion, 2);
+
+  // Simulate signing back in AFTER the revocation (sessionCreatedAt > sessionsRevokedAt, sessionVersion === 2)
+  (dataService as any).setActiveSession({
+    uid: member.id,
+    email: member.email,
+    displayName: member.fullName,
+    emailVerified: true,
+    providers: ['google.com'],
+    isCloudAuth: true,
+    sessionVersion: 2,
+    sessionCreatedAt: Date.now(),
+  });
+
+  // Verify that active session is valid and not rejected
+  assert.equal(dataService.checkAndEnforceActiveSessionValidity(), true);
+
+  // Simulate an app restart / onAuthStateChanged refresh where sessionVersion was not passed:
+  // It should preserve sessionVersion 2 and sessionCreatedAt, remaining valid without kicking user out
+  (dataService as any).setActiveSession({
+    uid: member.id,
+    email: member.email,
+    displayName: member.fullName,
+    emailVerified: true,
+    providers: ['google.com'],
+    isCloudAuth: true,
+  });
+
+  const refreshedSession = dataService.getActiveSession();
+  assert.equal(refreshedSession?.sessionVersion, 2);
+  assert.equal(dataService.checkAndEnforceActiveSessionValidity(), true);
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

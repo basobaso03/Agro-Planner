@@ -147,7 +147,7 @@ export const StorageManagerScreen: React.FC<StorageManagerScreenProps> = ({ acti
   const handleWipeAllLocalData = async () => {
     if (wipeConfirmText.trim().toUpperCase() !== 'WIPE') {
       showToast({
-        type: 'warning',
+        type: 'error',
         title: 'Confirmation Mismatch',
         message: 'Type "WIPE" in all capitals to confirm local database purge.',
       });

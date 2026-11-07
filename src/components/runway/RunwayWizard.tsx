@@ -17,6 +17,10 @@ import {
   DollarSign,
   Package,
   Calculator,
+  Pencil,
+  Info,
+  Lightbulb,
+  CheckCircle2,
 } from 'lucide-react';
 import type { OrgMember, FarmLocation } from '../../types/agro';
 import type { Organization } from '../../types/organization';
@@ -30,6 +34,7 @@ import { dataService } from '../../services/dataService';
 import { getAvailableTemplates } from '../../utils/runwayTemplates';
 import { useBackHandler } from '../../navigation/useBackHandler';
 import { useKeyboardOpen } from '../../hooks/useKeyboardInset';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayWizardProps {
   isOpen: boolean;
@@ -38,6 +43,7 @@ interface RunwayWizardProps {
   activeOrg?: Organization | null;
   locations?: FarmLocation[];
   onPlanCreated: (planId: string) => void;
+  showNumbers?: boolean;
 }
 
 type WizardBudgetLine = Partial<RunwayLine> & {
@@ -57,21 +63,25 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   activeOrg,
   locations = [],
   onPlanCreated,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const isKeyboardOpen = useKeyboardOpen();
 
-  const orgId = currentMember.orgId || dataService.getActiveOrgId() || '';
+  const orgId = currentMember.orgId || activeOrg?.id || dataService.getActiveOrgId() || '';
   const resolvedOrg =
     activeOrg ||
+    (orgId ? dataService.getActiveOrganization(orgId) : null) ||
     (currentMember.orgId ? dataService.getActiveOrganization(currentMember.orgId) : null) ||
-    dataService.getActiveOrganization(orgId);
+    (dataService.getState().organizations || []).find((o) => o.id === orgId || o.id === currentMember.orgId);
   const registeredOrgType: 'AGRO_FARMING' | 'GENERAL_VENTURE' =
     resolvedOrg?.type || 'AGRO_FARMING';
+  const ventureType = registeredOrgType;
+  const isAgro = registeredOrgType === 'AGRO_FARMING';
 
   // Step 1: Basics (Locked to registered business account type)
   const [name, setName] = useState<string>('');
-  const [ventureType, setVentureType] = useState<'AGRO_FARMING' | 'GENERAL_VENTURE'>(registeredOrgType);
   const [locationId, setLocationId] = useState<string>(locations[0]?.id || '');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
@@ -79,15 +89,26 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(
     registeredOrgType === 'AGRO_FARMING' ? 'TMP-AGRO-BROILER-42D' : 'TMP-VENTURE-RETAIL-SHOP'
   );
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateName, setEditingTemplateName] = useState<string>('');
+  const [templatesVersion, setTemplatesVersion] = useState<number>(0);
+
+  useEffect(() => {
+    return dataService.subscribe(() => {
+      setTemplatesVersion((v) => v + 1);
+    });
+  }, []);
 
   // Step 3: Lines
   const [customLines, setCustomLines] = useState<WizardBudgetLine[]>([]);
+  const [editingLineIndex, setEditingLineIndex] = useState<number | null>(null);
+  const [editingLineTitle, setEditingLineTitle] = useState<string>('');
 
   // Step 3 inline line addition state (string-backed so fields can be cleared freely without a stuck '1' or '0')
   const [isAddingLine, setIsAddingLine] = useState(false);
   const [newLineTitle, setNewLineTitle] = useState('');
   const [newLineCategory, setNewLineCategory] = useState(
-    registeredOrgType === 'AGRO_FARMING' ? 'Feed & Nutrition' : 'General Inventory'
+    registeredOrgType === 'AGRO_FARMING' ? 'Feed & Nutrition' : 'Wholesale Inventory'
   );
   const [newLineQtyStr, setNewLineQtyStr] = useState<string>('');
   const [newLineTotalPriceStr, setNewLineTotalPriceStr] = useState<string>('');
@@ -106,10 +127,57 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   const [finishError, setFinishError] = useState<string | null>(null);
 
   const orgLeftMoney = dataService.getCurrentOrgLeftMoney(orgId);
-  const availableTemplates = getAvailableTemplates(
-    ventureType,
-    dataService.getState().runwayTemplates || []
-  );
+  const availableTemplates = React.useMemo(() => {
+    return getAvailableTemplates(
+      ventureType,
+      dataService.getState().runwayTemplates || []
+    );
+  }, [ventureType, templatesVersion]);
+
+  const handleStartRenameTemplate = (tplId: string, currentName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTemplateId(tplId);
+    setEditingTemplateName(currentName);
+  };
+
+  const handleSaveTemplateName = (tplId: string, e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const clean = editingTemplateName.trim();
+    if (!clean) return;
+    try {
+      dataService.updateRunwayTemplateName(tplId, clean, currentMember);
+      setTemplatesVersion((v) => v + 1);
+      if (selectedTemplateId === tplId) {
+        setName((prev) => (!prev.trim() || prev === availableTemplates.find((t) => t.id === tplId)?.name ? clean : prev));
+      }
+      setEditingTemplateId(null);
+    } catch {
+      // Non-fatal
+    }
+  };
+
+  const handleCancelRenameTemplate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTemplateId(null);
+  };
+
+  const handleStartRenameLine = (idx: number, currentTitle: string) => {
+    setEditingLineIndex(idx);
+    setEditingLineTitle(currentTitle);
+  };
+
+  const handleSaveLineTitle = (idx: number) => {
+    const clean = editingLineTitle.trim();
+    if (clean) {
+      setCustomLines((prev) =>
+        prev.map((l, i) => (i === idx ? { ...l, title: clean } : l))
+      );
+    }
+    setEditingLineIndex(null);
+  };
 
   // Intercept phone hardware back button while wizard is open
   useBackHandler(
@@ -167,9 +235,8 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
   useEffect(() => {
     if (isOpen) {
       setCurrentStep(1);
-      setVentureType(registeredOrgType);
       setNewLineCategory(
-        registeredOrgType === 'AGRO_FARMING' ? 'Feed & Nutrition' : 'General Inventory'
+        registeredOrgType === 'AGRO_FARMING' ? 'Feed & Nutrition' : 'Wholesale Inventory'
       );
       const defaultTpl =
         registeredOrgType === 'AGRO_FARMING'
@@ -440,20 +507,20 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
               <span className="text-slate-600 font-semibold">
                 Items Cost:{' '}
                 <strong className="font-mono text-slate-950 font-bold">
-                  ${baselineCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatMoney(baselineCost, !isMasked)}
                 </strong>
               </span>
               <span className="text-amber-800 font-semibold">
                 + Contingency:{' '}
                 <strong className="font-mono font-bold">
-                  ${calculatedContingencyDollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  +{formatMoney(calculatedContingencyDollars, !isMasked)}
                 </strong>
               </span>
             </div>
             <div className="font-bold text-slate-950">
               Total Required:{' '}
               <span className="font-mono text-sm sm:text-base font-black text-emerald-700">
-                ${totalCapitalRequirement.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {formatMoney(totalCapitalRequirement, !isMasked)}
               </span>
             </div>
           </div>
@@ -558,63 +625,160 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
 
           {/* STEP 2: TEMPLATE SELECTION */}
           {currentStep === 2 && (
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Choose a pre-built template for your{' '}
-                <strong>
-                  {registeredOrgType === 'AGRO_FARMING'
-                    ? 'Agro-Farming'
-                    : 'Commercial Business'}
-                </strong>{' '}
-                account or start with a custom blank slate.
-              </p>
+            <div className="space-y-4">
+              {/* Educational Guidance Box for Step 2 */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-sky-50 to-white dark:from-indigo-950/60 dark:via-slate-900 dark:to-slate-900 border border-indigo-200 dark:border-indigo-800 shadow-2xs space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 rounded-xl bg-indigo-600 text-white shrink-0 mt-0.5">
+                    <Lightbulb className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                      <span>{isAgro ? 'What is an Agricultural Runway Template & Why Select One?' : 'What is a Commercial Runway Template & Why Select One?'}</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium leading-relaxed mt-1">
+                      {isAgro
+                        ? 'A template gives your farm a ready-made operational budget blueprint. Instead of entering dozens of individual expenses from memory, a template automatically loads industry-standard cost items (day-old chicks, feeds, veterinary packs, bedding, heat, and abattoir processing).'
+                        : 'A template gives your business a ready-made operational budget blueprint. Instead of entering dozens of supplier and stock items from memory, a template automatically loads industry-standard commercial costs (wholesale inventory stock, packaging, equipment, facility lease, staff payroll, and marketing).'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-indigo-100 dark:border-indigo-900/60 text-[10px]">
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-indigo-600 dark:text-indigo-400">1. Fast Blueprint:</span>
+                    <span>{isAgro ? 'Loads proven livestock and crop production lines without training.' : 'Loads proven inventory, retail, food, transport, and service lines.'}</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-indigo-600 dark:text-indigo-400">2. Editable Names:</span>
+                    <span>Tap the pencil icon <Pencil className="w-2.5 h-2.5 inline text-indigo-600" /> on any template to rename it for your company.</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-indigo-600 dark:text-indigo-400">3. Custom Scale:</span>
+                    <span>{isAgro ? 'In Step 3, scale quantities to match your exact headcount or acreage.' : 'In Step 3, adjust order quantities, unit costs, and add/remove lines.'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Workspace Context Guidance */}
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {isAgro
+                    ? '🌱 Agricultural Production Blueprints'
+                    : '💼 Commercial & General Venture Blueprints'}
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Tap a card to load into Step 3
+                </span>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Blank Option */}
                 <div
                   onClick={() => applyTemplateById('BLANK', registeredOrgType)}
-                  className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${selectedTemplateId === 'BLANK'
-                    ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
-                    : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
+                  className={`p-3.5 sm:p-4 rounded-2xl border text-left cursor-pointer transition-all ${selectedTemplateId === 'BLANK'
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500 shadow-xs'
+                    : 'border-[#E8DFCE] dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300'
                     }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-black text-slate-950 dark:text-white">
                       Custom / Blank Slate
                     </span>
                     <Sparkles className="w-4 h-4 text-indigo-500" />
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Build your custom planned lines from scratch.
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {isAgro
+                      ? 'Start completely from scratch without pre-loaded farm lines. You will define all budget items manually in Step 3.'
+                      : 'Start completely from scratch without pre-loaded commercial lines. You will define all inventory and expense items manually in Step 3.'}
                   </p>
+                  <div className="mt-2.5 text-[10px] text-indigo-600 dark:text-indigo-400 font-bold pt-2 border-t border-slate-100 dark:border-slate-800">
+                    Manual Item Entry
+                  </div>
                 </div>
 
                 {/* Turnkey Templates */}
                 {availableTemplates.map((tpl) => {
                   const estCost = tpl.lines.reduce((acc, l) => acc + l.qty * l.unitCost, 0);
                   const isSelected = selectedTemplateId === tpl.id;
+                  const isEditingThis = editingTemplateId === tpl.id;
+
                   return (
                     <div
                       key={tpl.id}
-                      onClick={() => applyTemplateById(tpl.id, registeredOrgType)}
-                      className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${isSelected
-                        ? 'border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/40 ring-2 ring-indigo-500'
-                        : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
+                      onClick={() => {
+                        if (!isEditingThis) applyTemplateById(tpl.id, registeredOrgType);
+                      }}
+                      className={`p-3.5 sm:p-4 rounded-2xl border text-left cursor-pointer transition-all relative group ${isSelected
+                        ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500 shadow-xs'
+                        : 'border-[#E8DFCE] dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300'
                         }`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-bold text-gray-900 dark:text-white">
-                          {tpl.name}
-                        </span>
-                        <span className="text-[10px] font-bold text-emerald-600 px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 shrink-0">
-                          ~${estCost.toLocaleString()}
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="min-w-0 flex-1">
+                          {isEditingThis ? (
+                            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="text"
+                                value={editingTemplateName}
+                                onChange={(e) => setEditingTemplateName(e.target.value)}
+                                className="w-full bg-white dark:bg-gray-800 border-2 border-indigo-500 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveTemplateName(tpl.id, e);
+                                  if (e.key === 'Escape') setEditingTemplateId(null);
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => handleSaveTemplateName(tpl.id, e)}
+                                className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelRenameTemplate}
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 text-xs shrink-0 cursor-pointer"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-black text-slate-950 dark:text-white truncate">
+                                {tpl.name}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleStartRenameTemplate(tpl.id, tpl.name, e)}
+                                className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950 transition-colors cursor-pointer shrink-0"
+                                title="Rename Template"
+                                aria-label={`Rename ${tpl.name}`}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <span className="text-[10px] font-black text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 shrink-0 font-mono">
+                          ~${estCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-                        {tpl.description || tpl.name}
+
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                        {tpl.description || `Pre-configured operational budget covering ${tpl.lines.length} items.`}
                       </p>
-                      <div className="mt-1.5 text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
-                        {tpl.lines.length} pre-configured line items
+
+                      <div className="mt-2.5 flex items-center justify-between gap-2 text-[10px] font-bold pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <span className="text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          <span>{tpl.lines.length} Line Items Included</span>
+                        </span>
+                        <span className="text-slate-500 font-medium">
+                          {tpl.contingencyPercent ?? 10}% Buffer
+                        </span>
                       </div>
                     </div>
                   );
@@ -626,17 +790,57 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
           {/* STEP 3: BUDGET LINES EDITING & ADDITION */}
           {currentStep === 3 && (
             <div className="space-y-3.5">
+              {/* Educational Guidance Box for Step 3 */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-white dark:from-emerald-950/60 dark:via-slate-900 dark:to-slate-900 border border-emerald-200 dark:border-emerald-800 shadow-2xs space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1.5 rounded-xl bg-emerald-600 text-white shrink-0 mt-0.5">
+                    <Info className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                      <span>{isAgro ? 'What are Farm Budget Lines & What is Required?' : 'What are Commercial Budget Lines & What is Required?'}</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300 font-medium leading-relaxed mt-1">
+                      {isAgro
+                        ? 'Farm budget lines are the individual authorized purchases required for this agricultural cycle. The sum of all items forms your Master Capital Target — the exact amount of money partners must pledge and deposit to fund the batch.'
+                        : 'Budget lines are the individual authorized commercial expenditures required to run this venture cycle. The sum of all items forms your Master Capital Target — the exact amount of money partners or shareholders must pledge and fund.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-emerald-100 dark:border-emerald-900/60 text-[10px]">
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-emerald-700 dark:text-emerald-400">1. Adjust Quantities:</span>
+                    <span>{isAgro ? 'Tap Qty or Total ($) on any line to match your current cycle scale.' : 'Tap Qty or Total ($) on any item to match your store, depot, or order volume.'}</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-emerald-700 dark:text-emerald-400">2. Add Line Items:</span>
+                    <span>{isAgro ? 'Tap "+ Add Line Item" to include seeds, vet packs, or specialized machinery.' : 'Tap "+ Add Line Item" to include custom inventory, software tooling, or commercial equipment.'}</span>
+                  </div>
+                  <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
+                    <span className="font-black text-emerald-700 dark:text-emerald-400">3. Spend Gate:</span>
+                    <span>When active, payouts are strictly gated against these line limits to protect cashflow.</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900 dark:text-white">
-                    Planned Line Items ({customLines.length})
+                  <h4 className="text-xs font-black text-slate-950 dark:text-white flex items-center gap-1.5">
+                    <span>{isAgro ? 'Approved Farm Operational Lines' : 'Approved Commercial Budget Lines'}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      {customLines.length}
+                    </span>
                   </h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Tap Qty or Total to edit directly • Pencil icon to rename item
+                  </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setIsAddingLine(true)}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Add Line Item</span>
@@ -673,9 +877,9 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                         value={newLineTitle}
                         onChange={(e) => setNewLineTitle(e.target.value)}
                         placeholder={
-                          registeredOrgType === 'AGRO_FARMING'
-                            ? 'e.g. Day-Old Broiler Chicks or Starter Feed'
-                            : 'e.g. Wholesale Stock Batch or Packaging'
+                          isAgro
+                            ? 'e.g. Day-Old Broiler Chicks, Seedlings, or Starter Feed'
+                            : 'e.g. Bulk Wholesale Merchandise, Packaging, or Equipment'
                         }
                         className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 dark:text-white"
                       />
@@ -690,16 +894,34 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                         onChange={(e) => setNewLineCategory(e.target.value)}
                         className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-2.5 py-2 text-xs font-semibold text-gray-900 dark:text-white"
                       >
-                        <option value="Chicks & Stock">Chicks &amp; Stock</option>
-                        <option value="Feed & Nutrition">Feed &amp; Nutrition</option>
-                        <option value="Vaccines & Medication">Vaccines &amp; Medication</option>
-                        <option value="Bedding & Gas">Bedding &amp; Gas</option>
-                        <option value="Equipment & Assets">Equipment &amp; Assets</option>
-                        <option value="Labor & Ground Ops">Labor &amp; Ground Ops</option>
-                        <option value="Utilities & Fuel">Utilities &amp; Fuel</option>
-                        <option value="Packaging & Transport">Packaging &amp; Transport</option>
-                        <option value="General Inventory">General Inventory</option>
-                        <option value="Administrative">Administrative</option>
+                        {isAgro ? (
+                          <>
+                            <option value="Chicks & Stock">Chicks &amp; Stock</option>
+                            <option value="Feed & Nutrition">Feed &amp; Nutrition</option>
+                            <option value="Vaccines & Medication">Vaccines &amp; Medication</option>
+                            <option value="Bedding & Gas">Bedding &amp; Gas</option>
+                            <option value="Equipment & Assets">Equipment &amp; Assets</option>
+                            <option value="Labor & Ground Ops">Labor &amp; Ground Ops</option>
+                            <option value="Utilities & Fuel">Utilities &amp; Fuel</option>
+                            <option value="Packaging & Transport">Packaging &amp; Transport</option>
+                            <option value="General Inventory">General Inventory</option>
+                            <option value="Administrative">Administrative</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="Wholesale Inventory">Wholesale Inventory</option>
+                            <option value="Finished Goods">Finished Goods</option>
+                            <option value="Commercial Equipment & Tools">Commercial Equipment &amp; Tools</option>
+                            <option value="Premises Lease & Rent">Premises Lease &amp; Rent</option>
+                            <option value="Staff Payroll & Labor">Staff Payroll &amp; Labor</option>
+                            <option value="Packaging & Logistics">Packaging &amp; Logistics</option>
+                            <option value="Utilities & Communications">Utilities &amp; Communications</option>
+                            <option value="Technology & Subscriptions">Technology &amp; Subscriptions</option>
+                            <option value="Marketing & Advertising">Marketing &amp; Advertising</option>
+                            <option value="Legal, Permits & Compliance">Legal, Permits &amp; Compliance</option>
+                            <option value="General Operating Expenses">General Operating Expenses</option>
+                          </>
+                        )}
                       </select>
                     </div>
 
@@ -827,9 +1049,50 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-gray-900 dark:text-white truncate">
-                              {l.title}
-                            </div>
+                            {editingLineIndex === idx ? (
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <input
+                                  type="text"
+                                  value={editingLineTitle}
+                                  onChange={(e) => setEditingLineTitle(e.target.value)}
+                                  className="w-full bg-white dark:bg-gray-800 border-2 border-emerald-500 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 dark:text-white focus:outline-none"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveLineTitle(idx);
+                                    if (e.key === 'Escape') setEditingLineIndex(null);
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveLineTitle(idx)}
+                                  className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shrink-0 cursor-pointer"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingLineIndex(null)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 text-xs shrink-0 cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-gray-900 dark:text-white truncate">
+                                  {l.title}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartRenameLine(idx, l.title || '')}
+                                  className="p-1 text-slate-400 hover:text-emerald-700 transition-colors cursor-pointer shrink-0"
+                                  title="Rename item title"
+                                  aria-label={`Rename ${l.title}`}
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
                             <span className="text-[10px] text-gray-400 uppercase font-semibold">
                               {l.category} • Unit Cost: ${unitCostAuto.toFixed(2)}/{l.unitLabel || 'unit'}
                             </span>
@@ -1020,16 +1283,16 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                 <div className="p-3 rounded-xl bg-white/90 dark:bg-gray-900/90 border border-amber-300 dark:border-amber-800 space-y-1.5 text-xs">
                   <div className="flex justify-between text-gray-600 dark:text-gray-300">
                     <span>Items Baseline Cost:</span>
-                    <span className="font-mono font-bold">${baselineCost.toFixed(2)}</span>
+                    <span className="font-mono font-bold">{formatMoney(baselineCost, !isMasked)}</span>
                   </div>
                   <div className="flex justify-between text-amber-700 dark:text-amber-300">
                     <span>Contingency Reserve:</span>
-                    <span className="font-mono font-bold">+${calculatedContingencyDollars.toFixed(2)}</span>
+                    <span className="font-mono font-bold">+{formatMoney(calculatedContingencyDollars, !isMasked)}</span>
                   </div>
                   <div className="pt-1.5 border-t border-amber-200 dark:border-amber-800 flex justify-between items-center font-bold text-gray-900 dark:text-white">
                     <span>Total Required Money (incl. Contingency):</span>
                     <span className="font-mono text-sm sm:text-base font-black text-indigo-600 dark:text-indigo-400">
-                      ${totalCapitalRequirement.toFixed(2)}
+                      {formatMoney(totalCapitalRequirement, !isMasked)}
                     </span>
                   </div>
                 </div>
@@ -1046,7 +1309,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                   />
                   <div>
                     <div className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
-                      Adopt Opening Ground Cash (${orgLeftMoney.toFixed(2)})
+                      Adopt Opening Ground Cash ({formatMoney(orgLeftMoney, !isMasked)})
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                       Existing unencumbered cash in Left Money will automatically count toward your initial funding pool.
@@ -1077,14 +1340,14 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                   <div>
                     <span className="text-gray-500 block text-[11px]">Cost Baseline</span>
                     <strong className="font-mono text-gray-900 dark:text-white">
-                      ${baselineCost.toFixed(2)}
+                      {formatMoney(baselineCost, !isMasked)}
                     </strong>
                   </div>
 
                   <div>
                     <span className="text-gray-500 block text-[11px]">Contingency Reserve</span>
                     <strong className="font-mono text-amber-600 dark:text-amber-400">
-                      +${calculatedContingencyDollars.toFixed(2)}
+                      +{formatMoney(calculatedContingencyDollars, !isMasked)}
                     </strong>
                   </div>
 
@@ -1093,7 +1356,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                       Total Required Money (incl. Contingency)
                     </span>
                     <span className="text-base sm:text-lg font-mono font-black text-indigo-600 dark:text-indigo-400">
-                      ${totalCapitalRequirement.toFixed(2)}
+                      {formatMoney(totalCapitalRequirement, !isMasked)}
                     </span>
                   </div>
                 </div>

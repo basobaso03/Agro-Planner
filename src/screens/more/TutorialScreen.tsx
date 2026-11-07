@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigation } from '../../navigation/useNavigation.ts';
 import {
   UserCheck,
@@ -42,7 +42,7 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
         title: '1. Launch & Select Sign-In Method',
         description:
           'Open Capital Seed and tap "Continue with Google" for instant one-tap authentication, or enter your Email and Password.',
-        badge: 'Zero Password Setup needed with Google',
+        badge: 'Zero Password (Google)',
       },
       {
         title: '2. Enable Biometric Fingerprint (Recommended)',
@@ -217,6 +217,24 @@ export const TutorialScreen: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [expandedTopic, setExpandedTopic] = useState<string>('registration');
   const [searchQuery, setSearchQuery] = useState('');
+  const topicRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleToggleTopic = (topicId: string) => {
+    const willExpand = expandedTopic !== topicId;
+    setExpandedTopic(willExpand ? topicId : '');
+
+    if (willExpand) {
+      // Defer scroll until after React has unmounted the previous topic and mounted the new topic
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const targetEl = topicRefs.current[topicId];
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 60);
+      });
+    }
+  };
 
   const filteredTopics = TUTORIAL_TOPICS.filter((t) => {
     if (selectedCategory !== 'ALL' && t.category !== selectedCategory) return false;
@@ -276,7 +294,10 @@ export const TutorialScreen: React.FC = () => {
           <button
             key={cat.id}
             type="button"
-            onClick={() => setSelectedCategory(cat.id)}
+            onClick={() => {
+              setSelectedCategory(cat.id);
+              document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all cursor-pointer ${selectedCategory === cat.id
               ? 'bg-amber-600 text-white shadow-xs'
               : 'bg-white border border-[#E8DFCE] text-slate-700 hover:bg-[#FAF8F5]'
@@ -296,12 +317,15 @@ export const TutorialScreen: React.FC = () => {
           return (
             <div
               key={topic.id}
-              className="bg-white border border-[#E8DFCE] rounded-2xl shadow-xs overflow-hidden transition-all"
+              ref={(el) => {
+                topicRefs.current[topic.id] = el;
+              }}
+              className="bg-white border border-[#E8DFCE] rounded-2xl shadow-xs overflow-hidden transition-all scroll-mt-3"
             >
               {/* Accordion Header */}
               <button
                 type="button"
-                onClick={() => setExpandedTopic(isExpanded ? '' : topic.id)}
+                onClick={() => handleToggleTopic(topic.id)}
                 className="w-full p-4 flex items-center justify-between gap-3 text-left hover:bg-[#FAF8F5] transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -330,12 +354,12 @@ export const TutorialScreen: React.FC = () => {
                   <div className="space-y-3 pt-2">
                     {topic.steps.map((step, idx) => (
                       <div key={idx} className="p-3.5 rounded-xl bg-[#FAF8F5] border border-[#E8DFCE] space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-black text-slate-900">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <span className="text-xs font-black text-slate-900 leading-snug">
                             {step.title}
                           </span>
                           {step.badge && (
-                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-200 shrink-0">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-200 shrink-0">
                               {step.badge}
                             </span>
                           )}

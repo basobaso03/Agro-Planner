@@ -7,6 +7,7 @@ import type {
 } from '../../types/runway';
 import type { ExpenseLedgerEvent } from '../../types/agro';
 import { suggestUnitCosts } from '../../utils/runway';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 import { useBackHandler } from '../../navigation/useBackHandler';
 
 interface RunwayLineSheetProps {
@@ -21,6 +22,7 @@ interface RunwayLineSheetProps {
   onDelete?: (lineId: string) => void;
   existingLine?: RunwayLine | null;
   pastExpenses?: ExpenseLedgerEvent[];
+  showNumbers?: boolean;
 }
 
 export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
@@ -30,7 +32,9 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
   onDelete,
   existingLine,
   pastExpenses = [],
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string>('FEED');
   const [qtyStr, setQtyStr] = useState<string>('');
@@ -293,7 +297,7 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
                   }}
                   className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-xs font-bold text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer"
                 >
-                  Apply Benchmark: ${costSuggestions.toFixed(2)} / unit
+                  Apply Benchmark: {formatMoney(costSuggestions, !isMasked)} / unit
                 </button>
               </div>
             </div>
@@ -378,11 +382,11 @@ export const RunwayLineSheet: React.FC<RunwayLineSheetProps> = ({
             <div className="flex items-center space-x-1.5 text-xs text-slate-700 font-medium">
               <Calculator className="w-4 h-4 shrink-0 text-emerald-700" />
               <span>
-                Unit Cost: <strong className="text-slate-950 font-bold">${autoUnitCost.toFixed(2)}/{unitLabel || 'unit'}</strong>
+                Unit Cost: <strong className="text-slate-950 font-bold">{formatMoney(autoUnitCost, !isMasked)}/{unitLabel || 'unit'}</strong>
               </span>
             </div>
             <span className="text-sm sm:text-base font-black font-mono text-emerald-700">
-              Total: ${lineTotal.toFixed(2)}
+              Total: {formatMoney(lineTotal, !isMasked)}
             </span>
           </div>
 

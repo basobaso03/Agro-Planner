@@ -6,6 +6,7 @@ import {
   X,
   AlertCircle,
   Eye,
+  EyeOff,
   ShieldCheck,
   Settings,
 } from 'lucide-react';
@@ -160,9 +161,10 @@ export const PrivacyUnlockModal: React.FC<PrivacyUnlockModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="text-[11px] text-amber-700 font-bold hover:underline"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-[11px] text-amber-950 font-bold transition-colors cursor-pointer shadow-2xs"
               >
-                {showPassword ? 'Hide' : 'Show'}
+                {showPassword ? <EyeOff className="w-3.5 h-3.5 text-amber-800" /> : <Eye className="w-3.5 h-3.5 text-amber-800" />}
+                <span>{showPassword ? 'Hide' : 'Show'}</span>
               </button>
             </div>
 
@@ -196,7 +198,7 @@ export const PrivacyUnlockModal: React.FC<PrivacyUnlockModalProps> = ({
               <span>Credentials Setup Required</span>
             </div>
             <p className="text-slate-800 leading-relaxed font-medium">
-              Financial numbers are protected by zero-trust encryption. To unmask figures, you must first enroll your fingerprint or configure an account password in Settings.
+              Financial numbers are protected by secure encryption. To unmask figures, you must first enroll your fingerprint or configure an account password in Settings.
             </p>
             <button
               type="button"

@@ -351,6 +351,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [pop]);
 
+  const goBack = useCallback((): boolean => {
+    return backHandlerRegistry.executeBack(true);
+  }, []);
+
   const canPop = navStack.length > 1 || currentRoute.id !== 'overview';
 
   return (
@@ -361,7 +365,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         switchTab,
         navigate,
         pop,
-        goBack: pop,
+        goBack,
         canPop,
         activeSheet,
         openSheet,

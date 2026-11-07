@@ -187,9 +187,13 @@ export class RulesEngineSimulator {
       if (operation === 'read') {
         return { allowed: this.isAuthenticated(context) };
       }
-      if (operation === 'create' || operation === 'update' || operation === 'delete') {
+      if (operation === 'create' || operation === 'update') {
+        const ok = (this.isApprovedMemberOfOrg(context, orgId) || this.isOrgAdmin(context, orgId)) && this.isValidId(docId);
+        return { allowed: ok, reason: ok ? undefined : 'Must be approved member of this organization to manage locations' };
+      }
+      if (operation === 'delete') {
         const ok = this.isOrgAdmin(context, orgId) && this.isValidId(docId);
-        return { allowed: ok, reason: ok ? undefined : 'Only Org Admin of this organization can manage locations' };
+        return { allowed: ok, reason: ok ? undefined : 'Only Org Admin of this organization can delete locations' };
       }
     }
 
@@ -276,11 +280,15 @@ export class RulesEngineSimulator {
         return { allowed: true };
       }
       if (operation === 'create') {
+        const data = context.request.resource?.data || {};
+        const isSelf = data.memberId === context.request.auth?.uid || data.createdByMemberId === context.request.auth?.uid;
+        const isApproved = this.isApprovedMemberOfOrg(context, targetOrgId);
         const ok =
-          this.isTreasurerOfOrg(context, targetOrgId) &&
+          isApproved &&
+          (this.isTreasurerOfOrg(context, targetOrgId) || isSelf) &&
           this.isValidId(docId) &&
-          this.hasMandatoryAuditFields(context.request.resource?.data || {});
-        return { allowed: ok, reason: ok ? undefined : 'Treasurer role of the organization and mandatory audit fields required' };
+          this.hasMandatoryAuditFields(data);
+        return { allowed: ok, reason: ok ? undefined : 'Treasurer role or member self-contribution of the organization and mandatory audit fields required' };
       }
       if (operation === 'update') {
         return { allowed: false, reason: 'Capital Contributions collection is strictly APPEND-ONLY (allow update: if false;)' };

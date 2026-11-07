@@ -47,9 +47,14 @@ export const AuditLedgerScreen: React.FC<AuditLedgerScreenProps> = ({ activeMemb
   const { navigate } = useNavigation();
   const rawNotifications = dataService.getState().auditNotifications || [];
   const notifications = useMemo(() => {
-    return activeMember?.orgId
-      ? rawNotifications.filter((n) => !n.orgId || n.orgId === activeMember.orgId)
-      : rawNotifications;
+    const orgId = activeMember?.orgId;
+    if (!orgId) return [];
+    return rawNotifications.filter(
+      (n) =>
+        n.orgId === orgId ||
+        (!n.orgId && n.sequenceNumber === 1) ||
+        (n.orgId === 'ALL' && n.sequenceNumber === 1)
+    );
   }, [rawNotifications, activeMember?.orgId]);
 
   const [verification, setVerification] = useState<ChainVerificationResult>(() =>
@@ -187,6 +192,7 @@ export const AuditLedgerScreen: React.FC<AuditLedgerScreenProps> = ({ activeMemb
             (n.eventType as string) === 'RUNWAY_CREATED' ||
             n.eventType === 'RUNWAY_PLAN_CREATED' ||
             n.eventType === 'ORGANIZATION_CREATED' ||
+            n.eventType === 'ORGANIZATION_UPDATED' ||
             n.eventType === 'INVITE_CODE_REFRESHED';
           if (!isSystem) return false;
         }

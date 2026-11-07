@@ -33,6 +33,10 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
   const loan = propLoan || (dataService.getState().loansGiven || []).find((l) => l.id === loanId);
 
   const isRecovered = loan ? loan.status === 'RECOVERED' : false;
+  const totalRecovered = loan ? (loan.repayments || []).reduce((acc, r) => acc + r.amount, 0) : 0;
+  const interestRate = loan?.interestRatePercent || 0;
+  const interestAmount = loan ? Number(((loan.principalAmount * interestRate) / 100).toFixed(2)) : 0;
+  const totalReceivable = loan ? loan.principalAmount + interestAmount : 0;
   const isOverdue = !isRecovered && loan?.agreedReturnDate ? new Date(loan.agreedReturnDate).getTime() < Date.now() : false;
   const daysDiff = loan?.agreedReturnDate
     ? Math.ceil((new Date(loan.agreedReturnDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -85,14 +89,21 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
             <p className="text-xs text-slate-500 mt-0.5">Category: {loan.category.replace('_', ' ')}</p>
           </div>
 
-          <span
-            className={`text-xs font-black px-2.5 py-1 rounded-full border ${isRecovered
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-amber-50 text-amber-800 border-amber-300'
-              }`}
-          >
-            {isRecovered ? 'Fully Recovered ✓' : 'Active Loan'}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className={`text-xs font-black px-2.5 py-1 rounded-full border ${isRecovered
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-amber-50 text-amber-800 border-amber-300'
+                }`}
+            >
+              {isRecovered ? 'Fully Recovered ✓' : 'Active Loan'}
+            </span>
+            {interestRate > 0 && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                +{interestRate}% Interest
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="pt-2 border-t border-[#F0EBE1] flex flex-wrap items-center gap-2">
@@ -200,26 +211,44 @@ export const LoanDetailScreen: React.FC<LoanDetailScreenProps> = ({
       )}
 
       {/* 2. Financial Balance Breakdown */}
-      <div className="grid grid-cols-3 gap-2 p-4 rounded-3xl bg-white border border-[#E8DFCE] text-center shadow-xs">
-        <div>
-          <span className="text-[10px] text-slate-400 font-bold uppercase block">Principal</span>
-          <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
-            {formatMoney(loan.principalAmount, showNumbers)}
-          </span>
+      <div className="p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs space-y-3">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase block">Principal Lent</span>
+            <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
+              {formatMoney(loan.principalAmount, showNumbers)}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-emerald-600 font-bold uppercase block">Interest ({interestRate}%)</span>
+            <span className="text-sm font-black font-mono text-emerald-600 mt-0.5 block">
+              +{formatMoney(interestAmount, showNumbers)}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-700 font-bold uppercase block">Total Receivable</span>
+            <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
+              {formatMoney(totalReceivable, showNumbers)}
+            </span>
+          </div>
         </div>
 
-        <div>
-          <span className="text-[10px] text-emerald-700 font-bold uppercase block">Recovered</span>
-          <span className="text-sm font-black font-mono text-emerald-600 mt-0.5 block">
-            {formatMoney(loan.principalAmount - loan.remainingBalance, showNumbers)}
-          </span>
-        </div>
+        <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-[#F0EBE1] text-center">
+          <div>
+            <span className="text-[10px] text-emerald-700 font-bold uppercase block">Total Recovered</span>
+            <span className="text-sm font-black font-mono text-emerald-600 mt-0.5 block">
+              {formatMoney(totalRecovered, showNumbers)}
+            </span>
+          </div>
 
-        <div>
-          <span className="text-[10px] text-amber-700 font-bold uppercase block">Outstanding</span>
-          <span className="text-sm font-black font-mono text-emerald-700 mt-0.5 block">
-            {formatMoney(loan.remainingBalance, showNumbers)}
-          </span>
+          <div>
+            <span className="text-[10px] text-amber-700 font-bold uppercase block">Remaining to Collect</span>
+            <span className="text-sm font-black font-mono text-emerald-700 mt-0.5 block">
+              {formatMoney(loan.remainingBalance, showNumbers)}
+            </span>
+          </div>
         </div>
       </div>
 

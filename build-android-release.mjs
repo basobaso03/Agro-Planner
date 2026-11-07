@@ -136,10 +136,15 @@ try {
     path.join(projectRoot, 'public-website', 'apk'),
   ];
 
+  const distDir = path.join(projectRoot, 'dist');
+  if (fs.existsSync(distDir)) {
+    targets.push(path.join(distDir, 'apk'));
+    targets.push(path.join(distDir, 'public-website', 'apk'));
+  }
+
   targets.forEach((dir) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.copyFileSync(srcFile, path.join(dir, 'capital-seed.apk'));
-    fs.copyFileSync(srcFile, path.join(dir, 'agro-planner.apk'));
   });
 
   // Read current version from public/version.json or root version.json
@@ -156,15 +161,21 @@ try {
   try {
     const websiteHtmlPath = path.join(projectRoot, 'public-website', 'index.html');
     const publicWebsiteHtmlPath = path.join(projectRoot, 'public', 'public-website', 'index.html');
+    const distWebsiteHtmlPath = path.join(projectRoot, 'dist', 'public-website', 'index.html');
 
     if (fs.existsSync(websiteHtmlPath)) {
       let htmlContent = fs.readFileSync(websiteHtmlPath, 'utf-8');
       htmlContent = htmlContent.replace(/apkSize:\s*['"][^'"]+['"]/, `apkSize: '${sizeMb} MB'`);
       htmlContent = htmlContent.replace(/version:\s*['"][^'"]+['"]/, `version: 'v${currentVersion.replace(/^v/, '')}'`);
+      htmlContent = htmlContent.replace(/(<span\s+class="[^"]*apk-size-display[^"]*">)[^<]*(<\/span>)/g, `$1${sizeMb} MB$2`);
+      htmlContent = htmlContent.replace(/(<span\s+class="[^"]*apk-version-display[^"]*">)[^<]*(<\/span>)/g, `$1v${currentVersion.replace(/^v/, '')}$2`);
       fs.writeFileSync(websiteHtmlPath, htmlContent, 'utf-8');
 
       if (fs.existsSync(path.dirname(publicWebsiteHtmlPath))) {
         fs.copyFileSync(websiteHtmlPath, publicWebsiteHtmlPath);
+      }
+      if (fs.existsSync(path.dirname(distWebsiteHtmlPath))) {
+        fs.copyFileSync(websiteHtmlPath, distWebsiteHtmlPath);
       }
       console.log(`\x1b[32m✔ Website Sync: Auto-updated APP_CONFIG.apkSize to ${sizeMb} MB & version to v${currentVersion}\x1b[0m`);
     }
@@ -199,11 +210,10 @@ try {
   console.log('\n\x1b[32m✔ SUCCESS! Standalone Release APK Generated Successfully!\x1b[0m');
   console.log(`\x1b[32m✔ File Size: ${sizeMb} MB\x1b[0m`);
   console.log(`\x1b[32m✔ Signature: ${isSigned ? 'SIGNED (Ready for public install)' : 'UNSIGNED'}\x1b[0m`);
-  console.log(`\x1b[32m✔ Root APK:    ./apk/capital-seed.apk & ./apk/agro-planner.apk\x1b[0m`);
-  console.log(`\x1b[32m✔ Website APK: ./public-website/apk/capital-seed.apk & ./public-website/apk/agro-planner.apk\x1b[0m\n`);
-  console.log(`\x1b[32m✔ Website APK: ./public-website/apk/agro-planner.apk\x1b[0m\n`);
+  console.log(`\x1b[32m✔ Root APK:    ./apk/capital-seed.apk\x1b[0m`);
+  console.log(`\x1b[32m✔ Website APK: ./public-website/apk/capital-seed.apk\x1b[0m\n`);
   console.log('You can now:');
-  console.log('  1. Share ./apk/agro-planner.apk directly via WhatsApp or Email');
+  console.log('  1. Share ./apk/capital-seed.apk directly via WhatsApp or Email');
   console.log('  2. Host it on your website for instant downloads');
   console.log('  3. Users can install it directly on any Android device without development tools.\n');
 } catch (err) {

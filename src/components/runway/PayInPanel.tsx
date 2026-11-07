@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Receipt,
   PlusCircle,
@@ -29,6 +29,8 @@ import { PERMISSIONS } from '../../utils/permissions';
 import { compressImage } from '../../utils/imageUpload';
 import { ImageViewerSheet } from '../ui/ImageViewerSheet.tsx';
 import { CountUp } from './CountUp';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
+import { BottomSheet } from '../ui/BottomSheet';
 
 interface PayInPanelProps {
   plan: RunwayPlan;
@@ -55,6 +57,7 @@ interface PayInPanelProps {
     note?: string;
   }) => void;
   readOnly?: boolean;
+  showNumbers?: boolean;
 }
 
 const formatRole = (role?: string) => {
@@ -76,7 +79,9 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
   onSubmitClaim,
   onResolveClaim,
   readOnly = false,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const canConfirm = PERMISSIONS.canConfirmPaymentClaim(currentMember.role);
 
   // Deduplicated org members list including currentMember
@@ -105,6 +110,8 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
   const [confirmingClaim, setConfirmingClaim] = useState<RunwayPaymentClaim | null>(null);
   const [resolutionNote, setResolutionNote] = useState<string>('');
   const [payInBanner, setPayInBanner] = useState<string | null>(null);
+  const [isPayInSheetOpen, setIsPayInSheetOpen] = useState<boolean>(false);
+  const payInFileInputRef = useRef<HTMLInputElement>(null);
   const [activeReceiptPhoto, setActiveReceiptPhoto] = useState<{
     url: string;
     title: string;
@@ -167,13 +174,28 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
     if (suggestedRemaining && suggestedRemaining > 0) {
       setAmount(suggestedRemaining.toFixed(2));
     }
+    setIsPayInSheetOpen(true);
+  };
+
+  const handleOpenPayInSheet = (memberId?: string, suggestedRemaining?: number) => {
+    const targetId = memberId || selectedMemberId || (selectableMembers.length > 0 ? selectableMembers[0].id : currentMember.id);
+    setSelectedMemberId(targetId);
+    if (suggestedRemaining && suggestedRemaining > 0) {
+      setAmount(suggestedRemaining.toFixed(2));
+    } else {
+      const r = pledgerRows.find((row) => row.member.id === targetId);
+      if (r && r.remaining > 0) {
+        setAmount(r.remaining.toFixed(2));
+      }
+    }
+    setIsPayInSheetOpen(true);
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.7 });
+      const compressed = await compressImage(file, { maxWidth: 1024, maxHeight: 1024, quality: 0.75 });
       setReceiptPhoto(compressed);
     } catch {
       const reader = new FileReader();
@@ -183,6 +205,8 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
         }
       };
       reader.readAsDataURL(file);
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -218,6 +242,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
     setReference('');
     setNote('');
     setReceiptPhoto('');
+    setIsPayInSheetOpen(false);
   };
 
   const handleResolve = (decision: 'CONFIRM' | 'REJECT') => {
@@ -285,16 +310,29 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
               Pledgers &amp; Pay-in Fulfilment Progress
             </h4>
           </div>
-          {layers && (
-            <div className="flex items-center gap-3 text-xs font-semibold">
-              <span className="text-slate-600">
-                Pledged: <strong className="text-slate-950 font-bold">${layers.pledged.toFixed(2)}</strong>
-              </span>
-              <span className="text-emerald-700 font-bold">
-                Paid In: <strong>${layers.collected.toFixed(2)} ({layers.collectedPct}%)</strong>
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {layers && (
+              <div className="hidden sm:flex items-center gap-3 text-xs font-semibold">
+                <span className="text-slate-600">
+                  Pledged: <strong className="text-slate-950 font-bold">{formatMoney(layers.pledged, !isMasked)}</strong>
+                </span>
+                <span className="text-emerald-700 font-bold">
+                  Paid In: <strong>{formatMoney(layers.collected, !isMasked)} ({isMasked ? '••%' : `${layers.collectedPct}%`})</strong>
+                </span>
+              </div>
+            )}
+
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => handleOpenPayInSheet()}
+                className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Record Pay-in</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="divide-y divide-gray-100 dark:divide-gray-800/80">
@@ -323,7 +361,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                             : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                           }`}
                       >
-                        {paid >= pledgedAmount ? 'Plan Pledge Paid' : `${paidPct}% Plan Paid`}
+                        {isMasked ? 'Plan Pledge' : (paid >= pledgedAmount ? 'Plan Pledge Paid' : `${paidPct}% Plan Paid`)}
                       </span>
                     ) : (
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">
@@ -331,26 +369,26 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                       </span>
                     )}
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-                      Master Equity: ${totalMasterContributed.toFixed(0)} / ${masterTarget.toFixed(0)} ({masterPct}%)
+                      Master Equity: {formatMoney(totalMasterContributed, !isMasked)} / {formatMoney(masterTarget, !isMasked)} ({isMasked ? '••%' : `${masterPct}%`})
                     </span>
                     {pending > 0 && (
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 font-bold">
-                        +${pending.toFixed(2)} Pending Verification
+                        +{formatMoney(pending, !isMasked)} Pending Verification
                       </span>
                     )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <span>
-                      Plan Pledge: <strong className="text-gray-900 dark:text-white">${pledgedAmount.toFixed(2)}</strong>
+                      Plan Pledge: <strong className="text-gray-900 dark:text-white">{formatMoney(pledgedAmount, !isMasked)}</strong>
                     </span>
                     <span>•</span>
                     <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Plan Paid: ${paid.toFixed(2)}
+                      Plan Paid: {formatMoney(paid, !isMasked)}
                     </span>
                     <span>•</span>
                     <span className="text-amber-600 dark:text-amber-400 font-semibold">
-                      Plan Rem: ${remaining.toFixed(2)}
+                      Plan Rem: {formatMoney(remaining, !isMasked)}
                     </span>
                   </div>
 
@@ -373,7 +411,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                   >
                     <Receipt className="w-3.5 h-3.5" />
                     <span>
-                      {remaining > 0 ? `Pay Remaining ($${remaining.toFixed(2)})` : 'Record Pay-in'}
+                      {isMasked ? 'Record Pay-in' : (remaining > 0 ? `Pay Remaining (${formatMoney(remaining, true)})` : 'Record Pay-in')}
                     </span>
                   </button>
                 )}
@@ -383,88 +421,97 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
         </div>
       </div>
 
-      {/* Submit Pay-in Declaration Form */}
-      {!readOnly && (
-        <div className="p-5 rounded-2xl bg-white border border-[#E8DFCE] shadow-xs space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center space-x-2">
-              <Receipt className="w-5 h-5 text-emerald-700" />
-              <h4 className="text-sm font-black text-slate-950">
-                Record Member Capital Pay-in Payment
-              </h4>
-            </div>
+      {/* Pay-In Bottom Sheet */}
+      {isPayInSheetOpen && (
+        <BottomSheet
+          isOpen={isPayInSheetOpen}
+          onClose={() => setIsPayInSheetOpen(false)}
+          title="Record Capital Pay-in Payment"
+          subtitle="Linked payments update member pledge progress and credit liquid cash on the ground"
+          size="auto"
+          maxHeight="min(85vh, 640px)"
+        >
+          <div className="p-4 sm:p-5 space-y-3.5">
             {selectedPledgerRow && selectedPledgerRow.pledgedAmount > 0 && (
-              <span className="text-xs font-bold text-emerald-800">
-                {selectedPledgerRow.member.fullName}: ${selectedPledgerRow.paid.toFixed(2)} / ${selectedPledgerRow.pledgedAmount.toFixed(2)} paid (${selectedPledgerRow.remaining.toFixed(2)} remaining)
-              </span>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between font-bold">
+                <span>{selectedPledgerRow.member.fullName}: ${selectedPledgerRow.paid.toFixed(2)} / ${selectedPledgerRow.pledgedAmount.toFixed(2)} paid</span>
+                <span>${selectedPledgerRow.remaining.toFixed(2)} remaining</span>
+              </div>
             )}
-          </div>
 
-          <p className="text-xs text-slate-600 font-medium">
-            Select the member who paid and enter the deposit details. Linked payments automatically update the member&apos;s pledge progress and credit the organization&apos;s Money on the Ground.
-          </p>
+            <form onSubmit={handleSubmitClaim} className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-950 mb-1">
+                    Member / Pledger Paying <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={selectedMemberId}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedMemberId(newId);
+                      const r = pledgerRows.find((row) => row.member.id === newId);
+                      if (r && r.remaining > 0) {
+                        setAmount(r.remaining.toFixed(2));
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {(selectableMembers.length > 0 ? selectableMembers : [currentMember]).map((m) => {
+                      const row = pledgerRows.find((r) => r.member.id === m.id);
+                      return (
+                        <option key={m.id} value={m.id}>
+                          {m.fullName}
+                          {row && row.pledgedAmount > 0
+                            ? ` (Pledged ${formatMoney(row.pledgedAmount, !isMasked)} • Rem ${formatMoney(row.remaining, !isMasked)})`
+                            : ' (No pledge yet)'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
 
-          <form onSubmit={handleSubmitClaim} className="space-y-3.5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-950">
+                      Amount Deposited ($) <span className="text-rose-500">*</span>
+                    </label>
+                    {selectedPledgerRow && selectedPledgerRow.remaining > 0 && (
+                      <button
+                        type="button"
+                        disabled={isMasked}
+                        onClick={() => setAmount(selectedPledgerRow.remaining.toFixed(2))}
+                        className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer disabled:opacity-50"
+                      >
+                        Full Rem ({formatMoney(selectedPledgerRow.remaining, !isMasked)})
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type={isMasked ? 'password' : 'number'}
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    required
+                    autoFocus
+                    disabled={isMasked}
+                    value={isMasked ? '••••' : amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="e.g. 250.00"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-mono font-bold text-slate-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method - High contrast dropdown fix */}
               <div>
                 <label className="block text-xs font-bold text-slate-950 mb-1">
-                  Member / Pledger Paying <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={selectedMemberId}
-                  onChange={(e) => setSelectedMemberId(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950"
-                >
-                  {(selectableMembers.length > 0 ? selectableMembers : [currentMember]).map((m) => {
-                    const row = pledgerRows.find((r) => r.member.id === m.id);
-                    return (
-                      <option key={m.id} value={m.id}>
-                        {m.fullName}
-                        {row && row.pledgedAmount > 0
-                          ? ` (Pledged $${row.pledgedAmount.toFixed(2)} • Rem $${row.remaining.toFixed(2)})`
-                          : ' (No pledge yet)'}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    Amount Deposited ($) <span className="text-rose-500">*</span>
-                  </label>
-                  {selectedPledgerRow && selectedPledgerRow.remaining > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setAmount(selectedPledgerRow.remaining.toFixed(2))}
-                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
-                    >
-                      Full Rem (${selectedPledgerRow.remaining.toFixed(2)})
-                    </button>
-                  )}
-                </div>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0.01"
-                  step="0.01"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="e.g. 200.00"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-bold text-emerald-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Payment Method <span className="text-rose-500">*</span>
+                  Payment Method / Channel <span className="text-rose-500">*</span>
                 </label>
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value as PaymentClaimMethod)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-semibold text-gray-900 dark:text-white"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 >
                   {methods.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -473,117 +520,124 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                   ))}
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Transaction / Transfer Reference
-                </label>
-                <input
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="e.g. MP261103.1820.D982"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-950 mb-1">
+                    Transaction / Transfer Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="e.g. MP261103.1820.D982"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-medium text-slate-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-950 mb-1">
+                    Optional Note
+                  </label>
+                  <input
+                    type="text"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. Handed cash to ground operator"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DFCE] bg-white text-xs font-medium text-slate-950 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Optional Note
+              {canConfirm && (
+                <label className="flex items-center space-x-2 text-xs font-semibold text-slate-900 cursor-pointer pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={autoConfirmPayIn}
+                    onChange={(e) => setAutoConfirmPayIn(e.target.checked)}
+                    className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>
+                    Immediately verify &amp; credit payment to Pool / Money on the Ground and update pledge progress
+                  </span>
                 </label>
-                <input
-                  type="text"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Handed cash to ground operator Kudzi"
-                  className="w-full px-3.5 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white"
-                />
-              </div>
-            </div>
+              )}
 
-            {canConfirm && (
-              <label className="flex items-center space-x-2 text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer pt-0.5">
+              {/* Receipt Attachment & Thumbnail */}
+              <div className="space-y-2 pt-1">
                 <input
-                  type="checkbox"
-                  checked={autoConfirmPayIn}
-                  onChange={(e) => setAutoConfirmPayIn(e.target.checked)}
-                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                  ref={payInFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
                 />
-                <span>
-                  Immediately verify &amp; credit payment to Pool / Money on the Ground and update pledge progress
-                </span>
-              </label>
-            )}
+                <div className="flex items-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => payInFileInputRef.current?.click()}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#FAF8F5] text-xs font-bold text-slate-950 hover:bg-stone-50 cursor-pointer active:scale-95 transition-transform"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{receiptPhoto ? 'Replace Receipt Photo' : 'Attach Receipt / Screenshot'}</span>
+                  </button>
 
-            {/* Receipt Attachment & Thumbnail */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center space-x-3">
-                <label className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
-                  <Upload className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>{receiptPhoto ? 'Replace Receipt Photo' : 'Attach Receipt / Screenshot'}</span>
-                  <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                </label>
+                  {receiptPhoto && (
+                    <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Photo Attached
+                    </span>
+                  )}
+                </div>
 
                 {receiptPhoto && (
-                  <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                    <CheckCircle className="w-3.5 h-3.5" /> Photo Attached
-                  </span>
+                  <div className="relative inline-block rounded-xl overflow-hidden border border-[#E8DFCE] bg-slate-50 group">
+                    <img
+                      src={receiptPhoto}
+                      alt="Receipt preview"
+                      onClick={() =>
+                        setActiveReceiptPhoto({
+                          url: receiptPhoto,
+                          title: 'Receipt Preview',
+                          subtitle: 'Newly attached payment proof (click to inspect)',
+                        })
+                      }
+                      className="w-20 h-20 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setReceiptPhoto('')}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {receiptPhoto && (
-                <div className="relative inline-block rounded-xl overflow-hidden border border-[#E8DFCE] bg-slate-50 group">
-                  <img
-                    src={receiptPhoto}
-                    alt="Receipt preview"
-                    onClick={() =>
-                      setActiveReceiptPhoto({
-                        url: receiptPhoto,
-                        title: 'Receipt Preview',
-                        subtitle: 'Newly attached payment proof (click to inspect)',
-                      })
-                    }
-                    className="w-24 h-24 object-cover cursor-pointer group-hover:opacity-90 transition-opacity"
-                  />
-                  <div
-                    onClick={() =>
-                      setActiveReceiptPhoto({
-                        url: receiptPhoto,
-                        title: 'Receipt Preview',
-                        subtitle: 'Newly attached payment proof (click to inspect)',
-                      })
-                    }
-                    className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
-                  >
-                    <Maximize2 className="w-4 h-4 drop-shadow-sm" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setReceiptPhoto('')}
-                    title="Remove receipt"
-                    className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white shadow-xs hover:bg-rose-700 cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer active:scale-95"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>
-                {canConfirm && autoConfirmPayIn
-                  ? 'Record & Confirm Pay-in'
-                  : 'Submit Pay-in Declaration'}
-              </span>
-            </button>
-          </form>
-        </div>
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-[#F0EBE1]">
+                <button
+                  type="button"
+                  onClick={() => setIsPayInSheetOpen(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!amount || parseFloat(amount) <= 0}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-stone-300 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md transition-all flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>
+                    {canConfirm && autoConfirmPayIn
+                      ? 'Record & Confirm Pay-in'
+                      : 'Submit Pay-in Declaration'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </BottomSheet>
       )}
 
       {/* Pending Treasurer Verification Drawer / Section */}
@@ -619,7 +673,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                           setActiveReceiptPhoto({
                             url: receiptUrl,
                             title: `Payment Receipt: ${payerName}`,
-                            subtitle: `$${claim.amount.toFixed(2)} via ${claim.method}`,
+                            subtitle: `${formatMoney(claim.amount, !isMasked)} via ${claim.method}`,
                           })
                         }
                         title="Click to view full screen receipt"
@@ -652,7 +706,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                               setActiveReceiptPhoto({
                                 url: receiptUrl,
                                 title: `Payment Receipt: ${payerName}`,
-                                subtitle: `$${claim.amount.toFixed(2)} via ${claim.method}`,
+                                subtitle: `${formatMoney(claim.amount, !isMasked)} via ${claim.method}`,
                               })
                             }
                             className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold underline cursor-pointer flex items-center gap-0.5"
@@ -662,7 +716,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                         )}
                       </div>
                       <div className="text-gray-500">
-                        Amount: <span className="font-bold text-gray-900 dark:text-white">${claim.amount.toFixed(2)}</span>
+                        Amount: <span className="font-bold text-gray-900 dark:text-white">{formatMoney(claim.amount, !isMasked)}</span>
                         {claim.reference && ` • Ref: ${claim.reference}`}
                       </div>
                       {claim.note && <p className="text-gray-500 italic truncate">{claim.note}</p>}
@@ -712,7 +766,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600 font-semibold">Claim Amount:</span>
-                <span className="font-black text-emerald-700">${confirmingClaim.amount.toFixed(2)}</span>
+                <span className="font-black text-emerald-700">{formatMoney(confirmingClaim.amount, !isMasked)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Method:</span>
@@ -727,7 +781,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
             </div>
 
             <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-950 font-medium">
-              ✓ Confirming will add <strong>${confirmingClaim.amount.toFixed(2)}</strong> to Organization Left Money and credit <strong>{confirmingClaim.memberName || 'the member'}</strong>&apos;s Master Capital stake.
+              ✓ Confirming will add <strong>{formatMoney(confirmingClaim.amount, !isMasked)}</strong> to Organization Left Money and credit <strong>{confirmingClaim.memberName || 'the member'}</strong>&apos;s Master Capital stake.
             </div>
 
             {confirmingClaim.receiptPhotoDataUrl && (
@@ -736,7 +790,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                   setActiveReceiptPhoto({
                     url: confirmingClaim.receiptPhotoDataUrl!,
                     title: `Receipt: ${confirmingClaim.memberName || 'Member'}`,
-                    subtitle: `$${confirmingClaim.amount.toFixed(2)} via ${confirmingClaim.method}`,
+                    subtitle: `${formatMoney(confirmingClaim.amount, !isMasked)} via ${confirmingClaim.method}`,
                   })
                 }
                 className="relative cursor-pointer group rounded-xl overflow-hidden border border-gray-200 bg-slate-50"
@@ -849,7 +903,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                           {payerName}
                         </span>
                         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                          +${claim.amount.toFixed(2)}
+                          +{formatMoney(claim.amount, !isMasked)}
                         </span>
                         <span
                           className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${claim.status === 'CONFIRMED'
@@ -866,7 +920,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                               setActiveReceiptPhoto({
                                 url: receiptUrl,
                                 title: `Payment Receipt: ${payerName}`,
-                                subtitle: `$${claim.amount.toFixed(2)} (${claim.status}) via ${claim.method}`,
+                                subtitle: `${formatMoney(claim.amount, !isMasked)} (${claim.status}) via ${claim.method}`,
                               })
                             }
                             className="text-[10px] text-indigo-600 font-bold underline cursor-pointer flex items-center gap-0.5"

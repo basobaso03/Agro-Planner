@@ -273,6 +273,13 @@ export default function App() {
     };
   }, []);
 
+  // Enforce session validity across multi-device password changes and session revocations
+  useEffect(() => {
+    if (activeSession) {
+      dataService.checkAndEnforceActiveSessionValidity();
+    }
+  }, [activeSession, state.members]);
+
   // Resolve the authenticated user's OrgMember profile strictly from activeSession
   const activeMember: OrgMember | null = useMemo(() => {
     if (!activeSession) return null;
@@ -662,9 +669,13 @@ export default function App() {
 
   const visibleNotifications = useMemo(() => {
     const orgId = activeMember?.orgId;
-    const orgAudit = orgId
-      ? (state.auditNotifications || []).filter((n) => !n.orgId || n.orgId === orgId)
-      : (state.auditNotifications || []);
+    if (!orgId) return [];
+    const orgAudit = (state.auditNotifications || []).filter(
+      (n) =>
+        n.orgId === orgId &&
+        (n.eventType as string) !== 'SECURITY_CREDENTIAL_LINKED' &&
+        (n.eventType as string) !== 'MEMBER_PROFILE_UPDATED'
+    );
 
     if (selectedLocationId === 'ALL') return orgAudit;
     return orgAudit.filter(
@@ -770,7 +781,7 @@ export default function App() {
     );
   }
 
-  // GATE 3: Zero-Trust Clearance Check (Only explicitly suspended members of an organization are blocked)
+  // GATE 3: Security Clearance Check (Only explicitly suspended members of an organization are blocked)
   if (activeMember.approvalStatus === 'SUSPENDED') {
     return (
       <NavigationProvider>

@@ -23,7 +23,7 @@ export interface SyncStatus {
   lastSyncAt: number;
 }
 
-const OUTBOX_STORAGE_KEY = 'capita_outbox_queue_v1';
+export const OUTBOX_STORAGE_KEY = 'capita_outbox_queue_v1';
 
 export class OutboxService {
   private queue: OutboxItem[] = [];
@@ -34,6 +34,10 @@ export class OutboxService {
 
   constructor() {
     this.loadQueue();
+  }
+
+  public getPending(): OutboxItem[] {
+    return this.queue.filter((i) => i.status !== 'COMMITTED');
   }
 
   public clearQueue(): void {

@@ -28,6 +28,7 @@ import { computePlanTotals, round2 } from '../../utils/runway';
 import { dataService } from '../../services/dataService';
 import { RunwayLineSheet } from './RunwayLineSheet';
 import { CountUp } from './CountUp';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayBudgetBuilderProps {
   plan: RunwayPlan;
@@ -49,6 +50,7 @@ interface RunwayBudgetBuilderProps {
   onSaveAsTemplate?: (templateName: string) => void;
   onNavigateToRevenue?: () => void;
   readOnly?: boolean;
+  showNumbers?: boolean;
 }
 
 export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
@@ -66,13 +68,16 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
   onSaveAsTemplate,
   onNavigateToRevenue,
   readOnly = false,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [editingLine, setEditingLine] = useState<RunwayLine | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
   const [templateModalOpen, setTemplateModalOpen] = useState<boolean>(false);
   const [templateName, setTemplateName] = useState<string>('');
 
   const fallbackLivestockRevenue = useMemo(() => {
+    if (plan.orgType === 'GENERAL_VENTURE') return 0;
     try {
       const allStatuses = dataService.computeLivestockStatuses();
       const relevant = allStatuses.filter((st) => {
@@ -143,12 +148,16 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
             )}
           </span>
           <div className="text-base sm:text-xl font-black text-slate-950 mt-0.5 truncate">
-            <CountUp value={executedSpend > 0 ? remainingCostBaseline : totals.costTotal} decimals={2} />
+            <CountUp value={executedSpend > 0 ? remainingCostBaseline : totals.costTotal} decimals={2} showNumbers={!isMasked} />
           </div>
           {executedSpend > 0 && (
             <span className="text-[10px] text-slate-500 font-medium block leading-tight mt-0.5 break-words">
-              <span className="sm:hidden">${executedLinesTotal.toFixed(2)} of ${totals.costTotal.toFixed(2)} spent</span>
-              <span className="hidden sm:inline">Planned: ${totals.costTotal.toFixed(2)} (${executedLinesTotal.toFixed(2)} spent)</span>
+              <span className="sm:hidden">
+                {isMasked ? '•••••• of •••••• spent' : `$${executedLinesTotal.toFixed(2)} of $${totals.costTotal.toFixed(2)} spent`}
+              </span>
+              <span className="hidden sm:inline">
+                {isMasked ? 'Planned: •••••• (•••••• spent)' : `Planned: $${totals.costTotal.toFixed(2)} ($${executedLinesTotal.toFixed(2)} spent)`}
+              </span>
             </span>
           )}
         </div>
@@ -159,11 +168,11 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
             <span>{executedSpend > 0 ? 'Contingency Left' : 'Contingency'}</span>
           </span>
           <div className="text-base sm:text-xl font-black text-amber-800 mt-0.5 truncate">
-            +<CountUp value={executedSpend > 0 ? remainingContingency : totals.contingencyReserve} decimals={2} />
+            +<CountUp value={executedSpend > 0 ? remainingContingency : totals.contingencyReserve} decimals={2} showNumbers={!isMasked} />
           </div>
           {executedSpend > 0 && (
             <span className="text-[10px] text-slate-500 font-medium block leading-tight mt-0.5">
-              Initial buffer: ${totals.contingencyReserve.toFixed(2)}
+              Initial buffer: {isMasked ? '••••••' : `$${totals.contingencyReserve.toFixed(2)}`}
             </span>
           )}
         </div>
@@ -180,12 +189,16 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
             )}
           </span>
           <div className="text-base sm:text-xl font-black text-indigo-900 mt-0.5 truncate">
-            <CountUp value={executedSpend > 0 ? remainingTotalRequired : totals.totalRequirement} decimals={2} />
+            <CountUp value={executedSpend > 0 ? remainingTotalRequired : totals.totalRequirement} decimals={2} showNumbers={!isMasked} />
           </div>
           {executedSpend > 0 && (
             <span className="text-[10px] text-emerald-700 font-bold block leading-tight mt-0.5 break-words">
-              <span className="sm:hidden">${executedSpend.toFixed(2)} of ${totals.totalRequirement.toFixed(2)} done</span>
-              <span className="hidden sm:inline">${executedSpend.toFixed(2)} of ${totals.totalRequirement.toFixed(2)} executed</span>
+              <span className="sm:hidden">
+                {isMasked ? '•••••• of •••••• done' : `$${executedSpend.toFixed(2)} of $${totals.totalRequirement.toFixed(2)} done`}
+              </span>
+              <span className="hidden sm:inline">
+                {isMasked ? '•••••• of •••••• executed' : `$${executedSpend.toFixed(2)} of $${totals.totalRequirement.toFixed(2)} executed`}
+              </span>
             </span>
           )}
         </div>
@@ -209,7 +222,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
             )}
           </div>
           <div className="text-base sm:text-xl font-black text-emerald-800 mt-0.5 truncate">
-            <CountUp value={totals.expectedIncome} decimals={2} />
+            <CountUp value={totals.expectedIncome} decimals={2} showNumbers={!isMasked} />
           </div>
           {totals.expectedIncome > 0 ? (
             <span className="text-[10px] text-emerald-600 font-medium block leading-tight mt-0.5 truncate">
@@ -261,8 +274,8 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
           {plan.contingencyMode === 'PERCENT' ? (
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold text-amber-900 dark:text-amber-300">
-                <span>Buffer Rate: {plan.contingencyPercent ?? 10}%</span>
-                <span>${totals.contingencyReserve.toFixed(2)} added to target</span>
+                <span>Buffer Rate: {isMasked ? '••%' : `${plan.contingencyPercent ?? 10}%`}</span>
+                <span>{isMasked ? '•••••• added to target' : `$${totals.contingencyReserve.toFixed(2)} added to target`}</span>
               </div>
               <input
                 type="range"
@@ -279,7 +292,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
               <div className="relative flex-1 max-w-xs">
                 <span className="absolute left-3 top-2 text-xs font-bold text-gray-500">$</span>
                 <input
-                  type="number"
+                  type={isMasked ? 'password' : 'number'}
                   min="0"
                   step="50"
                   value={plan.contingencyFixedAmount ?? 0}
@@ -301,7 +314,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
           <div className="flex items-center space-x-2">
             <Layers className="w-4 h-4 text-indigo-600" />
             <h4 className="text-sm font-black text-slate-950">
-              Budget Steps & Capital Lines ({lines.length})
+              Budget Steps & Capital Lines ({isMasked ? '••' : lines.length})
             </h4>
           </div>
 
@@ -394,7 +407,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                             </span>
                           ) : (line as any).actual > 0 ? (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
-                              ${(line as any).actual.toFixed(2)} spent
+                              {isMasked ? '•••••• spent' : `$${(line as any).actual.toFixed(2)} spent`}
                             </span>
                           ) : (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 font-medium">
@@ -409,10 +422,12 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                       </h5>
 
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {line.qty} {line.unitLabel || 'units'} × ${line.unitCost.toFixed(2)}
+                        {isMasked
+                          ? `•••• ${line.unitLabel || 'units'} × ••••••`
+                          : `${line.qty} ${line.unitLabel || 'units'} × $${line.unitCost.toFixed(2)}`}
                         {line.recurrence && (
                           <span className="ml-1 text-indigo-600 dark:text-indigo-400">
-                            (×{line.recurrence.occurrences} cycles every {line.recurrence.everyDays}d)
+                            (×{isMasked ? '••' : line.recurrence.occurrences} cycles every {isMasked ? '••' : line.recurrence.everyDays}d)
                           </span>
                         )}
                       </p>
@@ -425,7 +440,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
                       className={`text-sm sm:text-base font-mono font-bold ${isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'
                         }`}
                     >
-                      {isIncome ? '+' : ''}${lineCost.toFixed(2)}
+                      {isMasked ? '••••••' : `${isIncome ? '+' : ''}$${lineCost.toFixed(2)}`}
                     </span>
 
                     {isDraft && !readOnly && (
@@ -469,6 +484,7 @@ export const RunwayBudgetBuilder: React.FC<RunwayBudgetBuilderProps> = ({
         pastExpenses={pastExpenses}
         onSave={onUpsertLine}
         onDelete={onRemoveLine}
+        showNumbers={!isMasked}
       />
 
       {/* Save Template Modal */}

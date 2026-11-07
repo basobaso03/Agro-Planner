@@ -114,12 +114,18 @@ export function cleanRawMessage(rawText: string): string {
   cleaned = cleaned.replace(/^[A-Z]{3,4}-\d{3,}:\s*/i, '');
 
   // Strip or replace unfriendly technical cryptographic labels
-  cleaned = cleaned.replace(/\bzero-trust sha-?256\b/gi, 'Zero-Trust verified');
+  cleaned = cleaned.replace(/\bzero-trust sha-?256\b/gi, 'Securely verified');
   cleaned = cleaned.replace(/\bsha-?256\b/gi, 'verified');
 
   // Strip any raw 64-character or 16+ hex hashes if present in messages
   cleaned = cleaned.replace(/\b[a-f0-9]{64}\b/gi, '');
   cleaned = cleaned.replace(/\b[a-f0-9]{16,}\b/gi, '');
+
+  // Convert technical enum constants with underscores to human labels
+  cleaned = cleaned.replace(/\bAGRO_FARMING\b/g, 'Agro-Farming');
+  cleaned = cleaned.replace(/\bGENERAL_VENTURE\b/g, 'General Venture');
+  cleaned = cleaned.replace(/\bMILESTONE_BASED\b/g, 'Milestone-Based');
+  cleaned = cleaned.replace(/\bINDIVIDUAL_TAG\b/g, 'Individual Tag');
 
   return cleaned.trim();
 }
@@ -226,6 +232,7 @@ export function getEventCategory(eventType: AuditEventType): NotificationCategor
       return 'OPERATIONS';
 
     case 'ORGANIZATION_CREATED':
+    case 'ORGANIZATION_UPDATED':
     case 'INVITE_CODE_REFRESHED':
     case 'MEMBER_ADDED':
     case 'MEMBER_APPROVED':
@@ -484,7 +491,7 @@ export function formatNotification(event: AuditNotificationEvent): FormattedNoti
 
   const cleanTitle = event.title
     .replace(/^Agro Planner\s*[·•-]\s*/i, '')
-    .replace(/\bzero-trust sha-?256\b/gi, 'Zero-Trust Verified')
+    .replace(/\bzero-trust sha-?256\b/gi, 'Securely Verified')
     .replace(/\bsha-?256\b/gi, 'Verified')
     .trim();
   const shortSummary = generateShortSummary(cleanTitle, event.message);

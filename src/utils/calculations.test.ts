@@ -333,3 +333,65 @@ test('Member Target Capital Contribution: calculates progress percentage, remain
   assert.equal(bob.contributionPace, 'MILESTONE');
 });
 
+test('Debt and Loan Interest calculations: verifies Cash on Ground and Net Worth behavior', () => {
+  // Borrowing $1,000 cash at 10% interest -> Cash increases by $1,000, Total debt balance owed is $1,100
+  // Disbursing $500 loan at 20% interest -> Cash decreases by $500, Total loan receivable is $600
+  const initialPool: any[] = [
+    {
+      id: 'c-test-1',
+      memberId: 'mem-1',
+      amount: 2000,
+      direction: 'INITIAL' as const,
+      createdAt: '2026-10-01T00:00:00Z',
+    },
+  ];
+
+  const debtLiabilities: any[] = [
+    {
+      id: 'debt-test-1',
+      creditorName: 'AgriBank',
+      category: 'EXTERNAL_LOAN',
+      principalAmount: 1000,
+      remainingBalance: 1100, // $1,000 + 10% interest
+      interestRatePercent: 10,
+      status: 'OUTSTANDING',
+      repayments: [],
+    },
+  ];
+
+  const loansGiven: any[] = [
+    {
+      id: 'loan-test-1',
+      borrowerName: 'Partner Grower',
+      category: 'OUTGROWER_ADVANCE',
+      principalAmount: 500,
+      remainingBalance: 600, // $500 + 20% interest
+      interestRatePercent: 20,
+      status: 'ACTIVE',
+      repayments: [],
+    },
+  ];
+
+  const fin = computeFinancialSummary({
+    capitalContributions: initialPool,
+    expenses: [],
+    fixedAssets: [],
+    livestockStatuses: [],
+    livestockEvents: [],
+    debtLiabilities,
+    loansGiven,
+  });
+
+  // Cash on Ground = Initial Pool ($2,000) + Borrowed Cash ($1,000) - Disbursed Loan ($500) = $2,500
+  assert.equal(fin.leftMoney, 2500);
+
+  // Total Borrowed Debt Outstanding = $1,100 (includes interest)
+  assert.equal(fin.totalBorrowedDebtOutstanding, 1100);
+
+  // Total Loans Given Outstanding = $600 (includes interest)
+  assert.equal(fin.totalLoansGivenOutstanding, 600);
+
+  // Total NAV = Left Money ($2,500) + Loans Receivable ($600) - Debt Liabilities ($1,100) = $2,000
+  assert.equal(fin.totalNav, 2000);
+});
+

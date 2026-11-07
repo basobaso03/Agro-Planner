@@ -38,7 +38,7 @@ export interface FarmLocation {
   orgId?: string;
   name: string;
   region: string;
-  gpsCoordinates: string;
+  gpsCoordinates?: string;
   primaryOperatorName: string;
   createdAt: string;
   createdBy: string;
@@ -61,6 +61,9 @@ export interface OrgMember {
   authProviders?: string[];
   hasPasswordSetup?: boolean;
   passwordVerifierHash?: string;
+  passwordChangedAt?: string;
+  sessionVersion?: number;
+  sessionsRevokedAt?: string;
   assignedLocationId?: string;
 
   // Capital Target Commitment Configuration
@@ -235,6 +238,9 @@ export interface LivestockEntry {
   configuredSalePricePerKg?: number;
   fundingSource?: 'CASH_POOL' | 'SUPPLIER_CREDIT' | 'DIRECTOR_LOAN';
   fundingDebtId?: string;
+  runwayPlanId?: string;
+  runwayLineId?: string;
+  acquisitionExpenseId?: string;
 }
 
 export type LivestockEventType =
@@ -299,6 +305,7 @@ export type NotificationSeverity =
 
 export type AuditEventType =
   | 'ORGANIZATION_CREATED'
+  | 'ORGANIZATION_UPDATED'
   | 'INVITE_CODE_REFRESHED'
   | 'SITE_REGISTERED'
   | 'SITE_UPDATED'

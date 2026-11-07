@@ -8,10 +8,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   User,
-  Compass,
   Building,
-  Navigation,
-  Loader2,
 } from 'lucide-react';
 import type { FarmLocation, OrgMember } from '../types/agro.ts';
 import { ConfirmSheet } from './ui/ConfirmSheet.tsx';
@@ -40,35 +37,11 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
   // Form State
   const [name, setName] = useState('');
   const [region, setRegion] = useState('');
-  const [gps, setGps] = useState('');
   const [operator, setOperator] = useState('');
 
   const [statusMsg, setStatusMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [decommissionTarget, setDecommissionTarget] = useState<FarmLocation | null>(null);
-
-  const handleGetDeviceGps = () => {
-    if (!navigator.geolocation) {
-      setErrorMsg('Geolocation is not supported by your browser or device.');
-      return;
-    }
-    setIsLocatingGps(true);
-    setErrorMsg('');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        setGps(`${lat}, ${lng}`);
-        setIsLocatingGps(false);
-      },
-      (err) => {
-        setIsLocatingGps(false);
-        setErrorMsg(`Could not acquire GPS: ${err.message}. Please enter coordinates manually.`);
-      },
-      { timeout: 10000, enableHighAccuracy: true }
-    );
-  };
 
   if (!isOpen) return null;
 
@@ -80,7 +53,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
     setEditingLoc(null);
     setName('');
     setRegion('');
-    setGps('-17.8292, 31.0522');
     setOperator(activeMember.fullName);
     setIsCreatingNew(true);
     setStatusMsg('');
@@ -92,7 +64,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
     setEditingLoc(loc);
     setName(loc.name);
     setRegion(loc.region);
-    setGps(loc.gpsCoordinates);
     setOperator(loc.primaryOperatorName);
     setStatusMsg('');
     setErrorMsg('');
@@ -108,7 +79,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
         dataService.addLocation({
           name,
           region,
-          gpsCoordinates: gps,
           primaryOperatorName: operator,
           actor: activeMember,
         });
@@ -119,7 +89,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
           locationId: editingLoc.id,
           name,
           region,
-          gpsCoordinates: gps,
           primaryOperatorName: operator,
           actor: activeMember,
         });
@@ -235,35 +204,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
                   className="w-full bg-white border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 font-bold focus:outline-none focus:border-emerald-500"
                 />
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[11px] font-black text-slate-950">
-                    GPS Coordinates
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleGetDeviceGps}
-                    disabled={isLocatingGps}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                    title="Acquire current latitude and longitude using hardware GPS"
-                  >
-                    {isLocatingGps ? (
-                      <Loader2 className="w-3 h-3 animate-spin text-emerald-700" />
-                    ) : (
-                      <Navigation className="w-3 h-3 text-emerald-700" />
-                    )}
-                    <span>{isLocatingGps ? 'Locating...' : 'Use My Current Device GPS'}</span>
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  placeholder="-17.8292, 31.0522"
-                  value={gps}
-                  onChange={(e) => setGps(e.target.value)}
-                  className="w-full bg-white border border-[#E0D7C6] rounded-xl px-3 py-2 text-xs text-slate-950 font-mono font-bold focus:outline-none focus:border-emerald-500"
-                />
-              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
@@ -333,10 +273,6 @@ export const SiteManagerModal: React.FC<SiteManagerModalProps> = ({
                   <span className="flex items-center gap-1">
                     <User className="w-3 h-3 text-slate-400" />
                     <span>Operator: {loc.primaryOperatorName}</span>
-                  </span>
-                  <span className="flex items-center gap-1 font-mono text-[10px]">
-                    <Compass className="w-3 h-3 text-slate-400" />
-                    <span>{loc.gpsCoordinates}</span>
                   </span>
                 </div>
               </div>

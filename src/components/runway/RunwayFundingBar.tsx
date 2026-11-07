@@ -1,12 +1,14 @@
 import React from 'react';
 import type { RunwayFundingLayers } from '../../types/runway';
 import { CountUp } from './CountUp';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayFundingBarProps {
   layers: RunwayFundingLayers;
   showLabels?: boolean;
   compact?: boolean;
   className?: string;
+  showNumbers?: boolean;
 }
 
 export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
@@ -14,7 +16,9 @@ export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
   showLabels = true,
   compact = false,
   className = '',
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const target = layers.totalRequirement || 1;
   const collectedPct = Math.min(100, Math.max(0, (layers.collected / target) * 100));
   const pledgedPct = Math.min(100, Math.max(0, (layers.pledged / target) * 100));
@@ -31,27 +35,26 @@ export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
         <div className="flex items-center justify-between text-xs sm:text-sm font-medium">
           <div className="flex items-center space-x-2">
             <span className="text-gray-900 dark:text-gray-100 font-bold">
-              <CountUp value={layers.collected} decimals={0} />
+              <CountUp value={layers.collected} decimals={0} showNumbers={!isMasked} />
             </span>
             <span className="text-gray-400">/</span>
             <span className="text-gray-500 dark:text-gray-400">
-              ${layers.totalRequirement.toLocaleString('en-US', { maximumFractionDigits: 0 })} Target
+              {isMasked ? '•••••• Target' : `${formatMoney(layers.totalRequirement, true)} Target`}
             </span>
           </div>
 
           <div className="flex items-center space-x-2">
             <span
-              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                layers.collectedPct >= 100
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold ${layers.collectedPct >= 100
                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                   : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
-              }`}
+                }`}
             >
-              {layers.collectedPct}% Paid-in
+              {isMasked ? '••% Paid-in' : `${layers.collectedPct}% Paid-in`}
             </span>
             {layers.pledgedPct > layers.collectedPct && (
               <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                ({layers.pledgedPct}% Pledged)
+                ({isMasked ? '••% Pledged' : `${layers.pledgedPct}% Pledged`})
               </span>
             )}
           </div>
@@ -60,9 +63,8 @@ export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
 
       {/* Multi-layer Bar */}
       <div
-        className={`relative w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden shadow-inner ${
-          compact ? 'h-2.5' : 'h-4 sm:h-5'
-        }`}
+        className={`relative w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden shadow-inner ${compact ? 'h-2.5' : 'h-4 sm:h-5'
+          }`}
         role="progressbar"
         aria-valuenow={layers.collectedPct}
         aria-valuemin={0}
@@ -94,7 +96,7 @@ export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
           <div
             className="absolute inset-y-0 w-0.5 bg-rose-400/70 dark:bg-rose-500/70 z-10"
             style={{ left: `${nonReservePct}%` }}
-            title={`Contingency reserve threshold ($${(layers.reserveLeft + layers.reserveUsed).toFixed(0)})`}
+            title={isMasked ? 'Contingency reserve threshold' : `Contingency reserve threshold (${formatMoney(layers.reserveLeft + layers.reserveUsed, true)})`}
           />
         )}
       </div>
@@ -105,23 +107,23 @@ export const RunwayFundingBar: React.FC<RunwayFundingBarProps> = ({
           {layers.executed > 0 && (
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span>Executed: ${layers.executed.toLocaleString()}</span>
+              <span>Executed: {formatMoney(layers.executed, !isMasked)}</span>
             </div>
           )}
           <div className="flex items-center space-x-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-500" />
-            <span>Cash Paid In: ${layers.collected.toLocaleString()}</span>
+            <span>Cash Paid In: {formatMoney(layers.collected, !isMasked)}</span>
           </div>
           {layers.pledged > layers.collected && (
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400/60" />
-              <span>Pledged: ${layers.pledged.toLocaleString()}</span>
+              <span>Pledged: {formatMoney(layers.pledged, !isMasked)}</span>
             </div>
           )}
           {layers.reserveLeft > 0 && (
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-              <span>Reserve Left: ${layers.reserveLeft.toLocaleString()}</span>
+              <span>Reserve Left: {formatMoney(layers.reserveLeft, !isMasked)}</span>
             </div>
           )}
         </div>

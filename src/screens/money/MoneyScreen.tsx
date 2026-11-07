@@ -35,6 +35,7 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({
   const creditSales = isAgro ? (dataService.getState().creditSales || []) : [];
   const debts = dataService.getState().debtLiabilities || [];
   const loans = dataService.getState().loansGiven || [];
+  const expenses = dataService.getState().expenses || [];
   const assets = dataService.computeFixedAssetGroupSummaries();
 
   const totalCreditReceivables = creditSales.reduce(
@@ -51,7 +52,8 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({
   );
   const totalAssetValue = assets.reduce((acc, a) => acc + a.currentValue, 0);
 
-  const netWorth = finSummary.leftMoney + totalAssetValue + totalCreditReceivables + totalLoansLent - totalDebtsOwed;
+  const pendingExpensesCount = expenses.filter((e) => e.approvalStatus === 'PENDING_MULTISIG').length;
+  const netWorth = finSummary.totalNav;
 
   const handleToggleMask = () => {
     if (onToggleShowNumbers) {
@@ -176,6 +178,15 @@ export const MoneyScreen: React.FC<MoneyScreenProps> = ({
           title="Capital Equity Pool"
           subtitle={`Total contributed: ${formatMoney(finSummary.totalPool, { mask: masked })}`}
           onClick={() => navigate('capitalPool')}
+        />
+
+        <ListRow
+          icon="🧾"
+          title="Operating Expenses & Vouchers"
+          subtitle={`${formatMoney(finSummary.approvedExpenses, { mask: masked })} approved disbursements`}
+          badge={pendingExpensesCount > 0 ? `${pendingExpensesCount} Pending` : undefined}
+          badgeVariant="rose"
+          onClick={() => navigate('expenses')}
         />
 
         {isAgro && (

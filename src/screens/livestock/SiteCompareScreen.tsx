@@ -109,8 +109,8 @@ export const SiteCompareScreen: React.FC<SiteCompareScreenProps> = ({
             type="button"
             onClick={() => setSelectedSiteId(sm.location.id)}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${sm.location.id === activeSite?.location.id
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-white border border-[#E8DFCE] text-slate-800 hover:bg-[#FAF8F5]'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white border border-[#E8DFCE] text-slate-800 hover:bg-[#FAF8F5]'
               }`}
           >
             {sm.location.name}
@@ -154,7 +154,7 @@ export const SiteCompareScreen: React.FC<SiteCompareScreenProps> = ({
                 {activeSite.location.name}
               </h2>
               <div className="text-xs text-slate-600 font-medium mt-0.5">
-                Operator: {activeSite.location.primaryOperatorName} · GPS: {activeSite.location.gpsCoordinates}
+                Operator: {activeSite.location.primaryOperatorName}
               </div>
             </div>
 

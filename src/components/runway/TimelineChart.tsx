@@ -25,11 +25,13 @@ import {
 } from 'lucide-react';
 import type { RunwayPlan, RunwayLine } from '../../types/runway';
 import { buildCashTimeline } from '../../utils/runway';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface TimelineChartProps {
   plan: RunwayPlan;
   lines: RunwayLine[];
   openingCash?: number;
+  showNumbers?: boolean;
 }
 
 const formatDateShort = (isoDate: string): string => {
@@ -58,7 +60,9 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
   plan,
   lines,
   openingCash = 0,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [costIncreasePct, setCostIncreasePct] = useState<number>(0);
   const [incomeHaircutPct, setIncomeHaircutPct] = useState<number>(0);
   const [incomeDelayMonths, setIncomeDelayMonths] = useState<number>(0);
@@ -129,11 +133,10 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
           <button
             type="button"
             onClick={() => setShowStressSliders(!showStressSliders)}
-            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-              showStressSliders || costIncreasePct > 0 || incomeHaircutPct > 0
+            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${showStressSliders || costIncreasePct > 0 || incomeHaircutPct > 0
                 ? 'border-amber-400 bg-amber-50 text-amber-950'
                 : 'border-[#E8DFCE] hover:bg-stone-50 text-slate-800'
-            }`}
+              }`}
           >
             <Sliders className="w-3.5 h-3.5" />
             <span>Stress Test</span>
@@ -248,7 +251,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
         <div>
           <span className="text-slate-600 font-semibold block truncate">Peak Capital Need:</span>
           <div className="font-black text-rose-600 text-sm mt-0.5 truncate">
-            ${timeline.peakNeed.toFixed(2)}
+            {formatMoney(timeline.peakNeed, !isMasked)}
           </div>
           <span className="text-[10px] text-slate-400 block truncate">Max cash deficit</span>
         </div>
@@ -272,7 +275,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
         <div>
           <span className="text-slate-600 font-semibold block truncate">Ending Treasury:</span>
           <div className={`font-black text-sm mt-0.5 truncate ${isHealthyEnding ? 'text-emerald-700' : 'text-rose-600'}`}>
-            ${(chartData[chartData.length - 1]?.balance || 0).toFixed(2)}
+            {formatMoney(chartData[chartData.length - 1]?.balance || 0, !isMasked)}
           </div>
           <span className="text-[10px] text-slate-400 block truncate">
             {isHealthyEnding ? 'Net surplus profit' : 'Needs more funding'}
@@ -312,7 +315,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
             <XAxis dataKey="date" tick={{ fontSize: 11 }} />
             <YAxis
               tick={{ fontSize: 11 }}
-              tickFormatter={(v) => `$${Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v}`}
+              tickFormatter={(v) => isMasked ? '••' : `$${Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v}`}
             />
             <Tooltip
               content={({ active, payload }) => {
@@ -325,9 +328,8 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
                         <span>{data.fullDate || data.date}</span>
                         {data.type && (
                           <span
-                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                              data.type === 'INFLOW' ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
-                            }`}
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${data.type === 'INFLOW' ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
+                              }`}
                           >
                             {data.type}
                           </span>
@@ -338,13 +340,13 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
                         <div className="flex justify-between items-center text-[11px]">
                           <span className="text-slate-400">Cash Impact:</span>
                           <span className={`font-mono font-bold ${isPositiveChange ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {isPositiveChange ? '+' : '-'}${Math.abs(data.netChange).toFixed(2)}
+                            {formatMoney(isPositiveChange ? data.netChange : -Math.abs(data.netChange), !isMasked)}
                           </span>
                         </div>
                       )}
                       <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-800">
                         <span className="text-slate-400">Treasury Balance:</span>
-                        <span className="font-mono font-black text-indigo-300">${data.balance.toFixed(2)}</span>
+                        <span className="font-mono font-black text-indigo-300">{formatMoney(data.balance, !isMasked)}</span>
                       </div>
                     </div>
                   );
@@ -391,9 +393,8 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
                 >
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <span
-                      className={`p-1 rounded-md shrink-0 ${
-                        isOut ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
-                      }`}
+                      className={`p-1 rounded-md shrink-0 ${isOut ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                        }`}
                     >
                       {isOut ? <ArrowDownRight className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
                     </span>
@@ -407,10 +408,10 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
 
                   <div className="text-right shrink-0">
                     <div className={`font-mono font-bold ${isOut ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      {isOut ? '-' : '+'}${ev.amount.toFixed(2)}
+                      {formatMoney(isOut ? -ev.amount : ev.amount, !isMasked)}
                     </div>
                     <div className="text-[10px] font-mono text-slate-500">
-                      Balance: ${ev.runningBalance.toFixed(2)}
+                      Balance: {formatMoney(ev.runningBalance, !isMasked)}
                     </div>
                   </div>
                 </div>

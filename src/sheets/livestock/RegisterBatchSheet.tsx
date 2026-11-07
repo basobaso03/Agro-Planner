@@ -42,7 +42,7 @@ export interface RegisterBatchSheetProps {
 }
 
 // Built-in standard protocol presets
-interface ProtocolPreset {
+export interface ProtocolPreset {
   name: string;
   durationValue: number;
   durationUnit: DurationUnit;
@@ -50,7 +50,7 @@ interface ProtocolPreset {
   checkpoints: Omit<AnimalCheckpoint, 'completed' | 'reminderStatus'>[];
 }
 
-const DEFAULT_PROTOCOL_TEMPLATES: Record<string, ProtocolPreset> = {
+export const DEFAULT_PROTOCOL_TEMPLATES: Record<string, ProtocolPreset> = {
   Broilers: {
     name: 'Commercial Broiler 42-Day Protocol',
     durationValue: 6,
@@ -164,6 +164,18 @@ const STANDARD_SPECIES = [
 ];
 
 export const PRESET_SPECIES = STANDARD_SPECIES;
+
+export function detectSpeciesFromTitle(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes('broiler') || t.includes('chick') || t.includes('cobb') || t.includes('ross')) return 'Broilers';
+  if (t.includes('layer') || t.includes('pullet') || t.includes('egg')) return 'Layers';
+  if (t.includes('goat') || t.includes('boer') || t.includes('doe') || t.includes('buck')) return 'Boer Goats';
+  if (t.includes('cattle') || t.includes('cow') || t.includes('bull') || t.includes('steer') || t.includes('heifer') || t.includes('calf')) return 'Cattle';
+  if (t.includes('pig') || t.includes('swine') || t.includes('weaner') || t.includes('gilt') || t.includes('sow') || t.includes('boar')) return 'Pigs';
+  if (t.includes('sheep') || t.includes('lamb') || t.includes('ewe') || t.includes('ram')) return 'Sheep';
+  if (t.includes('road runner') || t.includes('indigenous') || t.includes('free range')) return 'Road Runners';
+  return 'Broilers';
+}
 
 export const formatCheckpointCategory = (cat?: string): string => {
   if (!cat) return 'General';
@@ -375,7 +387,7 @@ export const RegisterBatchSheet: React.FC<RegisterBatchSheetProps> = ({
               initialHeadcount: parseInt(values.initialHeadcount, 10),
               purchaseCostTotal: cost,
               targetSaleWeightKg: parseFloat(values.targetSaleWeightKg) || undefined,
-              customCheckpoints: checkpoints.length > 0 ? checkpoints : undefined,
+              customCheckpoints: checkpoints,
               imageUrl: photoUrl,
               notes: values.notes.trim(),
             },
@@ -403,7 +415,7 @@ export const RegisterBatchSheet: React.FC<RegisterBatchSheetProps> = ({
             autoDeductPurchaseFromLeftMoney: cost > 0,
             fundingSource: cost > 0 ? 'CASH_POOL' : undefined,
             targetSaleWeightKg: parseFloat(values.targetSaleWeightKg) || undefined,
-            customCheckpoints: checkpoints.length > 0 ? checkpoints : undefined,
+            customCheckpoints: checkpoints,
             imageUrl: photoUrl,
             notes: values.notes.trim(),
             actor: activeMember,

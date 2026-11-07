@@ -11,6 +11,7 @@ import {
   signInWithCredential,
   signInAnonymously,
   linkWithCredential,
+  reauthenticateWithCredential,
   updatePassword,
   updateProfile,
   deleteUser,
@@ -129,9 +130,10 @@ import {
   computeRecovery,
   computeRunwayMonths,
 } from '../utils/runway.ts';
-import { outboxService } from './outbox.ts';
+import { outboxService, OUTBOX_STORAGE_KEY } from './outbox.ts';
 import { appStorage } from './storage.ts';
 import { nativeReminders } from '../native/reminders.ts';
+import { setTemplateNameOverride } from '../utils/runwayTemplates.ts';
 
 export enum OperationType {
   CREATE = 'create',
@@ -179,6 +181,9 @@ export interface AuthenticatedSession {
   expiresAt?: number;  // Epoch timestamp in ms (default: 3 days after login)
   freshlyAuthenticated?: boolean; // True only during active login turn; false when loaded from storage
   authLoginType?: 'cloud_google' | 'cloud_password' | 'local_biometric' | 'local_restore';
+  sessionVersion?: number; // Monotonically increasing session counter (revocation trigger)
+  passwordVerifierHash?: string; // The verifier hash when authenticated
+  sessionCreatedAt?: number; // Epoch timestamp in ms
 }
 
 export const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 Days in milliseconds
@@ -189,6 +194,16 @@ const SESSION_STORAGE_KEY = 'agro_planner_active_auth_session_v2';
 const CUSTOM_FB_KEY = 'agro_planner_custom_firebase_config_v1';
 const LOCAL_CREDENTIALS_STORAGE_KEY = 'agro_planner_local_credentials_v2';
 const CHANNEL_NAME = 'agro_planner_realtime_bus';
+
+function toEpochMs(val: unknown): number {
+  if (!val) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (typeof val === 'string') {
+    const parsed = new Date(val).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
 
 let firebaseApp: FirebaseApp | null = null;
 let firestoreDb: Firestore | null = null;
@@ -388,7 +403,21 @@ class AgroDataService {
       this.channel.onmessage = (event) => {
         if (event.data && event.data.type === 'STATE_UPDATED') {
           this.state = sanitizeSnapshotOfLegacySeed(event.data.payload);
+          this.checkAndEnforceActiveSessionValidity();
           this.notifyListeners();
+        } else if (event.data && event.data.type === 'SESSIONS_REVOKED') {
+          const targetEmail = (event.data.targetEmail || '').trim().toLowerCase();
+          const targetUid = event.data.targetUid;
+          const myEmail = (this.activeSession?.email || '').trim().toLowerCase();
+          const myUid = this.activeSession?.uid;
+          if (
+            this.activeSession &&
+            ((myEmail && myEmail === targetEmail) || (myUid && myUid === targetUid))
+          ) {
+            this.forceInvalidateActiveSession(
+              event.data.reason || 'All active sessions were signed out from another device.'
+            );
+          }
         }
       };
     }
@@ -412,13 +441,16 @@ class AgroDataService {
       // Immediately connect live real-time listeners for all 9 collections
       this.attachCloudListeners(fb.db, this.currentUser?.uid || this.activeSession?.uid || 'active');
 
-      // When the app resumes from background or closed state, immediately catch up on cloud notifications
+      // When the app resumes from background or closed state, immediately check session validity and sync
       if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible' && !this.isSigningOut && firestoreDb) {
-            void this.syncWithCloudServer().catch(() => {
-              // Ignore transient resume network error
-            });
+          if (document.visibilityState === 'visible' && !this.isSigningOut) {
+            this.checkAndEnforceActiveSessionValidity();
+            if (firestoreDb) {
+              void this.syncWithCloudServer().catch(() => {
+                // Ignore transient resume network error
+              });
+            }
           }
         });
       }
@@ -453,7 +485,13 @@ class AgroDataService {
                 emailVerified: user.emailVerified || providers.includes('google.com'),
                 providers: mergedProviders.length > 0 ? mergedProviders : ['google.com'],
                 isCloudAuth: true,
-                activeOrgId: existingMem?.orgId || undefined,
+                activeOrgId: existingMem?.orgId || this.activeSession?.activeOrgId || undefined,
+                sessionVersion: this.activeSession?.sessionVersion ?? existingMem?.sessionVersion ?? 1,
+                sessionCreatedAt: this.activeSession?.sessionCreatedAt || toEpochMs(user.metadata?.lastSignInTime) || Date.now(),
+                signedInAt: this.activeSession?.signedInAt || toEpochMs(user.metadata?.lastSignInTime) || Date.now(),
+                passwordVerifierHash: this.activeSession?.passwordVerifierHash || creds[email]?.verifierHash || existingMem?.passwordVerifierHash,
+                authLoginType: this.activeSession?.authLoginType || (providers.includes('google.com') ? 'cloud_google' : 'cloud_password'),
+                freshlyAuthenticated: this.activeSession?.freshlyAuthenticated ?? false,
               };
               this.setActiveSession(nextSession);
               this.attachCloudListeners(fb.db!, user.uid);
@@ -649,6 +687,40 @@ class AgroDataService {
             return true;
           });
 
+          // Self-heal and reconcile audit trail genesis
+          if (cleaned.auditNotifications && cleaned.auditNotifications.length > 0) {
+            const orgs = cleaned.organizations || [];
+            const primaryOrgId = orgs[0]?.id || cleaned.members?.find((m) => m.orgId)?.orgId;
+            const rec1 = cleaned.auditNotifications.find((n) => n.sequenceNumber === 1);
+            if (rec1 && (!rec1.orgId || rec1.orgId === 'ALL') && primaryOrgId) {
+              rec1.orgId = primaryOrgId;
+            } else if (!rec1 && primaryOrgId) {
+              const orgEvents = cleaned.auditNotifications.filter((n) => n.orgId === primaryOrgId);
+              const sortedOrg = [...orgEvents].sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+              if (sortedOrg.length > 0 && sortedOrg[0].sequenceNumber === 2) {
+                const firstBlock = sortedOrg[0];
+                cleaned.auditNotifications.push({
+                  id: `AUD-001-GENESIS`,
+                  orgId: primaryOrgId,
+                  sequenceNumber: 1,
+                  timestamp: new Date(new Date(firstBlock.timestamp).getTime() - 1000).toISOString(),
+                  actorId: firstBlock.actorId,
+                  actorName: firstBlock.actorName,
+                  actorRole: firstBlock.actorRole,
+                  locationId: 'ALL',
+                  locationName: 'Organization Master',
+                  eventType: 'SYSTEM_LEDGER_RESET',
+                  severity: 'MILESTONE',
+                  title: 'Clean Production Ledger Initialized',
+                  message: 'Cryptographically verified ledger initialized at Sequence 1.',
+                  previousHash: GENESIS_SHORT,
+                  currentHash: firstBlock.previousHash,
+                  readByMemberIds: [firstBlock.actorId],
+                });
+              }
+            }
+          }
+
           return cleaned;
         }
       }
@@ -680,6 +752,65 @@ class AgroDataService {
         return null;
       }
 
+      // Check multi-device session invalidation against loaded member state
+      if (this.state && Array.isArray(this.state.members)) {
+        const normEmail = (session.email || '').trim().toLowerCase();
+        const member = this.state.members.find(
+          (m) =>
+            m.id === session.uid ||
+            m.uid === session.uid ||
+            (normEmail &&
+              ((m.email || '').trim().toLowerCase() === normEmail ||
+                (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
+        );
+        if (member) {
+          if (
+            typeof member.sessionVersion === 'number' &&
+            member.sessionVersion > 0 &&
+            (typeof session.sessionVersion !== 'number' || session.sessionVersion < member.sessionVersion)
+          ) {
+            console.info('Session invalidated on restore: higher member.sessionVersion exists.');
+            window.localStorage.removeItem(SESSION_STORAGE_KEY);
+            window.sessionStorage.setItem(
+              'agro_session_revoked_notice',
+              member.passwordChangedAt
+                ? 'Your password was changed from another device. Please sign in with your new password.'
+                : 'All active sessions were signed out from another device. Please sign in afresh.'
+            );
+            return null;
+          }
+          if (member.sessionsRevokedAt) {
+            const revTime = toEpochMs(member.sessionsRevokedAt);
+            const sessTime = toEpochMs(session.sessionCreatedAt) || toEpochMs(session.signedInAt);
+            const isVersionStale = (typeof session.sessionVersion !== 'number' || session.sessionVersion < (member.sessionVersion || 1));
+            const isTimeStale = sessTime > 0 && sessTime < revTime;
+            if (isVersionStale || isTimeStale) {
+              console.info('Session invalidated on restore: session was created prior to sessionsRevokedAt.');
+              window.localStorage.removeItem(SESSION_STORAGE_KEY);
+              window.sessionStorage.setItem(
+                'agro_session_revoked_notice',
+                'All active sessions were signed out from another device. Please sign in afresh.'
+              );
+              return null;
+            }
+          }
+          if (
+            member.hasPasswordSetup &&
+            member.passwordVerifierHash &&
+            session.passwordVerifierHash &&
+            session.passwordVerifierHash !== member.passwordVerifierHash
+          ) {
+            console.info('Session invalidated on restore: passwordVerifierHash mismatch.');
+            window.localStorage.removeItem(SESSION_STORAGE_KEY);
+            window.sessionStorage.setItem(
+              'agro_session_revoked_notice',
+              'Your password was changed from another device. Please sign in with your new password.'
+            );
+            return null;
+          }
+        }
+      }
+
       // Loaded from persistent storage: not a fresh active login turn (strict rule: local restore hides numbers)
       return {
         ...session,
@@ -693,15 +824,31 @@ class AgroDataService {
 
   private setActiveSession(session: AuthenticatedSession | null) {
     const now = Date.now();
-    const enrichedSession: AuthenticatedSession | null = session
-      ? {
+    let enrichedSession: AuthenticatedSession | null = null;
+    if (session) {
+      const member = this.findMemberByUidOrEmail(session.uid, session.email);
+      const memberVersion = (member && typeof member.sessionVersion === 'number' && member.sessionVersion > 0)
+        ? member.sessionVersion
+        : 1;
+      const resolvedVersion = (typeof session.sessionVersion === 'number' && session.sessionVersion > 0)
+        ? session.sessionVersion
+        : (this.activeSession?.sessionVersion ?? memberVersion);
+
+      const resolvedCreatedAt = toEpochMs(session.sessionCreatedAt) ||
+        toEpochMs(session.signedInAt) ||
+        toEpochMs(this.activeSession?.sessionCreatedAt) ||
+        now;
+
+      enrichedSession = {
         ...session,
-        signedInAt: session.signedInAt || now,
+        signedInAt: toEpochMs(session.signedInAt) || toEpochMs(this.activeSession?.signedInAt) || resolvedCreatedAt,
+        sessionCreatedAt: resolvedCreatedAt,
+        sessionVersion: resolvedVersion,
         expiresAt: session.expiresAt || (now + SESSION_TTL_MS),
         freshlyAuthenticated: session.freshlyAuthenticated ?? (session.authLoginType === 'cloud_google' || session.authLoginType === 'cloud_password'),
-        authLoginType: session.authLoginType || 'local_restore',
-      }
-      : null;
+        authLoginType: session.authLoginType || this.activeSession?.authLoginType || 'local_restore',
+      };
+    }
 
     this.activeSession = enrichedSession;
     if (typeof window !== 'undefined') {
@@ -712,6 +859,181 @@ class AgroDataService {
       }
     }
     this.sessionListeners.forEach((cb) => cb(enrichedSession));
+  }
+
+  /**
+   * Authoritatively evaluates active session validity against the latest member profile state.
+   * If the user's password changed or all sessions were revoked from another device,
+   * this invalidates the session and returns false.
+   */
+  public checkAndEnforceActiveSessionValidity(): boolean {
+    if (!this.activeSession || this.isSigningOut) return true;
+    const session = this.activeSession;
+    const normEmail = (session.email || '').trim().toLowerCase();
+
+    const member = (this.state.members || []).find(
+      (m) =>
+        m.id === session.uid ||
+        m.uid === session.uid ||
+        (normEmail &&
+          ((m.email || '').trim().toLowerCase() === normEmail ||
+            (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
+    );
+
+    if (!member) return true;
+
+    // 1. Explicit multi-device revocation check
+    if (member.sessionsRevokedAt) {
+      const revokedMs = toEpochMs(member.sessionsRevokedAt);
+      const sessStart = toEpochMs(session.sessionCreatedAt) || toEpochMs(session.signedInAt);
+      const isVersionStale = (typeof session.sessionVersion !== 'number' || session.sessionVersion < (member.sessionVersion || 1));
+      const isTimeStale = sessStart > 0 && sessStart < revokedMs;
+      if (isVersionStale || isTimeStale) {
+        this.forceInvalidateActiveSession(
+          'All active sessions were signed out from another device. Please sign in afresh to continue.'
+        );
+        return false;
+      }
+    }
+
+    // 2. Monotonic Session Version Check
+    // If member has bumped sessionVersion (from password change or session revocation),
+    // any session on an older version must be immediately ended.
+    if (
+      typeof member.sessionVersion === 'number' &&
+      member.sessionVersion > 0 &&
+      (typeof session.sessionVersion !== 'number' || session.sessionVersion < member.sessionVersion)
+    ) {
+      const reason = member.passwordChangedAt
+        ? 'Your password was changed from another device. For your security, this session has ended. Please sign in with your new password.'
+        : 'All active sessions were signed out from another device. Please sign in afresh.';
+      this.forceInvalidateActiveSession(reason);
+      return false;
+    }
+
+    // 3. Password Verifier Hash mismatch when password is configured
+    if (member.hasPasswordSetup && member.passwordVerifierHash) {
+      if (
+        session.passwordVerifierHash &&
+        session.passwordVerifierHash !== member.passwordVerifierHash
+      ) {
+        this.forceInvalidateActiveSession(
+          'Your password was changed from another device. For your security, this session has ended. Please sign in with your new password.'
+        );
+        return false;
+      }
+      if (member.passwordChangedAt) {
+        const pwdMs = new Date(member.passwordChangedAt).getTime();
+        const sessStart = session.sessionCreatedAt || session.signedInAt || 0;
+        if (sessStart < pwdMs && (session.sessionVersion ?? 1) < (member.sessionVersion ?? 1)) {
+          this.forceInvalidateActiveSession(
+            'Your password was changed from another device. Please sign in with your new password.'
+          );
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Force invalidates the active session, clears local credential storage, and broadcasts termination
+   */
+  public forceInvalidateActiveSession(reason: string): void {
+    if (this.isSigningOut) return;
+    this.isSigningOut = true;
+    try {
+      console.warn('Active session invalidated:', reason);
+      this.detachCloudListeners();
+
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+          window.sessionStorage.setItem('agro_session_revoked_notice', reason);
+        } catch { }
+      }
+
+      this.currentUser = null;
+      this.activeSession = null;
+      this.sessionListeners.forEach((cb) => cb(null));
+      this.authListeners.forEach((cb) => cb(null));
+      this.notifyListeners();
+    } finally {
+      this.isSigningOut = false;
+    }
+  }
+
+  /**
+   * Authoritatively revokes all active sessions across all devices for the current user.
+   * Increments the member's sessionVersion, stamps sessionsRevokedAt, broadcasts to real-time bus,
+   * writes the update to Cloud Firestore, and signs out the current device so all devices start afresh.
+   */
+  public async revokeAllSessionsForCurrentUser(): Promise<void> {
+    const member = this.getCurrentMemberProfile();
+    const now = new Date().toISOString();
+    const targetEmail = (member?.email || this.activeSession?.email || '').trim().toLowerCase();
+    const targetUid = member?.id || member?.uid || this.activeSession?.uid || '';
+
+    if (member) {
+      const nextSessionVersion = (member.sessionVersion || 1) + 1;
+      const updatedMember: OrgMember = {
+        ...member,
+        sessionVersion: nextSessionVersion,
+        sessionsRevokedAt: now,
+        updatedAt: now,
+      };
+
+      const nextMembers = this.state.members.map((m) =>
+        m.id === updatedMember.id || (m.uid && m.uid === updatedMember.uid) ? updatedMember : m
+      );
+      this.state = {
+        ...this.state,
+        members: nextMembers,
+      };
+      this.saveLocalState(this.state, false);
+
+      // Persist to Cloud Firestore so all other devices are invalidated via listeners
+      try {
+        await this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
+        if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
+          await this.persistDocumentToCloudIfActive('members', updatedMember.uid, updatedMember);
+        }
+      } catch (err) {
+        console.warn('Could not persist session revocation to cloud immediately:', err);
+      }
+    }
+
+    // Broadcast on channel so any open tabs on this machine react instantly
+    if (this.channel) {
+      try {
+        this.channel.postMessage({
+          type: 'SESSIONS_REVOKED',
+          targetEmail,
+          targetUid,
+          reason: 'All active sessions were signed out from another device.',
+        });
+      } catch { }
+    }
+
+    // Set notice for sign-in screen
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem(
+          'agro_session_revoked_notice',
+          'All active sessions were signed out successfully. Please sign in afresh.'
+        );
+      } catch { }
+    }
+
+    // Terminate current device session
+    await this.signOutCloud();
+  }
+
+  public getCurrentMemberProfile(): OrgMember | undefined {
+    const activeUid = this.activeSession?.uid || this.currentUser?.uid;
+    const activeEmail = this.activeSession?.email || this.currentUser?.email || undefined;
+    return this.findMemberByUidOrEmail(activeUid, activeEmail);
   }
 
   public saveLocalState(nextState: AgroStateSnapshot, broadcast = true) {
@@ -728,6 +1050,7 @@ class AgroDataService {
     if (broadcast && this.channel) {
       this.channel.postMessage({ type: 'STATE_UPDATED', payload: cleaned });
     }
+    this.checkAndEnforceActiveSessionValidity();
     this.notifyListeners();
   }
 
@@ -1176,27 +1499,13 @@ class AgroDataService {
       active: true,
     };
 
-    const audit = this.createChainedAuditEvent({
-      actor: newMember,
-      locationId: 'ALL',
-      locationName: 'All Locations',
-      eventType: 'MEMBER_ADDED',
-      severity: 'INFO',
-      title: `Member Profile Initialized: ${newMember.fullName}`,
-      message: `${newMember.fullName} (${normEmail}) initialized account via ${params.providers.join(', ')}.`,
-      referenceEntityId: newMember.id,
-      timestamp: now,
-    });
-
     const nextState: AgroStateSnapshot = {
       ...this.state,
       members: [...this.state.members, newMember],
-      auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', newMember.id, newMember);
-    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
     return newMember;
   }
 
@@ -1268,6 +1577,9 @@ class AgroDataService {
       isCloudAuth: true,
       freshlyAuthenticated: true,
       authLoginType: 'cloud_google',
+      sessionVersion: existing?.sessionVersion || 1,
+      passwordVerifierHash: existing?.passwordVerifierHash,
+      sessionCreatedAt: Date.now(),
     };
     this.setActiveSession(session);
 
@@ -1350,6 +1662,8 @@ class AgroDataService {
     }
 
     const now = new Date().toISOString();
+    const verifierHash = computePasswordVerifier(cleanEmail, params.password);
+    saveStoredLocalCredential(cleanEmail, verifierHash);
 
     const newMember: OrgMember = {
       id: resolvedUid,
@@ -1364,6 +1678,8 @@ class AgroDataService {
       approvalStatus: 'APPROVED',
       authProviders: ['password'],
       hasPasswordSetup: true,
+      passwordVerifierHash: verifierHash,
+      sessionVersion: 1,
       joinedAt: now,
       updatedAt: now,
       lastLoginAt: now,
@@ -1396,6 +1712,9 @@ class AgroDataService {
       isCloudAuth: true,
       freshlyAuthenticated: true,
       authLoginType: 'cloud_password',
+      sessionVersion: 1,
+      passwordVerifierHash: verifierHash,
+      sessionCreatedAt: Date.now(),
     };
     this.setActiveSession(session);
 
@@ -1462,11 +1781,16 @@ class AgroDataService {
     );
 
     const now = new Date().toISOString();
+    const verifierHash = computePasswordVerifier(cleanEmail, params.password);
+    saveStoredLocalCredential(cleanEmail, verifierHash);
+
     const updatedMember: OrgMember = {
       ...cloudMember,
       uid: user.uid,
       lastLoginAt: now,
       authProviders: providers,
+      hasPasswordSetup: true,
+      passwordVerifierHash: verifierHash,
     };
 
     // Update login timestamp in Cloud Firestore
@@ -1494,6 +1818,9 @@ class AgroDataService {
       activeOrgId: updatedMember.orgId,
       freshlyAuthenticated: true,
       authLoginType: 'cloud_password',
+      sessionVersion: updatedMember.sessionVersion || 1,
+      passwordVerifierHash: verifierHash,
+      sessionCreatedAt: Date.now(),
     });
 
     this.attachCloudListeners(firestoreDb, user.uid);
@@ -1526,6 +1853,9 @@ class AgroDataService {
       isCloudAuth: Boolean(this.currentUser),
       freshlyAuthenticated: false,
       authLoginType: 'local_biometric',
+      sessionVersion: member.sessionVersion || 1,
+      passwordVerifierHash: member.passwordVerifierHash,
+      sessionCreatedAt: Date.now(),
     });
 
     return member;
@@ -1538,15 +1868,37 @@ class AgroDataService {
   public async setupOrUpdatePasswordForCurrentUser(params: {
     member: OrgMember;
     newPassword: string;
+    newEmail?: string;
+    oldPassword?: string;
   }): Promise<OrgMember> {
     if (params.newPassword.length < 8) {
       throw new Error('Password must be at least 8 characters long.');
     }
-    const email = (params.member.email || params.member.phoneOrEmail || this.activeSession?.email || '')
+    const email = (
+      params.newEmail ||
+      params.member.email ||
+      params.member.phoneOrEmail ||
+      this.activeSession?.email ||
+      ''
+    )
       .trim()
       .toLowerCase();
     if (!email.includes('@')) {
       throw new Error('A valid email address on your profile is required to link a password.');
+    }
+
+    // If password is already configured, strictly require and verify the old/current password
+    if (hasPasswordConfigured(params.member)) {
+      if (!params.oldPassword || !params.oldPassword.trim()) {
+        throw new Error('Please enter your current password to authorize this change.');
+      }
+      const isOldValid = await this.verifyMemberPasswordAsync(params.member, params.oldPassword);
+      if (!isOldValid) {
+        throw new Error('Current password is incorrect. Please verify your existing password.');
+      }
+      if (params.oldPassword === params.newPassword) {
+        throw new Error('New password must be different from your current password.');
+      }
     }
 
     const verifierHash = computePasswordVerifier(email, params.newPassword);
@@ -1560,6 +1912,14 @@ class AgroDataService {
           const credential = EmailAuthProvider.credential(email, params.newPassword);
           await linkWithCredential(user, credential);
         } else {
+          if (params.oldPassword) {
+            try {
+              const reauthCred = EmailAuthProvider.credential(email, params.oldPassword);
+              await reauthenticateWithCredential(user, reauthCred);
+            } catch {
+              // Proceed with updatePassword attempt even if re-auth throws
+            }
+          }
           await updatePassword(user, params.newPassword);
         }
       } catch (err: unknown) {
@@ -1573,6 +1933,7 @@ class AgroDataService {
     saveStoredLocalCredential(email, verifierHash);
 
     const now = new Date().toISOString();
+    const nextSessionVersion = (params.member.sessionVersion || 1) + 1;
     const mergedProviders = Array.from(
       new Set([...(params.member.authProviders || ['google.com']), 'password'])
     );
@@ -1583,20 +1944,20 @@ class AgroDataService {
       authProviders: mergedProviders,
       hasPasswordSetup: true,
       passwordVerifierHash: verifierHash,
+      passwordChangedAt: now,
+      sessionVersion: nextSessionVersion,
       updatedAt: now,
     };
 
-    const audit = this.createChainedAuditEvent({
-      actor: updatedMember,
-      locationId: 'ALL',
-      locationName: 'All Locations (Master Organization)',
-      eventType: 'SECURITY_CREDENTIAL_LINKED',
-      severity: 'INFO',
-      title: `Password Credential Configured: ${updatedMember.fullName}`,
-      message: `${updatedMember.fullName} (${email}) configured dual-provider password authentication (${mergedProviders.join(' + ')}).`,
-      referenceEntityId: updatedMember.id,
-      timestamp: now,
-    });
+    // Update active session on THIS device first so current device stays authenticated with the new version
+    if (this.activeSession) {
+      this.setActiveSession({
+        ...this.activeSession,
+        providers: mergedProviders,
+        sessionVersion: nextSessionVersion,
+        passwordVerifierHash: verifierHash,
+      });
+    }
 
     const nextState: AgroStateSnapshot = {
       ...this.state,
@@ -1612,24 +1973,18 @@ class AgroDataService {
             uid: m.uid || updatedMember.uid,
             hasPasswordSetup: true,
             passwordVerifierHash: verifierHash,
+            passwordChangedAt: now,
+            sessionVersion: nextSessionVersion,
             authProviders: mergedProviders,
           }
           : m
       ),
-      auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', updatedMember.id, updatedMember);
     if (updatedMember.uid && updatedMember.uid !== updatedMember.id) {
       void this.persistDocumentToCloudIfActive('members', updatedMember.uid, updatedMember);
-    }
-
-    if (this.activeSession) {
-      this.setActiveSession({
-        ...this.activeSession,
-        providers: mergedProviders,
-      });
     }
 
     return updatedMember;
@@ -1647,11 +2002,34 @@ class AgroDataService {
   }
 
   /**
+   * Verifies member password (checking local cryptographic verifier hash with Firebase online fallback)
+   */
+  public async verifyMemberPasswordAsync(member: OrgMember, plainPassword: string): Promise<boolean> {
+    if (this.verifyMemberPassword(member, plainPassword)) {
+      return true;
+    }
+    const email = (member.email || member.phoneOrEmail || this.activeSession?.email || '').trim().toLowerCase();
+    if (firebaseAuth?.currentUser && email) {
+      try {
+        const cred = EmailAuthProvider.credential(email, plainPassword);
+        await reauthenticateWithCredential(firebaseAuth.currentUser, cred);
+        const verifierHash = computePasswordVerifier(email, plainPassword);
+        saveStoredLocalCredential(email, verifierHash);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Allows any authenticated user to edit their personal details (Name, Phone, Job Title, Bio, Preferred Contact)
    */
   public updateOwnMemberProfile(params: {
     memberId: string;
     fullName: string;
+    email?: string;
     phone: string;
     jobTitle: string;
     bio: string;
@@ -1666,14 +2044,16 @@ class AgroDataService {
     const now = new Date().toISOString();
     const cleanName = params.fullName.trim().slice(0, 120);
     const cleanPhone = params.phone.trim().slice(0, 60);
+    const cleanEmail = params.email ? params.email.trim().toLowerCase() : existing.email;
     const cleanTitle = params.jobTitle.trim().slice(0, 120);
     const cleanBio = params.bio.trim().slice(0, 400);
 
     const updatedMember: OrgMember = {
       ...existing,
       fullName: cleanName,
+      email: cleanEmail,
       phone: cleanPhone,
-      phoneOrEmail: cleanPhone || existing.email || existing.phoneOrEmail,
+      phoneOrEmail: cleanEmail || cleanPhone || existing.phoneOrEmail,
       jobTitle: cleanTitle,
       bio: cleanBio,
       preferredContact: params.preferredContact,
@@ -1684,26 +2064,11 @@ class AgroDataService {
       updateProfile(firebaseAuth.currentUser, { displayName: cleanName }).catch(() => { });
     }
 
-    const audit = this.createChainedAuditEvent({
-      actor: updatedMember,
-      locationId: updatedMember.assignedLocationId || 'ALL',
-      locationName:
-        this.state.locations.find((l) => l.id === updatedMember.assignedLocationId)?.name ||
-        'All Locations (Master Organization)',
-      eventType: 'MEMBER_PROFILE_UPDATED',
-      severity: 'INFO',
-      title: `Profile Details Updated: ${updatedMember.fullName}`,
-      message: `${updatedMember.fullName} updated account profile details (Title: ${cleanTitle || 'Member'}, Contact: ${params.preferredContact}).`,
-      referenceEntityId: updatedMember.id,
-      timestamp: now,
-    });
-
     const nextState: AgroStateSnapshot = {
       ...this.state,
       members: this.state.members.map((m) =>
         m.id === updatedMember.id ? updatedMember : m
       ),
-      auditNotifications: [audit, ...this.state.auditNotifications],
     };
 
     this.saveLocalState(nextState);
@@ -2129,7 +2494,7 @@ class AgroDataService {
       eventType: 'SYSTEM_LEDGER_RESET',
       severity: 'MILESTONE',
       title: 'Clean Production Ledger Initialized',
-      message: `All legacy demo records purged by ${actor.fullName}. Zero-Trust verified ledger initialized at Sequence 1.`,
+      message: `All legacy demo records purged by ${actor.fullName}. Cryptographically verified ledger initialized at Sequence 1.`,
       previousHash: GENESIS_SHORT,
       currentHash: genesisHash,
       readByMemberIds: [actor.id],
@@ -2192,7 +2557,11 @@ class AgroDataService {
           window.localStorage.clear();
         } catch { }
         try {
+          const preservedNotice = window.sessionStorage.getItem('agro_session_revoked_notice');
           window.sessionStorage.clear();
+          if (preservedNotice) {
+            window.sessionStorage.setItem('agro_session_revoked_notice', preservedNotice);
+          }
         } catch { }
       }
 
@@ -2351,9 +2720,12 @@ class AgroDataService {
 
   private processIncomingAuditNotifications(rawDocs: unknown[]): void {
     const activeOrgId = this.getActiveOrgId();
+    if (!activeOrgId) {
+      return;
+    }
     const valid = (rawDocs as AuditNotificationEvent[])
       .filter((x) => x && x.id && !isLegacySeedId('auditNotifications', x.id))
-      .filter((x) => !activeOrgId || !x.orgId || x.orgId === activeOrgId)
+      .filter((x) => x.orgId === activeOrgId || (!x.orgId && x.sequenceNumber === 1) || (x.orgId === 'ALL' && x.sequenceNumber === 1))
       .map((n) => ({
         ...n,
         readByMemberIds: Array.isArray(n.readByMemberIds) ? n.readByMemberIds : [],
@@ -3071,6 +3443,7 @@ class AgroDataService {
    */
   private createChainedAuditEvent(params: {
     actor: OrgMember;
+    orgId?: string;
     locationId: string;
     locationName: string;
     eventType: AuditEventType;
@@ -3083,7 +3456,11 @@ class AgroDataService {
     timestamp?: string;
     photoUrl?: string;
   }): AuditNotificationEvent {
-    const existingSorted = [...this.state.auditNotifications].sort(
+    const resolvedOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
+    const orgEvents = this.state.auditNotifications.filter(
+      (a) => !resolvedOrgId || a.orgId === resolvedOrgId || (!a.orgId && a.sequenceNumber === 1) || (a.orgId === 'ALL' && a.sequenceNumber === 1)
+    );
+    const existingSorted = [...orgEvents].sort(
       (a, b) => a.sequenceNumber - b.sequenceNumber
     );
     const latestBlock = existingSorted[existingSorted.length - 1];
@@ -3091,18 +3468,20 @@ class AgroDataService {
     const sequenceNumber = latestBlock ? latestBlock.sequenceNumber + 1 : 1;
     const timestamp = params.timestamp || new Date().toISOString();
 
+    const truncatedTitle = params.title.slice(0, 160);
+    const truncatedMessage = params.message.slice(0, 800);
     const currentHash = computeAuditEventHash({
       previousHash,
       timestamp,
       actorId: params.actor.id,
       locationId: params.locationId,
       eventType: params.eventType,
-      payloadSummary: `${params.title}::${params.message}`,
+      payloadSummary: `${truncatedTitle}::${truncatedMessage}`,
     });
 
     const newAuditEvent: AuditNotificationEvent = {
       id: `AUD-${String(sequenceNumber).padStart(3, '0')}-${Date.now().toString(36).toUpperCase()}`,
-      orgId: params.actor.orgId || this.getActiveOrgId() || '',
+      orgId: resolvedOrgId,
       sequenceNumber,
       timestamp,
       actorId: params.actor.id,
@@ -3112,8 +3491,8 @@ class AgroDataService {
       locationName: params.locationName,
       eventType: params.eventType,
       severity: params.severity,
-      title: params.title.slice(0, 160),
-      message: params.message.slice(0, 800),
+      title: truncatedTitle,
+      message: truncatedMessage,
       deltaFinancial: params.deltaFinancial,
       deltaHeadcount: params.deltaHeadcount,
       referenceEntityId: params.referenceEntityId,
@@ -3167,7 +3546,7 @@ class AgroDataService {
   public addLocation(params: {
     name: string;
     region: string;
-    gpsCoordinates: string;
+    gpsCoordinates?: string;
     primaryOperatorName: string;
     actor: OrgMember;
   }): FarmLocation {
@@ -3178,7 +3557,7 @@ class AgroDataService {
       orgId: params.actor.orgId || this.getActiveOrgId() || '',
       name: params.name.trim().slice(0, 120),
       region: params.region.trim().slice(0, 120),
-      gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) || '-17.8292, 31.0522',
+      ...(params.gpsCoordinates ? { gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) } : {}),
       primaryOperatorName: params.primaryOperatorName.trim().slice(0, 120),
       createdAt: now,
       createdBy: params.actor.id,
@@ -3191,7 +3570,7 @@ class AgroDataService {
       eventType: 'GROUND_BROADCAST',
       severity: 'MILESTONE',
       title: `New Farm Site Registered: ${newLoc.name}`,
-      message: `Added ${newLoc.name} (${newLoc.region}) with ground operator ${newLoc.primaryOperatorName}. GPS: ${newLoc.gpsCoordinates}.`,
+      message: `Added ${newLoc.name} (${newLoc.region}) with ground operator ${newLoc.primaryOperatorName}.`,
       referenceEntityId: newLoc.id,
       timestamp: now,
     });
@@ -3211,7 +3590,7 @@ class AgroDataService {
     locationId: string;
     name: string;
     region: string;
-    gpsCoordinates: string;
+    gpsCoordinates?: string;
     primaryOperatorName: string;
     actor: OrgMember;
   }): FarmLocation {
@@ -3228,7 +3607,9 @@ class AgroDataService {
       ...targetLoc,
       name: params.name.trim().slice(0, 120),
       region: params.region.trim().slice(0, 120),
-      gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) || targetLoc.gpsCoordinates,
+      ...(params.gpsCoordinates !== undefined
+        ? (params.gpsCoordinates ? { gpsCoordinates: params.gpsCoordinates.trim().slice(0, 80) } : {})
+        : (targetLoc.gpsCoordinates ? { gpsCoordinates: targetLoc.gpsCoordinates } : {})),
       primaryOperatorName: params.primaryOperatorName.trim().slice(0, 120),
       updatedAt: now,
     };
@@ -3240,7 +3621,7 @@ class AgroDataService {
       eventType: 'SITE_UPDATED',
       severity: 'INFO',
       title: `Site Details Updated: ${updatedLoc.name}`,
-      message: `Updated site details (${updatedLoc.region}), operator ${updatedLoc.primaryOperatorName}. GPS: ${updatedLoc.gpsCoordinates}.`,
+      message: `Updated site details (${updatedLoc.region}), operator ${updatedLoc.primaryOperatorName}.`,
       referenceEntityId: updatedLoc.id,
       timestamp: now,
     });
@@ -3766,6 +4147,7 @@ class AgroDataService {
     configuredSalePricePerKg?: number;
     actor: OrgMember;
     runwayAllocation?: RunwayAllocation;
+    runwayPlanId?: string;
   }): LivestockEntry {
     const loc = this.state.locations.find((l) => l.id === params.locationId);
     if (!loc) throw new Error('Valid farm location is required.');
@@ -3782,7 +4164,22 @@ class AgroDataService {
       params.targetDurationUnit
     );
 
-    const targetOrgId = params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
+    let targetPlanId = params.runwayPlanId;
+    const expAlloc = params.runwayAllocation;
+    if (!targetPlanId && expAlloc?.mode === 'LINE') {
+      const line = (this.state.runwayLines || []).find((l) => l.id === expAlloc.lineId);
+      if (line) targetPlanId = line.planId;
+    }
+    const targetPlan = targetPlanId
+      ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
+      : undefined;
+
+    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
+    const targetOrg = (this.state.organizations || []).find((o) => o.id === targetOrgId) || this.getActiveOrganization(targetOrgId);
+    if (targetOrg?.type === 'GENERAL_VENTURE' || targetPlan?.orgType === 'GENERAL_VENTURE') {
+      throw new Error('Livestock registration is restricted to Agricultural Farming enterprises (AGRO_FARMING) and cannot be registered in a General Venture.');
+    }
+
     const currentLeftMoney = this.getCurrentOrgLeftMoney(targetOrgId);
 
     // Strict Overdraft & Funding Source Validation Guard:
@@ -3831,6 +4228,8 @@ class AgroDataService {
       fundingSource: params.fundingSource || (params.autoDeductPurchaseFromLeftMoney ? 'CASH_POOL' : undefined),
       configuredSalePricePerUnit: params.configuredSalePricePerUnit,
       configuredSalePricePerKg: params.configuredSalePricePerKg,
+      runwayPlanId: targetPlanId,
+      runwayLineId: expAlloc?.mode === 'LINE' ? expAlloc.lineId : undefined,
     };
 
     const initEventId = `EV-LSTK-${Date.now().toString(36).toUpperCase()}`;
@@ -3920,9 +4319,11 @@ class AgroDataService {
         amount: params.purchaseCostTotal,
         allocation: params.runwayAllocation,
         actor: params.actor,
+        planId: targetPlanId,
       });
 
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
+      newEntry.acquisitionExpenseId = expId;
       const expNote = `Auto-logged livestock acquisition cost for ${params.initialHeadcount}x ${newEntry.nameOrTag} (${newEntry.species}) at ${loc.name}.`;
       const expEvent: ExpenseLedgerEvent = {
         id: expId,
@@ -3940,8 +4341,8 @@ class AgroDataService {
         receiptPhotoDataUrl: params.imageUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
-        runwayPlanId: tags.runwayPlanId,
-        runwayLineId: tags.runwayLineId,
+        runwayPlanId: tags.runwayPlanId || targetPlanId,
+        runwayLineId: tags.runwayLineId || (expAlloc?.mode === 'LINE' ? expAlloc.lineId : undefined),
         runwayReserveDraw: tags.runwayReserveDraw,
         runwayAllocationNote: tags.runwayAllocationNote,
         createdAt: now,
@@ -4163,7 +4564,20 @@ class AgroDataService {
 
     // Operational bounds validation: verify headcount availability
     const existingEvents = this.state.livestockEvents.filter((e) => e.livestockId === entry.id);
-    const currentHeadcount = entry.initialHeadcount + existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+    const hasInitialStock = existingEvents.some((e) => e.eventType === 'INITIAL_STOCK');
+    const sumAllDeltas = existingEvents.reduce((acc, e) => acc + (e.headcountDelta || 0), 0);
+    const currentHeadcount = Math.max(
+      0,
+      hasInitialStock ? sumAllDeltas : entry.initialHeadcount + sumAllDeltas
+    );
+    if (params.eventType === 'HEADCOUNT_CONTRA_ADJUSTMENT' && params.headcountDelta < 0) {
+      const deduction = Math.abs(params.headcountDelta);
+      if (deduction > currentHeadcount) {
+        throw new Error(
+          `Cannot reverse livestock purchase: Reversal count (${deduction}) exceeds current live headcount (${currentHeadcount}). Some animals may have already been sold or lost.`
+        );
+      }
+    }
     if (params.eventType === 'MORTALITY_LOSS' && params.headcountDelta) {
       const loss = Math.abs(params.headcountDelta);
       if (loss > currentHeadcount) {
@@ -4388,6 +4802,11 @@ class AgroDataService {
     const id = `DEBT-${Date.now().toString(36).toUpperCase()}`;
     const targetOrgId = params.orgId || params.actor.orgId || this.getActiveOrgId() || '';
     const amount = Number(params.principalAmount.toFixed(2));
+    const rate = typeof params.interestRatePercent === 'number' && !isNaN(params.interestRatePercent)
+      ? Math.max(0, params.interestRatePercent)
+      : 0;
+    const interestAmount = Number(((amount * rate) / 100).toFixed(2));
+    const totalRepayable = Number((amount + interestAmount).toFixed(2));
 
     const newDebt: DebtLiabilityEvent = {
       id,
@@ -4396,10 +4815,10 @@ class AgroDataService {
       creditorContact: params.creditorContact?.trim(),
       category: params.category,
       principalAmount: amount,
-      remainingBalance: amount,
+      remainingBalance: totalRepayable,
       borrowDate: params.borrowDate || now,
       dueDate: params.dueDate,
-      interestRatePercent: params.interestRatePercent,
+      interestRatePercent: rate > 0 ? rate : undefined,
       purposeNote: params.purposeNote.trim(),
       status: 'OUTSTANDING',
       linkedBatchId: params.linkedBatchId,
@@ -4408,7 +4827,7 @@ class AgroDataService {
       loggedByMemberId: params.actor.id,
       loggedByName: params.actor.fullName,
       createdAt: now,
-      auditHash: computeLedgerRecordHash('DEBT', id, now, amount, params.purposeNote.trim()),
+      auditHash: computeLedgerRecordHash('DEBT', id, now, totalRepayable, params.purposeNote.trim()),
     };
 
     const audit = this.createChainedAuditEvent({
@@ -4570,6 +4989,11 @@ class AgroDataService {
     const now = new Date().toISOString();
     const id = `LOAN-OUT-${Date.now().toString(36).toUpperCase()}`;
     const amount = Number(params.principalAmount.toFixed(2));
+    const rate = typeof params.interestRatePercent === 'number' && !isNaN(params.interestRatePercent)
+      ? Math.max(0, params.interestRatePercent)
+      : 0;
+    const interestAmount = Number(((amount * rate) / 100).toFixed(2));
+    const totalRecoverable = Number((amount + interestAmount).toFixed(2));
 
     const newLoan: LoanGivenEvent = {
       id,
@@ -4578,10 +5002,10 @@ class AgroDataService {
       borrowerContact: (params.borrowerContact || '').trim(),
       category: params.category || 'PARTNER_FARM_LOAN',
       principalAmount: amount,
-      remainingBalance: amount,
+      remainingBalance: totalRecoverable,
       disbursedAt: now,
       agreedReturnDate: params.agreedReturnDate || new Date(Date.now() + 14 * 86400000).toISOString(),
-      interestRatePercent: params.interestRatePercent,
+      interestRatePercent: rate > 0 ? rate : undefined,
       collateralNote: params.collateralNote,
       purposeNote: rawNote,
       status: 'ACTIVE',
@@ -4589,7 +5013,7 @@ class AgroDataService {
       disbursedByMemberId: params.actor.id,
       disbursedByName: params.actor.fullName,
       createdAt: now,
-      auditHash: computeLedgerRecordHash('LOAN_OUT', id, now, amount, rawNote),
+      auditHash: computeLedgerRecordHash('LOAN_OUT', id, now, totalRecoverable, rawNote),
     };
 
     const audit = this.createChainedAuditEvent({
@@ -5268,12 +5692,16 @@ class AgroDataService {
       });
 
       const expId = `TX-EXP-${Date.now().toString(36).toUpperCase()}`;
+      if (!newAssetEvent.referenceTransactionId) {
+        newAssetEvent.referenceTransactionId = expId;
+      }
       const expNote = `Fixed asset acquisition: ${newAssetEvent.assetName} (${params.quantityDelta} units) at ${loc.name}. ${cleanNote}`;
       const expEvent: ExpenseLedgerEvent = {
         id: expId,
         orgId: targetOrgId,
         locationId: loc.id,
         locationName: loc.name,
+        batchOrAnimalId: newAssetEvent.id,
         category: 'FIXED_ASSET_PURCHASE',
         direction: 'DEDUCTION',
         amount: Number(params.valueDelta.toFixed(2)),
@@ -5674,14 +6102,25 @@ class AgroDataService {
       active: true,
     };
 
+    const modeLabel = newOrg.type === 'AGRO_FARMING' ? 'Agro-Farming Enterprise' : 'General Venture';
+
+    // Bind any existing unassigned genesis audit record to this newly created organization
+    this.state.auditNotifications = (this.state.auditNotifications || []).map((n) => {
+      if (n.sequenceNumber === 1 && (!n.orgId || n.orgId === 'ALL')) {
+        return { ...n, orgId: newOrg.id };
+      }
+      return n;
+    });
+
     const audit = this.createChainedAuditEvent({
       actor: updatedActor,
+      orgId: newOrg.id,
       locationId: 'ALL',
       locationName: 'Organization Master',
       eventType: 'ORGANIZATION_CREATED',
       severity: 'MILESTONE',
       title: `Organization Created: ${newOrg.name}`,
-      message: `Organization registered by ${updatedActor.fullName} (${newOrg.type.replace('_', ' ')}). 24-hr invitation code: ${currentInviteCode}.`,
+      message: `Organization registered by ${updatedActor.fullName} (${modeLabel}). 24-hr invitation code: ${currentInviteCode}.`,
       referenceEntityId: newOrg.id,
       timestamp: nowIso,
     });
@@ -5870,14 +6309,16 @@ class AgroDataService {
       updatedAt: nowIso,
     };
 
+    const modeLabel = updatedOrg.type === 'AGRO_FARMING' ? 'Agro-Farming' : 'General Venture';
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
+      orgId: updatedOrg.id,
       locationId: 'ALL',
       locationName: 'Organization Master',
-      eventType: 'ORGANIZATION_CREATED',
+      eventType: 'ORGANIZATION_UPDATED',
       severity: 'INFO',
       title: `Organization Settings Updated: ${updatedOrg.name}`,
-      message: `${params.actor.fullName} updated organization details (Mode: ${updatedOrg.type}, Target: $${updatedOrg.defaultTargetContributionUsd}).`,
+      message: `${params.actor.fullName} updated organization details (Mode: ${modeLabel}, Target: $${updatedOrg.defaultTargetContributionUsd}).`,
       referenceEntityId: updatedOrg.id,
       timestamp: nowIso,
     });
@@ -6180,7 +6621,7 @@ class AgroDataService {
   }
 
   private getInitialCheckpointsForEntry(entry: LivestockEntry): AnimalCheckpoint[] {
-    if (entry.customCheckpoints && entry.customCheckpoints.length > 0) {
+    if (Array.isArray(entry.customCheckpoints)) {
       return [...entry.customCheckpoints];
     }
     const defaultProtocols = generateVaccinationProtocols(entry, 0, []);
@@ -6708,9 +7149,10 @@ class AgroDataService {
 
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
+      orgId: org.id,
       locationId: 'ALL',
       locationName: 'Organization Master',
-      eventType: 'ORGANIZATION_CREATED',
+      eventType: 'ORGANIZATION_UPDATED',
       severity: 'INFO',
       title: `Runway Planning Module ${params.enabled ? 'Enabled' : 'Disabled'}`,
       message: `Runway Capital Planning module was ${params.enabled ? 'enabled' : 'disabled'} for ${org.name} by ${params.actor.fullName}.`,
@@ -7786,12 +8228,14 @@ class AgroDataService {
     amount: number;
     locationId: string;
     category?: ExpenseCategory;
+    batchOrAnimalId?: string;
     note: string;
     actor: OrgMember;
     receiptPhotoDataUrl?: string;
   }): ExpenseLedgerEvent {
     return this.logExpense({
       locationId: params.locationId,
+      batchOrAnimalId: params.batchOrAnimalId,
       category: params.category || 'OTHER',
       direction: 'DEDUCTION',
       amount: params.amount,
@@ -7888,6 +8332,38 @@ class AgroDataService {
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('runway_templates', template.id, template);
     return template;
+  }
+
+  /**
+   * Updates the display name of any Runway Template (both prebuilt and custom templates)
+   */
+  public updateRunwayTemplateName(templateId: string, newName: string, actor?: OrgMember): void {
+    const cleanName = newName.trim().slice(0, 120);
+    if (!cleanName) {
+      throw new Error('Template name cannot be empty.');
+    }
+
+    // 1. Persist to template name overrides (works for built-in and custom templates across the app)
+    setTemplateNameOverride(templateId, cleanName);
+
+    // 2. If it is in state.runwayTemplates, also update the record in state and cloud
+    const customTemplate = (this.state.runwayTemplates || []).find((t) => t.id === templateId);
+    if (customTemplate) {
+      const updatedTemplate: RunwayTemplate = {
+        ...customTemplate,
+        name: cleanName,
+      };
+      const nextState: AgroStateSnapshot = {
+        ...this.state,
+        runwayTemplates: (this.state.runwayTemplates || []).map((t) =>
+          t.id === templateId ? updatedTemplate : t
+        ),
+      };
+      this.saveLocalState(nextState);
+      void this.persistDocumentToCloudIfActive('runway_templates', templateId, updatedTemplate);
+    }
+
+    this.notifyListeners();
   }
 
   public checkRunwayReminders(): void {

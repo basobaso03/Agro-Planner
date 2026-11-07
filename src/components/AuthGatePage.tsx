@@ -12,7 +12,6 @@ import {
   Sparkles,
   Globe,
   Smartphone,
-  Fingerprint,
 } from 'lucide-react';
 import { dataService } from '../services/dataService.ts';
 import { LogoSvg } from './BrandLogos.tsx';
@@ -22,7 +21,6 @@ import {
   ModernLinkedInIcon,
   ModernWhatsAppIcon,
 } from './DeveloperBrandInfo.tsx';
-import { getEnrolledBiometricRecord } from '../utils/mobileHardware.ts';
 
 interface AuthGatePageProps { }
 
@@ -37,6 +35,18 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [sessionNotice, setSessionNotice] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const msg = window.sessionStorage.getItem('agro_session_revoked_notice');
+        if (msg) {
+          window.sessionStorage.removeItem('agro_session_revoked_notice');
+          return msg;
+        }
+      } catch { }
+    }
+    return '';
+  });
 
   // Compute password strength for registration
   const passwordStrength = React.useMemo(() => {
@@ -50,8 +60,6 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
     return { score: s, label: labels[s] || 'Strong' };
   }, [password]);
 
-  const enrolledBiometric = React.useMemo(() => getEnrolledBiometricRecord(), []);
-
   const handleGoogleSignIn = async () => {
     setErrorMsg('');
     setLoading(true);
@@ -61,31 +69,15 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('auth/unauthorized-domain')) {
         setErrorMsg(
-          'Google Web Sign-In is restricted by domain security on mobile networks. Please register or sign in with Email & Password or Fingerprint below (works on any network!).'
+          'Google Web Sign-In is restricted by domain security on mobile networks. Please register or sign in with Email & Password below (works on any network!).'
         );
       } else {
         setErrorMsg(
           err instanceof Error
             ? err.message
-            : 'Google Sign-In could not be completed. Please use Email & Password or Fingerprint.'
+            : 'Google Sign-In could not be completed. Please use Email & Password.'
         );
       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBiometricSignIn = async () => {
-    setErrorMsg('');
-    setLoading(true);
-    try {
-      await dataService.signInWithBiometrics();
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error
-          ? err.message
-          : 'Biometric authentication could not be verified.'
-      );
     } finally {
       setLoading(false);
     }
@@ -196,6 +188,18 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
             </p>
           </div>
 
+          {sessionNotice && (
+            <div className="mb-4 p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2.5 text-xs text-amber-950 font-bold shadow-2xs">
+              <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <span className="font-black block text-[11px] uppercase tracking-wider text-amber-800">
+                  Authentication Notice
+                </span>
+                {sessionNotice}
+              </div>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="mb-4 p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -235,18 +239,6 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                   : 'Register with Google'}
               </span>
             </button>
-
-            {mode === 'LOGIN' && (
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleBiometricSignIn}
-                className="w-full py-2.5 px-3 sm:px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                <Fingerprint className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>Sign in with fingerprint</span>
-              </button>
-            )}
           </div>
 
           <div className="my-5 flex items-center gap-3">
@@ -364,13 +356,13 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                   placeholder={mode === 'REGISTER' ? 'At least 8 characters' : 'Enter your password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl pl-10 pr-10 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-500"
+                  className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl pl-10 pr-12 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-3 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="absolute right-2 p-1.5 rounded-lg text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -416,8 +408,16 @@ export const AuthGatePage: React.FC<AuthGatePageProps> = () => {
                     placeholder="Re-enter your password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl pl-10 pr-12 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-500"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-2 p-1.5 rounded-lg text-amber-800 hover:text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition-colors cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
             )}

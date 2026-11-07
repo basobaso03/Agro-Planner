@@ -111,6 +111,15 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
   const planLines = currentPlan ? lines.filter((l) => l.planId === currentPlan.id) : [];
   const planPledges = currentPlan ? pledges.filter((p) => p.planId === currentPlan.id) : [];
 
+  const isAgro = currentPlan ? currentPlan.orgType !== 'GENERAL_VENTURE' : currentOrg?.type !== 'GENERAL_VENTURE';
+
+  // Ensure non-agro general venture plans do not show or remain stuck on livestock Expected Revenue
+  useEffect(() => {
+    if (!isAgro && activeSubTab === 'REVENUE') {
+      setActiveSubTab('PLAN');
+    }
+  }, [isAgro, activeSubTab]);
+
   const canEdit = PERMISSIONS.canEditRunwayDraft(currentMember.role);
   const canLock = PERMISSIONS.canLockRunwayPlan(currentMember.role);
   const canActivate = PERMISSIONS.canActivateRunwayPlan(currentMember.role);
@@ -193,6 +202,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           currentMember={currentMember}
           activeOrg={currentOrg}
           locations={locations}
+          showNumbers={showNumbers}
           onPlanCreated={(id) => {
             setSelectedPlanId(id);
             setActiveSubTab('PLAN');
@@ -207,7 +217,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
 
   const subTabs = [
     { id: 'PLAN', label: 'Budget Plan', icon: Layers },
-    { id: 'REVENUE', label: 'Expected Revenue', icon: TrendingUp },
+    ...(isAgro ? [{ id: 'REVENUE', label: 'Expected Revenue', icon: TrendingUp }] : []),
     { id: 'PLEDGES', label: 'Pledges', icon: Users, badge: planPledges.length },
     { id: 'PAYIN', label: 'Pay-in', icon: Receipt },
     { id: 'SPEND', label: 'Execution', icon: TrendingDown },
@@ -312,6 +322,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
           runwayMonths={runwayMonths}
           currentMember={currentMember}
           onNavigateTab={(st) => setActiveSubTab(st || 'PLAN')}
+          showNumbers={showNumbers}
         />
       )}
 
@@ -333,7 +344,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               <span>{t.label}</span>
               {t.badge !== undefined && t.badge > 0 && (
                 <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-800 text-[10px] flex items-center justify-center font-bold">
-                  {t.badge}
+                  {showNumbers ? t.badge : '••'}
                 </span>
               )}
             </button>
@@ -353,6 +364,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               currentMember={currentMember}
               pastExpenses={dataService.getState().expenses}
               readOnly={currentPlan.status !== 'DRAFT'}
+              showNumbers={showNumbers}
               onUpsertLine={(line) =>
                 dataService.upsertRunwayLine({ planId: currentPlan.id, line, actor: currentMember })
               }
@@ -380,6 +392,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               plan={currentPlan}
               currentMember={currentMember}
               totals={totals}
+              showNumbers={showNumbers}
               onUpdatePricing={(livestockId, price, pricingUnit, avgWeight) =>
                 dataService.updateRunwayRevenuePricing({
                   planId: currentPlan.id,
@@ -402,6 +415,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               members={orgMembers}
               currentMember={currentMember}
               layers={fundingLayers}
+              showNumbers={showNumbers}
               onPledge={(p) =>
                 dataService.pledgeToRunwayPlan({
                   planId: currentPlan.id,
@@ -423,6 +437,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               layers={fundingLayers}
               currentMember={currentMember}
               members={orgMembers}
+              showNumbers={showNumbers}
               onSubmitClaim={(c) =>
                 dataService.submitRunwayPaymentClaim({
                   planId: c.planId,
@@ -457,6 +472,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               currentMember={currentMember}
               locations={locations && locations.length > 0 ? locations : dataService.getState().locations}
               availableCash={availableCash}
+              showNumbers={showNumbers}
               onRecordExpense={() => onOpenExpenseModal?.()}
               onProposeAmendment={() => setIsAmendmentOpen(true)}
             />
@@ -467,6 +483,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               plan={currentPlan}
               lines={planLines}
               openingCash={currentPlan.openingCashAdopted || 0}
+              showNumbers={showNumbers}
             />
           )}
 
@@ -478,6 +495,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               livestockEvents={dataService.getState().livestockEvents.filter((l) => !l.orgId || l.orgId === currentPlan.orgId)}
               creditSales={(dataService.getState().creditSales || []).filter((c) => !c.orgId || c.orgId === currentPlan.orgId)}
               layers={fundingLayers}
+              showNumbers={showNumbers}
             />
           )}
         </div>
@@ -490,6 +508,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
         currentMember={currentMember}
         activeOrg={currentOrg}
         locations={locations}
+        showNumbers={showNumbers}
         onPlanCreated={(id) => {
           setSelectedPlanId(id);
           setActiveSubTab('PLAN');

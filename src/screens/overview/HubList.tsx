@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Megaphone,
   MapPin,
+  Receipt,
 } from 'lucide-react';
 import { ListRow } from '../../components/ui/ListRow.tsx';
 import { formatMoney } from '../../utils/currency.ts';
@@ -26,6 +27,8 @@ export interface HubListProps {
   activeMember: OrgMember;
   showNumbers?: boolean;
   poolContributed: number;
+  approvedExpenses?: number;
+  pendingExpensesCount?: number;
   creditOutstanding: number;
   creditOverdueCount: number;
   debtOutstanding: number;
@@ -45,6 +48,8 @@ export const HubList: React.FC<HubListProps> = ({
   activeMember,
   showNumbers = true,
   poolContributed,
+  approvedExpenses = 0,
+  pendingExpensesCount = 0,
   creditOutstanding,
   creditOverdueCount,
   debtOutstanding,
@@ -79,6 +84,17 @@ export const HubList: React.FC<HubListProps> = ({
               onClick={() => navigate('capitalPool')}
             />
           )}
+
+          <ListRow
+            icon={<Receipt className="w-5 h-5" />}
+            iconBg="bg-rose-500 text-white"
+            title="Operating Expenses"
+            subtitle="Ledger vouchers, receipts & multi-sig approvals"
+            previewAmount={formatMoney(approvedExpenses, showNumbers)}
+            badge={pendingExpensesCount > 0 ? `${pendingExpensesCount} Pending` : undefined}
+            badgeVariant="rose"
+            onClick={() => navigate('expenses')}
+          />
 
           {isAgroEnabled && (
             <ListRow
@@ -116,8 +132,8 @@ export const HubList: React.FC<HubListProps> = ({
               icon={<Compass className="w-5 h-5" />}
               iconBg="bg-violet-600 text-white"
               title="Runway Capital Plan"
-              subtitle={`${runwayMonthsRemaining.toFixed(1)} months estimated break-even runway`}
-              previewAmount={`${runwayMonthsRemaining.toFixed(1)} mo`}
+              subtitle={showNumbers ? `${runwayMonthsRemaining.toFixed(1)} months estimated break-even runway` : '•• months estimated break-even runway'}
+              previewAmount={showNumbers ? `${runwayMonthsRemaining.toFixed(1)} mo` : '•• mo'}
               onClick={() => navigate('runwayPlan')}
             />
           )}

@@ -28,6 +28,15 @@ export const validators = {
     return null;
   },
 
+  nonNegativeNumber: (val: string | number, fieldName = 'Amount'): string | null => {
+    if (val === '' || val === undefined || val === null) return null;
+    const num = typeof val === 'number' ? val : parseFloat(val);
+    if (isNaN(num) || num < 0) {
+      return `${fieldName} must be a number greater than or equal to zero.`;
+    }
+    return null;
+  },
+
   positiveInteger: (val: string | number, fieldName = 'Quantity'): string | null => {
     const num = typeof val === 'number' ? val : parseInt(val, 10);
     if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {

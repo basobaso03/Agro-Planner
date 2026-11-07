@@ -230,56 +230,88 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         onBroadcast={onBroadcast}
       />
 
-      {/* 2.2 Runway Capital Planning Hero Card for General Business */}
-      {!isAgro && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Compass className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Capital Runway &amp; Spend Gate</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => navigate('runway')}
-              className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 cursor-pointer"
-            >
-              Open Plan →
-            </button>
-          </div>
+      {/* 2.2 Runway Capital Planning Hero Card for Agro & General Business */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Compass className={`w-3.5 h-3.5 ${isAgro ? 'text-emerald-700' : 'text-indigo-600'}`} />
+            <span>{isAgro ? 'Farm Capital Runway & Spend Gate' : 'Capital Runway & Spend Gate'}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate('runway')}
+            className={`text-[11px] font-bold cursor-pointer hover:underline ${isAgro ? 'text-emerald-700 hover:text-emerald-950' : 'text-indigo-700 hover:text-indigo-900'
+              }`}
+          >
+            {runway.currentPlan ? 'Open Plan →' : 'Plan Cycle →'}
+          </button>
+        </div>
 
-          {runway.currentPlan ? (
-            <RunwayHeroCard
-              plan={runway.currentPlan}
-              layers={runway.fundingLayers}
-              runwayMonths={runway.runwayMonths}
-              currentMember={activeMember}
-              onNavigateTab={() => navigate('runway')}
-            />
-          ) : (
-            <div
-              onClick={() => navigate('runway')}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 p-4 sm:p-5 text-white shadow-sm border border-indigo-700/50 cursor-pointer hover:shadow-md transition-all group"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1 min-w-0">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
-                    ✨ Capital Planning
+        {runway.currentPlan ? (
+          <RunwayHeroCard
+            plan={runway.currentPlan}
+            layers={runway.fundingLayers}
+            runwayMonths={runway.runwayMonths}
+            currentMember={activeMember}
+            onNavigateTab={() => navigate('runway')}
+            showNumbers={showNumbers}
+          />
+        ) : isAgro ? (
+          <div
+            onClick={() => navigate('runway')}
+            className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-slate-950 p-4 sm:p-5 text-white shadow-sm border border-emerald-700/60 cursor-pointer hover:shadow-md transition-all group"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-[10px] font-extrabold text-emerald-200 uppercase tracking-wider">
+                    🌾 Agricultural Capital Planning
                   </span>
-                  <h4 className="text-sm sm:text-base font-black text-white tracking-tight">
-                    Start Venture Capital Runway
-                  </h4>
-                  <p className="text-xs text-indigo-100/80 leading-relaxed line-clamp-2">
-                    Map required expenditure lines, gather member pledges, and enforce spend discipline.
-                  </p>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/25 border border-amber-400/40 text-[10px] font-extrabold text-amber-200 uppercase tracking-wider">
+                    Protected Spend Gate
+                  </span>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Compass className="w-5 h-5 text-amber-300" />
+                <h4 className="text-sm sm:text-base font-black text-white tracking-tight">
+                  Start Farm Production Runway
+                </h4>
+                <p className="text-xs text-emerald-100/85 leading-relaxed line-clamp-2">
+                  Map batch feed, inputs, vet medicines, and farm labor. Gather transparent member pledges and gate payouts against approved line budgets.
+                </p>
+                <div className="flex items-center gap-3 pt-1 text-[11px] font-bold text-emerald-300/90">
+                  <span>🌱 Livestock &amp; Crop Cycles</span>
+                  <span>•</span>
+                  <span>🛡️ Spend Protection</span>
                 </div>
               </div>
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-emerald-500/30 transition-transform shadow-xs">
+                <Compass className="w-5 h-5 text-amber-300" />
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div
+            onClick={() => navigate('runway')}
+            className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 p-4 sm:p-5 text-white shadow-sm border border-indigo-700/50 cursor-pointer hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1 min-w-0">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                  ✨ Capital Planning
+                </span>
+                <h4 className="text-sm sm:text-base font-black text-white tracking-tight">
+                  Start Venture Capital Runway
+                </h4>
+                <p className="text-xs text-indigo-100/80 leading-relaxed line-clamp-2">
+                  Map required expenditure lines, gather member pledges, and enforce spend discipline.
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Compass className="w-5 h-5 text-amber-300" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 2.5 Quick Page & Settings Search with Kind Filters */}
       <PageSearch isAdmin={isAdmin} isAgro={isAgro} />
@@ -293,6 +325,10 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         activeMember={activeMember}
         showNumbers={showNumbers}
         poolContributed={totalPool}
+        approvedExpenses={(state.expenses || [])
+          .filter((e) => e.approvalStatus === 'APPROVED')
+          .reduce((acc, e) => acc + e.amount, 0)}
+        pendingExpensesCount={(state.expenses || []).filter((e) => e.approvalStatus === 'PENDING_MULTISIG').length}
         creditOutstanding={creditSalesOutstanding}
         creditOverdueCount={creditOverdueCount}
         debtOutstanding={totalDebt}

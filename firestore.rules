@@ -44,7 +44,11 @@ service cloud.firestore {
 
     function isTreasurerOfOrg(orgId) {
       return isApprovedMemberOfOrg(orgId)
-             && (getMemberData().role == 'TREASURER' || getMemberData().role == 'SYNDICATE_TREASURER' || isOrgAdmin(orgId));
+             && (
+               isOrgAdmin(orgId)
+               || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                   && (getMemberData().role == 'TREASURER' || getMemberData().role == 'SYNDICATE_TREASURER'))
+             );
     }
 
     function isValidId(id) {
@@ -92,7 +96,8 @@ service cloud.firestore {
 
     match /locations/{locationId} {
       allow read: if isAuthenticated();
-      allow write: if isOrgAdmin(request.resource.data.orgId || resource.data.orgId) && isValidId(locationId);
+      allow create: if isApprovedMemberOfOrg(request.resource.data.orgId) && isValidId(locationId);
+      allow update: if isApprovedMemberOfOrg(resource.data.orgId) && isValidId(locationId);
       allow delete: if isOrgAdmin(resource.data.orgId) && isValidId(locationId);
     }
 
@@ -133,8 +138,17 @@ service cloud.firestore {
     // STRICT APPEND-ONLY FINANCIAL, ASSET, LIVESTOCK & AUDIT COLLECTIONS
     // ZERO SUPER-ADMIN MONEY BACKDOOR: Strictly isolated by resource.data.orgId
     match /capital_contributions/{entryId} {
-      allow read: if isApprovedMemberOfOrg(resource.data.orgId) && getMemberData().role != 'GROUND_OPERATOR';
-      allow create: if isTreasurerOfOrg(request.resource.data.orgId) && isValidId(entryId) && hasMandatoryAuditFields();
+      allow read: if isApprovedMemberOfOrg(resource.data.orgId)
+                  && (!exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                      || getMemberData().role != 'GROUND_OPERATOR');
+      allow create: if isApprovedMemberOfOrg(request.resource.data.orgId)
+                    && (
+                      isTreasurerOfOrg(request.resource.data.orgId)
+                      || request.resource.data.memberId == request.auth.uid
+                      || request.resource.data.createdByMemberId == request.auth.uid
+                    )
+                    && isValidId(entryId)
+                    && hasMandatoryAuditFields();
       allow update: if false;
       allow delete: if isOrgAdmin(resource.data.orgId);
     }

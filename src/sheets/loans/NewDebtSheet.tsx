@@ -32,6 +32,7 @@ export const NewDebtSheet: React.FC<NewDebtSheetProps> = ({
       creditorContact: '',
       category: 'SUPPLIER_CREDIT' as DebtCategory,
       principal: '',
+      interestRate: '0',
       dueDate: (() => {
         const d = new Date();
         d.setDate(d.getDate() + 30);
@@ -43,6 +44,7 @@ export const NewDebtSheet: React.FC<NewDebtSheetProps> = ({
     validate: (values) => ({
       creditorName: validators.required(values.creditorName, 'Creditor / Lender name'),
       principal: validators.positiveNumber(values.principal, 'Principal amount'),
+      interestRate: validators.nonNegativeNumber(values.interestRate, 'Interest rate'),
       purposeNote: validators.minAuditNote(values.purposeNote, 4),
     }),
     onSubmit: async (values) => {
@@ -50,12 +52,14 @@ export const NewDebtSheet: React.FC<NewDebtSheetProps> = ({
         throw new Error('Permission denied: Only Treasurers and Administrators can record debt liabilities.');
       }
       const p = parseFloat(values.principal);
+      const interestRate = parseFloat(values.interestRate) || 0;
 
       const created = dataService.recordDebtLiability({
         creditorName: values.creditorName.trim(),
         creditorContact: values.creditorContact.trim() || undefined,
         category: values.category,
         principalAmount: p,
+        interestRatePercent: interestRate,
         dueDate: values.dueDate || undefined,
         purposeNote: values.purposeNote.trim(),
         actor: activeMember,
@@ -117,7 +121,7 @@ export const NewDebtSheet: React.FC<NewDebtSheetProps> = ({
             </select>
           </Field>
 
-          <Field label="Principal Amount" required error={form.errors.principal}>
+          <Field label="Principal Borrowed" required error={form.errors.principal}>
             <MoneyInput
               value={form.values.principal}
               onChange={(val) => form.setFieldValue('principal', val)}
@@ -125,6 +129,59 @@ export const NewDebtSheet: React.FC<NewDebtSheetProps> = ({
             />
           </Field>
         </div>
+
+        <Field label="Interest Rate (%)" hint="0% if zero-interest credit" error={form.errors.interestRate}>
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            {[0, 5, 10, 15, 20].map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => form.setFieldValue('interestRate', rate.toString())}
+                className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                  form.values.interestRate === rate.toString()
+                    ? 'bg-rose-600 text-white border-rose-600'
+                    : 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                }`}
+              >
+                {rate}%
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={form.values.interestRate}
+              onChange={(e) => form.setFieldValue('interestRate', e.target.value)}
+              placeholder="e.g. 10"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-rose-500 pr-8"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+          </div>
+        </Field>
+
+        {/* Live Calculation Breakdown */}
+        {parseFloat(form.values.principal) > 0 && (
+          <div className="p-3 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Principal Amount:</span>
+              <span className="font-mono font-bold">${parseFloat(form.values.principal || '0').toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Interest ({parseFloat(form.values.interestRate) || 0}%):</span>
+              <span className="font-mono font-bold text-rose-700">
+                +${((parseFloat(form.values.principal || '0') * (parseFloat(form.values.interestRate) || 0)) / 100).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-rose-200 text-slate-900 font-bold">
+              <span>Total Repayable Debt:</span>
+              <span className="font-mono font-black text-rose-700 text-sm">
+                ${(parseFloat(form.values.principal || '0') * (1 + (parseFloat(form.values.interestRate) || 0) / 100)).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Contact Phone" hint="Optional">

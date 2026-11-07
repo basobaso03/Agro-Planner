@@ -29,7 +29,7 @@ export const AppBar: React.FC<AppBarProps> = ({
   onOpenSyncStatus,
   onOpenSiteManager,
 }) => {
-  const { currentRoute, canPop, pop, navigate } = useNavigation();
+  const { currentRoute, canPop, goBack, navigate } = useNavigation();
 
   // On Overview tab, display org / platform name filling one row text without cutting
   const displayTitle =
@@ -49,7 +49,7 @@ export const AppBar: React.FC<AppBarProps> = ({
         {canPop ? (
           <button
             type="button"
-            onClick={pop}
+            onClick={goBack}
             aria-label="Back"
             className="p-2 -ml-1 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
           >

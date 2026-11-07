@@ -12,6 +12,7 @@ import type { RunwayPlan, RunwayFundingLayers } from '../../types/runway';
 import type { OrgMember } from '../../types/agro';
 import { RunwayFundingBar } from './RunwayFundingBar';
 import { PERMISSIONS } from '../../utils/permissions';
+import { isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayHeroCardProps {
   plan: RunwayPlan;
@@ -22,6 +23,7 @@ interface RunwayHeroCardProps {
   onOpenPledgeModal?: () => void;
   onOpenPayInModal?: () => void;
   className?: string;
+  showNumbers?: boolean;
 }
 
 export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
@@ -33,7 +35,9 @@ export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
   onOpenPledgeModal,
   onOpenPayInModal,
   className = '',
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const isPledging = plan.status === 'PLEDGING';
   const isActive = plan.status === 'ACTIVE';
   const isLowRunway = isActive && runwayMonths < 1.0;
@@ -51,8 +55,8 @@ export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
           <div className="flex items-center space-x-2">
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isActive
-                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                : 'bg-amber-100 text-amber-900 border border-amber-300'
                 }`}
             >
               {plan.status}
@@ -72,10 +76,10 @@ export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
         {isActive && (
           <div
             className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-bold ${isCriticalRunway
-                ? 'bg-rose-100 text-rose-900 border border-rose-300 animate-pulse'
-                : isLowRunway
-                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                  : 'bg-indigo-50 text-indigo-900 border border-indigo-200'
+              ? 'bg-rose-100 text-rose-900 border border-rose-300 animate-pulse'
+              : isLowRunway
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                : 'bg-indigo-50 text-indigo-900 border border-indigo-200'
               }`}
           >
             {isLowRunway ? (
@@ -86,7 +90,9 @@ export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
             <span>
               {runwayMonths >= 99
                 ? 'Healthy runway'
-                : `${(runwayMonths * 4.3).toFixed(1)} wks left`}
+                : isMasked
+                  ? '•• wks left'
+                  : `${(runwayMonths * 4.3).toFixed(1)} wks left`}
             </span>
           </div>
         )}
@@ -94,7 +100,7 @@ export const RunwayHeroCard: React.FC<RunwayHeroCardProps> = ({
 
       {/* Interactive multi-layer progress bar */}
       <div className="mb-4">
-        <RunwayFundingBar layers={layers} showLabels={true} />
+        <RunwayFundingBar layers={layers} showLabels={true} showNumbers={!isMasked} />
       </div>
 
       {/* Action footer */}

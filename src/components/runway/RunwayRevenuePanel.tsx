@@ -14,6 +14,7 @@ import type { RunwayPlan, RunwayPlanTotals } from '../../types/runway';
 import type { LivestockComputedStatus, OrgMember } from '../../types/agro';
 import { dataService } from '../../services/dataService';
 import { CountUp } from './CountUp';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayRevenuePanelProps {
   plan: RunwayPlan;
@@ -26,6 +27,7 @@ interface RunwayRevenuePanelProps {
     averageWeightKg?: number
   ) => void;
   onOpenRegisterBatch: () => void;
+  showNumbers?: boolean;
 }
 
 export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
@@ -33,7 +35,9 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
   totals,
   onUpdatePricing,
   onOpenRegisterBatch,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   // Query real-time livestock computed statuses directly from dataService
   const allStatuses: LivestockComputedStatus[] = dataService.computeLivestockStatuses();
 
@@ -104,7 +108,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
           </span>
           <div className="text-base sm:text-xl font-black font-mono text-slate-950 mt-0.5 truncate flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span>{totalLiveAnimals.toLocaleString()} head</span>
+            <span>{isMasked ? '•••• head' : `${totalLiveAnimals.toLocaleString()} head`}</span>
           </div>
         </div>
 
@@ -114,7 +118,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
             <span className="hidden sm:inline">Projected Sales Revenue</span>
           </span>
           <div className="text-base sm:text-xl font-black font-mono text-emerald-700 mt-0.5 truncate">
-            <CountUp value={totalProjectedRevenue} decimals={2} />
+            <CountUp value={totalProjectedRevenue} decimals={2} showNumbers={!isMasked} />
           </div>
         </div>
 
@@ -124,7 +128,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
             <span className="hidden sm:inline">Budget Capital Required</span>
           </span>
           <div className="text-base sm:text-xl font-black font-mono text-slate-950 mt-0.5 truncate">
-            ${costBase.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatMoney(costBase, !isMasked)}
           </div>
         </div>
 
@@ -138,15 +142,17 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
               className={`text-base sm:text-xl font-black font-mono truncate ${isProfitable ? 'text-emerald-700' : 'text-amber-700'
                 }`}
             >
-              {isProfitable ? '+' : ''}${projectedNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {isMasked
+                ? '••••••'
+                : `${isProfitable ? '+' : ''}$${projectedNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </span>
             <span
               className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${isProfitable
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                 }`}
             >
-              {roiPct >= 0 ? '+' : ''}{roiPct.toFixed(1)}%
+              {isMasked ? '••%' : `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%`}
             </span>
           </div>
         </div>
@@ -209,7 +215,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
-              Active Animal Batches on Ground ({relevantStatuses.length})
+              Active Animal Batches on Ground ({isMasked ? '••' : relevantStatuses.length})
             </h4>
             <span className="text-[11px] text-gray-500 dark:text-gray-400">
               Set target selling price per head to forecast harvest proceeds
@@ -260,7 +266,7 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                         Surviving Quantity
                       </span>
                       <span className="text-base sm:text-lg font-black text-gray-900 dark:text-white">
-                        {st.currentLiveHeadcount.toLocaleString()} head
+                        {isMasked ? '•••• head' : `${st.currentLiveHeadcount.toLocaleString()} head`}
                       </span>
                     </div>
                   </div>
@@ -270,21 +276,23 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                     <div>
                       <span className="text-[10px] text-gray-400 uppercase font-bold block">Initial Stock</span>
                       <strong className="text-gray-700 dark:text-gray-200 font-mono">
-                        {initialHeadcount} placed
+                        {isMasked ? '•••• placed' : `${initialHeadcount} placed`}
                       </strong>
                     </div>
 
                     <div>
                       <span className="text-[10px] text-rose-500 uppercase font-bold block">Mortality / Loss</span>
                       <strong className="text-rose-600 font-mono">
-                        -{mortalityCount} head ({initialHeadcount > 0 ? ((mortalityCount / initialHeadcount) * 100).toFixed(1) : 0}%)
+                        {isMasked
+                          ? '-•••• head (••%)'
+                          : `-${mortalityCount} head (${initialHeadcount > 0 ? ((mortalityCount / initialHeadcount) * 100).toFixed(1) : 0}%)`}
                       </strong>
                     </div>
 
                     <div>
                       <span className="text-[10px] text-emerald-600 uppercase font-bold block">Survival Rate</span>
                       <strong className="text-emerald-600 font-mono">
-                        {survivalRate}% healthy
+                        {isMasked ? '••% healthy' : `${survivalRate}% healthy`}
                       </strong>
                     </div>
                   </div>
@@ -299,15 +307,16 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                         <div className="relative flex-1 max-w-[160px]">
                           <span className="absolute left-3 top-2 text-xs font-bold text-gray-500">$</span>
                           <input
-                            type="number"
+                            type={isMasked ? 'password' : 'number'}
                             inputMode="decimal"
                             min="0"
                             step="0.10"
                             placeholder="0.00"
-                            value={priceStr}
+                            value={isMasked ? '••••' : priceStr}
+                            disabled={isMasked}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handlePriceChange(st.entry.id, e.target.value)}
-                            className="w-full pl-6 pr-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-mono font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                            className="w-full pl-6 pr-3 py-1.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-mono font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
                           />
                         </div>
 
@@ -317,13 +326,14 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                             <button
                               key={p}
                               type="button"
+                              disabled={isMasked}
                               onClick={() => handlePriceChange(st.entry.id, String(p))}
                               className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors cursor-pointer ${parseFloat(priceStr) === p
                                 ? 'bg-emerald-600 text-white'
                                 : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
-                                }`}
+                                } disabled:opacity-50`}
                             >
-                              ${p.toFixed(2)}
+                              {isMasked ? '••••' : `$${p.toFixed(2)}`}
                             </button>
                           ))}
                         </div>
@@ -336,10 +346,12 @@ export const RunwayRevenuePanel: React.FC<RunwayRevenuePanelProps> = ({
                         <Calculator className="w-3 h-3" /> Batch Projected Revenue
                       </span>
                       <span className="text-base sm:text-xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400">
-                        ${batchRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {isMasked ? '••••••' : `$${batchRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </span>
                       <span className="text-[10px] text-gray-400 block mt-0.5">
-                        {st.currentLiveHeadcount} head × ${unitPrice.toFixed(2)}
+                        {isMasked
+                          ? '•••• head × ••••••'
+                          : `${st.currentLiveHeadcount} head × $${unitPrice.toFixed(2)}`}
                       </span>
                     </div>
                   </div>

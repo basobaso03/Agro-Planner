@@ -32,6 +32,7 @@ import { PERMISSIONS } from '../../utils/permissions';
 import { dataService } from '../../services/dataService';
 import { CountUp } from './CountUp';
 import { RunwayPurchaseSheet } from './RunwayPurchaseSheet';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface SpendPanelProps {
   plan: RunwayPlan;
@@ -44,6 +45,7 @@ interface SpendPanelProps {
   onRecordExpense: () => void;
   onProposeAmendment: () => void;
   readOnly?: boolean;
+  showNumbers?: boolean;
 }
 
 type ExecutionViewFilter = 'ALL' | 'PENDING' | 'PAID';
@@ -59,7 +61,9 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
   onRecordExpense,
   onProposeAmendment,
   readOnly = false,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   const [filterView, setFilterView] = useState<ExecutionViewFilter>('ALL');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -109,9 +113,15 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
       return;
     }
 
+    const activeOrg = dataService.getActiveOrganization(plan.orgId);
+    const isAgroPlan = plan.orgType !== 'GENERAL_VENTURE' && activeOrg?.type !== 'GENERAL_VENTURE';
+    const assetTypesReversed = isAgroPlan
+      ? 'reverse any registered livestock or equipment assets'
+      : 'reverse any registered equipment assets';
+
     if (
       !window.confirm(
-        `Undo / reverse this purchase of $${Math.abs(exp.amount).toFixed(2)} for "${lineTitle}"?\n\nThis will safely record a Contra-Reversal, restore the money back to Money on the Ground, and reduce the spent amount on this line.`
+        `Undo / reverse this purchase of $${Math.abs(exp.amount).toFixed(2)} for "${lineTitle}"?\n\nThis will safely record a Contra-Reversal, restore the money back to Money on the Ground, reduce the spent amount on this line, and ${assetTypesReversed}.`
       )
     ) {
       return;
@@ -134,10 +144,18 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
 
       // 2. If there's a corresponding fixed asset, reverse it too
       const assetState = dataService.getState().fixedAssets || [];
+      const reversedAssetIds = new Set(
+        assetState
+          .filter((a) => a.direction === 'CONTRA_REVERSAL' && a.referenceTransactionId)
+          .map((a) => a.referenceTransactionId!)
+      );
       const matchingAsset = assetState.find(
         (a) =>
-          (a.referenceTransactionId === exp.id || (exp.note && exp.note.includes(a.assetName))) &&
-          a.direction !== 'CONTRA_REVERSAL'
+          !reversedAssetIds.has(a.id) &&
+          a.direction !== 'CONTRA_REVERSAL' &&
+          (a.id === exp.batchOrAnimalId ||
+            a.referenceTransactionId === exp.id ||
+            (exp.note && a.assetName && exp.note.includes(a.assetName)))
       );
       if (matchingAsset) {
         dataService.logFixedAssetEvent({
@@ -155,6 +173,48 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
           runwayPlanId: plan.id,
           runwayAllocation: exp.runwayLineId ? { mode: 'LINE', lineId: exp.runwayLineId } : undefined,
         });
+      }
+
+      // 3. If there's a corresponding livestock entry/batch (strictly in AGRO farming ventures), reverse the livestock purchase too
+      if (isAgroPlan) {
+        const livestockState = dataService.getState().livestockEntries || [];
+        const livestockEvents = dataService.getState().livestockEvents || [];
+        const matchingLivestock = livestockState.find(
+          (l) =>
+            l.id === exp.batchOrAnimalId ||
+            l.acquisitionExpenseId === exp.id ||
+            (exp.category === 'LIVESTOCK_PURCHASE' && exp.note && l.nameOrTag && exp.note.includes(l.nameOrTag))
+        );
+
+        if (matchingLivestock) {
+          const alreadyReversedLivestock = livestockEvents.some(
+            (e) =>
+              e.livestockId === matchingLivestock.id &&
+              e.eventType === 'HEADCOUNT_CONTRA_ADJUSTMENT' &&
+              e.referenceTransactionId === exp.id
+          );
+
+          if (!alreadyReversedLivestock) {
+            // Extract headcount delta from expense note e.g. [Qty: 100 chick] or fallback to initialHeadcount
+            let reverseHeadcount = matchingLivestock.initialHeadcount;
+            const qtyMatch = exp.note?.match(/\[Qty:\s*(\d+(?:\.\d+)?)/i);
+            if (qtyMatch && qtyMatch[1]) {
+              const parsed = parseFloat(qtyMatch[1]);
+              if (Number.isFinite(parsed) && parsed > 0) {
+                reverseHeadcount = Math.round(parsed);
+              }
+            }
+
+            dataService.logLivestockLifecycleEvent({
+              livestockId: matchingLivestock.id,
+              eventType: 'HEADCOUNT_CONTRA_ADJUSTMENT',
+              headcountDelta: -Math.abs(reverseHeadcount),
+              referenceTransactionId: exp.id,
+              note: `Contra-reversal of livestock purchase against Runway line: ${lineTitle}`,
+              actor: currentMember,
+            });
+          }
+        }
       }
 
       handlePurchaseSuccess(`Successfully reversed purchase of $${Math.abs(exp.amount).toFixed(2)}! Funds restored to Money on the Ground.`);
@@ -282,7 +342,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
               </h3>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Items Purchased: <strong className="text-emerald-600 dark:text-emerald-400">{paidLines.length} of {costLines.length}</strong> full{partialLinesCount > 0 ? ` (${partialLinesCount} partially paid)` : ''} ({itemsCompletedPct}%) • Disbursed: <strong className="text-indigo-600 dark:text-indigo-400">${layers.executed.toFixed(2)}</strong> of ${layers.totalRequirement.toFixed(2)} ({layers.executedPct}%)
+              Items Purchased: <strong className="text-emerald-600 dark:text-emerald-400">{isMasked ? '•• of ••' : `${paidLines.length} of ${costLines.length}`}</strong> full{partialLinesCount > 0 ? ` (${isMasked ? '••' : partialLinesCount} partially paid)` : ''} ({isMasked ? '••%' : `${itemsCompletedPct}%`}) • Disbursed: <strong className="text-indigo-600 dark:text-indigo-400">{formatMoney(layers.executed, !isMasked)}</strong> of {formatMoney(layers.totalRequirement, !isMasked)} ({isMasked ? '••%' : `${layers.executedPct}%`})
             </p>
           </div>
 
@@ -293,7 +353,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                 Master Treasury Cash (leftMoney)
               </span>
               <span className="text-sm sm:text-base font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                ${availableCash.toFixed(2)}
+                {formatMoney(availableCash, !isMasked)}
               </span>
             </div>
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Live Organization Treasury Balance" />
@@ -310,8 +370,8 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             />
           </div>
           <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
-            <span>Executed: ${layers.executed.toFixed(2)}</span>
-            <span>Target: ${layers.totalRequirement.toFixed(2)}</span>
+            <span>Executed: {formatMoney(layers.executed, !isMasked)}</span>
+            <span>Target: {formatMoney(layers.totalRequirement, !isMasked)}</span>
           </div>
         </div>
       </div>
@@ -323,7 +383,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             Total Target
           </span>
           <div className="text-lg sm:text-xl font-black font-mono text-slate-950 mt-0.5">
-            <CountUp value={layers.totalRequirement} />
+            <CountUp value={layers.totalRequirement} showNumbers={!isMasked} />
           </div>
           <span className="text-[11px] text-slate-600 font-medium">100% Budget</span>
         </div>
@@ -333,9 +393,9 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             Disbursed Spend
           </span>
           <div className="text-lg sm:text-xl font-black font-mono text-emerald-700 mt-0.5">
-            <CountUp value={layers.executed} />
+            <CountUp value={layers.executed} showNumbers={!isMasked} />
           </div>
-          <span className="text-[11px] text-slate-600 font-medium">{layers.executedPct}% of budget</span>
+          <span className="text-[11px] text-slate-600 font-medium">{isMasked ? '••% of budget' : `${layers.executedPct}% of budget`}</span>
         </div>
 
         <div>
@@ -343,10 +403,10 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             Reserve Buffer Left
           </span>
           <div className="text-lg sm:text-xl font-black font-mono text-amber-800 mt-0.5">
-            <CountUp value={layers.reserveLeft} />
+            <CountUp value={layers.reserveLeft} showNumbers={!isMasked} />
           </div>
           <span className="text-[11px] text-slate-600 font-medium">
-            ${layers.reserveUsed.toFixed(0)} used for overruns
+            {formatMoney(layers.reserveUsed, !isMasked)} used for overruns
           </span>
         </div>
 
@@ -355,9 +415,9 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             Remaining Budget
           </span>
           <div className="text-lg sm:text-xl font-black font-mono text-indigo-900 mt-0.5">
-            <CountUp value={Math.max(0, layers.totalRequirement - layers.executed)} />
+            <CountUp value={Math.max(0, layers.totalRequirement - layers.executed)} showNumbers={!isMasked} />
           </div>
-          <span className="text-[11px] text-slate-600 font-medium">{costLines.length - paidLines.length} items left</span>
+          <span className="text-[11px] text-slate-600 font-medium">{isMasked ? '•• items left' : `${costLines.length - paidLines.length} items left`}</span>
         </div>
       </div>
 
@@ -376,7 +436,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
               <div key={d.id} className="py-2 flex items-center justify-between">
                 <div>
                   <span className="font-bold text-gray-900 dark:text-white">
-                    ${(d.runwayReserveDraw || 0).toFixed(2)}
+                    {formatMoney(d.runwayReserveDraw || 0, !isMasked)}
                   </span>
                   <span className="text-gray-500 ml-2">{d.runwayAllocationNote || d.note}</span>
                 </div>
@@ -397,7 +457,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             <div className="flex items-center space-x-2">
               <Layers className="w-4 h-4 text-indigo-600" />
               <h4 className="text-sm font-black text-slate-950">
-                Line Items Execution ({paidLines.length}/{costLines.length} Purchased)
+                Line Items Execution ({isMasked ? '••/••' : `${paidLines.length}/${costLines.length}`} Purchased)
               </h4>
             </div>
 
@@ -529,7 +589,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                             {isPaid
                               ? 'PURCHASED'
                               : isPartial
-                                ? `PARTIALLY PAID (${pctSpent}%)`
+                                ? `PARTIALLY PAID (${isMasked ? '••%' : `${pctSpent}%`})`
                                 : status}
                           </span>
                         </span>
@@ -537,7 +597,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                         {isOverBudget && (
                           <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-800 flex items-center gap-1">
                             <AlertTriangle className="w-3 h-3 text-rose-600" />
-                            <span>OVER-PURCHASED (+${(spent - plannedTotal).toFixed(2)})</span>
+                            <span>OVER-PURCHASED (+{formatMoney(spent - plannedTotal, !isMasked)})</span>
                           </span>
                         )}
 
@@ -554,16 +614,16 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                       </div>
 
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Target: {line.qty} {line.unitLabel || 'units'} × ${line.unitCost.toFixed(2)} = <strong>${plannedTotal.toFixed(2)}</strong>
+                        Target: {isMasked ? `•••• ${line.unitLabel || 'units'} × •••••• = ` : `${line.qty} ${line.unitLabel || 'units'} × $${line.unitCost.toFixed(2)} = `}<strong>{formatMoney(plannedTotal, !isMasked)}</strong>
                         {' • '}
-                        Spent: <span className="text-indigo-600 dark:text-indigo-400 font-semibold">${spent.toFixed(2)}</span>
+                        Spent: <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{formatMoney(spent, !isMasked)}</span>
                         {spent > 0 && line.unitCost > 0 && (
                           <span className="text-indigo-500 dark:text-indigo-400">
-                            {' '}({approxUnitsPurchased} of {line.qty} {line.unitLabel || 'units'})
+                            {' '}({isMasked ? '••••' : approxUnitsPurchased} of {isMasked ? '••••' : line.qty} {line.unitLabel || 'units'})
                           </span>
                         )}
                         {' • '}
-                        Remaining: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">${remaining.toFixed(2)}</span>
+                        Remaining: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatMoney(remaining, !isMasked)}</span>
                       </div>
 
                       {exps.length > 0 && (
@@ -590,7 +650,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                     <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
                       <div className="text-right sm:mr-2">
                         <span className="text-sm font-bold font-mono text-gray-900 dark:text-white">
-                          {pctSpent}%
+                          {isMasked ? '••%' : `${pctSpent}%`}
                         </span>
                       </div>
 
@@ -643,7 +703,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                           <span>Purchase Transactions ({exps.length})</span>
                         </div>
                         <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                          Spent: ${spent.toFixed(2)} / Planned: ${plannedTotal.toFixed(2)}
+                          Spent: {formatMoney(spent, !isMasked)} / Planned: {formatMoney(plannedTotal, !isMasked)}
                         </span>
                       </div>
 
@@ -659,7 +719,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
                                     className={`font-mono font-bold ${isContra || hasBeenReversed ? 'text-rose-600 line-through' : 'text-emerald-600 dark:text-emerald-400'
                                       }`}
                                   >
-                                    {isContra ? '-' : ''}${Math.abs(e.amount).toFixed(2)}
+                                    {formatMoney(isContra ? -Math.abs(e.amount) : Math.abs(e.amount), !isMasked)}
                                   </span>
                                   <span className="text-[10px] text-gray-400">
                                     {new Date(e.createdAt).toLocaleDateString()}
@@ -753,6 +813,7 @@ export const SpendPanel: React.FC<SpendPanelProps> = ({
             (derivedStatuses.get(purchasingLine.id)?.spent || 0)
           )}
           spentSoFar={derivedStatuses.get(purchasingLine.id)?.spent || 0}
+          showNumbers={!isMasked}
           onSuccess={handlePurchaseSuccess}
         />
       )}

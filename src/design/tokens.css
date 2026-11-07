@@ -1,5 +1,7 @@
 /* Solora Warm Financial Design System Tokens */
 :root {
+  color-scheme: light;
+
   /* Surfaces */
   --color-surface-canvas: #FAF8F5;
   --color-surface-card: #FFFFFF;

@@ -701,6 +701,10 @@ export async function dispatchSystemNotification(params: {
   let cleanSummary = rawBody
     .replace(/^[A-Z]{3,4}-\d{3,}-[A-Z0-9]+(\s*\(Ref:[^)]+\))?:\s*/i, '')
     .replace(/^[A-Z]{3,4}-\d{3,}:\s*/i, '')
+    .replace(/\bAGRO_FARMING\b/g, 'Agro-Farming')
+    .replace(/\bGENERAL_VENTURE\b/g, 'General Venture')
+    .replace(/\bMILESTONE_BASED\b/g, 'Milestone-Based')
+    .replace(/\bINDIVIDUAL_TAG\b/g, 'Individual Tag')
     .trim();
   const firstSentence = cleanSummary.split(/[\.\n]/)[0].trim();
   if (firstSentence && firstSentence.length <= 95) {
@@ -708,6 +712,12 @@ export async function dispatchSystemNotification(params: {
   } else if (cleanSummary.length > 95) {
     cleanSummary = cleanSummary.slice(0, 94).trim() + '…';
   }
+
+  const cleanLargeBody = rawBody
+    .replace(/\bAGRO_FARMING\b/g, 'Agro-Farming')
+    .replace(/\bGENERAL_VENTURE\b/g, 'General Venture')
+    .replace(/\bMILESTONE_BASED\b/g, 'Milestone-Based')
+    .replace(/\bINDIVIDUAL_TAG\b/g, 'Individual Tag');
 
   // Determine appropriate Android notification channel
   let channelId = 'milestones_general';
@@ -732,7 +742,7 @@ export async function dispatchSystemNotification(params: {
             id: notifId,
             title: cleanTitle,
             body: cleanSummary || cleanTitle,
-            largeBody: rawBody,
+            largeBody: cleanLargeBody,
             channelId,
             summaryText: 'Agro Planner',
             actionTypeId: 'AGRO_OPEN_ACTION',

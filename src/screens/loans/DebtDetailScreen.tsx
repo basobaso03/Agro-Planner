@@ -33,6 +33,10 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
   const debt = propDebt || (dataService.getState().debtLiabilities || []).find((d) => d.id === debtId);
 
   const isSettled = debt ? debt.status === 'SETTLED' : false;
+  const totalRepaid = debt ? (debt.repayments || []).reduce((acc, r) => acc + r.amount, 0) : 0;
+  const interestRate = debt?.interestRatePercent || 0;
+  const interestAmount = debt ? Number(((debt.principalAmount * interestRate) / 100).toFixed(2)) : 0;
+  const totalDebt = debt ? debt.principalAmount + interestAmount : 0;
   const isOverdue = !isSettled && debt?.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
   const daysDiff = debt?.dueDate
     ? Math.ceil((new Date(debt.dueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -85,14 +89,21 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
             <p className="text-xs text-slate-500 mt-0.5">Category: {debt.category.replace('_', ' ')}</p>
           </div>
 
-          <span
-            className={`text-xs font-black px-2.5 py-1 rounded-full border ${isSettled
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border-rose-300'
-              }`}
-          >
-            {isSettled ? 'Settled ✓' : 'Active Liability'}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className={`text-xs font-black px-2.5 py-1 rounded-full border ${isSettled
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-rose-50 text-rose-800 border-rose-300'
+                }`}
+            >
+              {isSettled ? 'Settled ✓' : 'Active Liability'}
+            </span>
+            {interestRate > 0 && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                {interestRate}% Interest
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="pt-2 border-t border-[#F0EBE1] flex flex-wrap items-center gap-2">
@@ -200,26 +211,44 @@ export const DebtDetailScreen: React.FC<DebtDetailScreenProps> = ({
       )}
 
       {/* 2. Financial Balance Breakdown */}
-      <div className="grid grid-cols-3 gap-2 p-4 rounded-3xl bg-white border border-[#E8DFCE] text-center shadow-xs">
-        <div>
-          <span className="text-[10px] text-slate-400 font-bold uppercase block">Principal</span>
-          <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
-            {formatMoney(debt.principalAmount, showNumbers)}
-          </span>
+      <div className="p-4 rounded-3xl bg-white border border-[#E8DFCE] shadow-xs space-y-3">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase block">Principal</span>
+            <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
+              {formatMoney(debt.principalAmount, showNumbers)}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-rose-500 font-bold uppercase block">Interest ({interestRate}%)</span>
+            <span className="text-sm font-black font-mono text-rose-600 mt-0.5 block">
+              +{formatMoney(interestAmount, showNumbers)}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] text-slate-700 font-bold uppercase block">Total Debt</span>
+            <span className="text-sm font-black font-mono text-slate-900 mt-0.5 block">
+              {formatMoney(totalDebt, showNumbers)}
+            </span>
+          </div>
         </div>
 
-        <div>
-          <span className="text-[10px] text-emerald-700 font-bold uppercase block">Repaid</span>
-          <span className="text-sm font-black font-mono text-emerald-600 mt-0.5 block">
-            {formatMoney(debt.principalAmount - debt.remainingBalance, showNumbers)}
-          </span>
-        </div>
+        <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-[#F0EBE1] text-center">
+          <div>
+            <span className="text-[10px] text-emerald-700 font-bold uppercase block">Total Repaid</span>
+            <span className="text-sm font-black font-mono text-emerald-600 mt-0.5 block">
+              {formatMoney(totalRepaid, showNumbers)}
+            </span>
+          </div>
 
-        <div>
-          <span className="text-[10px] text-rose-700 font-bold uppercase block">Remaining</span>
-          <span className="text-sm font-black font-mono text-rose-600 mt-0.5 block">
-            {formatMoney(debt.remainingBalance, showNumbers)}
-          </span>
+          <div>
+            <span className="text-[10px] text-rose-700 font-bold uppercase block">Balance Remaining</span>
+            <span className="text-sm font-black font-mono text-rose-600 mt-0.5 block">
+              {formatMoney(debt.remainingBalance, showNumbers)}
+            </span>
+          </div>
         </div>
       </div>
 

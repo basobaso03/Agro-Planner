@@ -40,6 +40,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
       borrowerContact: '',
       category: 'OUTGROWER_ADVANCE' as LoanCategory,
       principal: '',
+      interestRate: '0',
       agreedReturnDate: (() => {
         const d = new Date();
         d.setDate(d.getDate() + 30);
@@ -52,6 +53,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
     validate: (values) => ({
       borrowerName: validators.required(values.borrowerName, 'Borrower name'),
       principal: validators.positiveNumber(values.principal, 'Principal loan amount'),
+      interestRate: validators.nonNegativeNumber(values.interestRate, 'Interest rate'),
       agreedReturnDate: validators.required(values.agreedReturnDate, 'Return date'),
       purposeNote: validators.minAuditNote(values.purposeNote, 4),
     }),
@@ -69,6 +71,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
         throw new Error('Permission denied: Only Treasurers and Administrators can issue loan advances.');
       }
       const p = parseFloat(values.principal);
+      const interestRate = parseFloat(values.interestRate) || 0;
 
       try {
         const created = dataService.recordLoanGiven({
@@ -76,6 +79,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
           borrowerContact: values.borrowerContact.trim(),
           category: values.category,
           principalAmount: p,
+          interestRatePercent: interestRate,
           agreedReturnDate: values.agreedReturnDate,
           collateralNote: values.collateralNote.trim() || undefined,
           purposeNote: values.purposeNote.trim(),
@@ -88,7 +92,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
             entityType: 'LOAN_GIVEN',
             entityId: created.id,
             partyName: created.borrowerName,
-            amount: created.principalAmount,
+            amount: created.remainingBalance,
             dueDate: created.agreedReturnDate,
             customNote: created.purposeNote,
             actor: activeMember,
@@ -110,6 +114,7 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
             borrowerContact: values.borrowerContact.trim(),
             category: values.category,
             principalAmount: p,
+            interestRatePercent: interestRate,
             agreedReturnDate: values.agreedReturnDate,
             collateralNote: values.collateralNote.trim() || undefined,
             purposeNote: values.purposeNote.trim(),
@@ -173,6 +178,59 @@ export const NewLoanSheet: React.FC<NewLoanSheetProps> = ({
             />
           </Field>
         </div>
+
+        <Field label="Agreed Interest Rate (%)" hint="0% if interest-free outgrower advance" error={form.errors.interestRate}>
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            {[0, 5, 10, 15, 20].map((rate) => (
+              <button
+                key={rate}
+                type="button"
+                onClick={() => form.setFieldValue('interestRate', rate.toString())}
+                className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                  form.values.interestRate === rate.toString()
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                }`}
+              >
+                {rate}%
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={form.values.interestRate}
+              onChange={(e) => form.setFieldValue('interestRate', e.target.value)}
+              placeholder="e.g. 10"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:outline-hidden focus:ring-2 focus:ring-emerald-500 pr-8"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+          </div>
+        </Field>
+
+        {/* Live Calculation Breakdown */}
+        {parseFloat(form.values.principal) > 0 && (
+          <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Cash Disbursed from Ground:</span>
+              <span className="font-mono font-bold">${parseFloat(form.values.principal || '0').toFixed(2)}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Agreed Interest ({parseFloat(form.values.interestRate) || 0}%):</span>
+              <span className="font-mono font-bold text-emerald-700">
+                +${((parseFloat(form.values.principal || '0') * (parseFloat(form.values.interestRate) || 0)) / 100).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-emerald-200 text-slate-900 font-bold">
+              <span>Total Receivable to Collect:</span>
+              <span className="font-mono font-black text-emerald-700 text-sm">
+                ${(parseFloat(form.values.principal || '0') * (1 + (parseFloat(form.values.interestRate) || 0) / 100)).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Borrower Contact" hint="Phone/Email">

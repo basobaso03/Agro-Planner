@@ -100,8 +100,8 @@ export function generateVaccinationProtocols(
     description?: string;
   }[] = [];
 
-  // 1. If entry has user-defined custom checkpoints, prioritize the custom farm recipe
-  if (entry.customCheckpoints && entry.customCheckpoints.length > 0) {
+  // 1. If entry has user-defined custom checkpoints (including an explicit blank schedule []), prioritize it
+  if (Array.isArray(entry.customCheckpoints)) {
     templates = entry.customCheckpoints.map((cp) => ({
       dayTarget: cp.dayTarget,
       title: cp.title,

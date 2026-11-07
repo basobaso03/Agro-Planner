@@ -281,3 +281,48 @@ in the runway remove/hide the save plan as a template button, its not os use now
 
 
 - lets plan first looking at the agro business features and business, then also on general features and pages, then plan on each type the pages and opertions that we need to export some pdfs, with well designed structures, best branding of the organisation and of the app (including the logo), making sure the output names must not inslude the underscores on their file names, we need to share some some parts of the busness like the plans, purchsed sales etc depending on the type of business, and the exports must be comprehensive, so make sure that we have the best plugins for pdf generation and test it, so lets create the implementation plan and put it into its new folder in plans folder
+
+
+
+- also l see the whole organisation can receive notifications if someone update their own personal infomation not related to business like passwords etc, identify all these activities not related to business and remove them from notifications and ledger
+
+remove the login with fingerpring on login page
+- also in the settings page on personal profile, if the password is con figured, then we must have the old password logic so that the user can change the password, also make the show/hide pass a different color that can be easly seen by the users
+
+
+- can you add the runway to dashboard in a well styled card in agro business side
+- on the runway for both organisations stage 2, 3, they do not have enough infomation of what is required it just say select templates, but what for, we need new users to use the app with less training
+- also both custom and prebuild templates names must be editable
+
+
+with thw local database and authentication, if l have two devices and l change the password, the other device can continue to use the app as if the passwoed was not changed , and l cannot signoyt all sessions if l want all devices with my account start afresh signing in
+
+in hide mode the in runway cash paid in and reserve left capital lines, contigency, plus expected revenue, member pledges, pay and excecution numbers are seen and exposed , even the runway card in overview page is also exposed
+
+
+
+- on farm registration remove the GPS coordinates option, even from backend and database
+
+
+- on execution when l want to add a receipt l have to repeat the selection twice for it to be selected and upload
+
+- looking at the audit logs page, the tempering detected message is always appearing, l am the only one uisng the app, are there any inconsistances in the module?, now l am seeing of record 1 and 2, but the audit start at record 2 of organisation creation so what record 1
+
+- remove the in-page form for pledges and pay-in add it to every member card or a button in the page that opens a form from the buttom up making sure it does not go too high that other contents will be hidden, plus make sure it respond perfectly to keyboard to any field.
+- also in the payi  page the dropdown on payment method the options are not seen, both background and text are white
+
+
+
+in reality what does the money borrowed affect the cash on ground and consolited networth, is it the same process being applied in this system or there is deviation, also check on the money lent
+
+- do you also see that the expenses page is not in the UI, but we can record expenses, from both overview and money tabs
+
+l have seen one thing here that on runway we can plan that we need to buy these animals and on execution tab purchase them, but there is no way that we can register them as livestock, we need to buy them in livestock, we need to solve this as we did on fixed assets that they can be recorded as livestock. so identify any mismatching attributes between the two, find the best way to solve it and implement the best way.
+
+- the other subtil operation that need to be carefully considered is the reverse purchase logic, this must make sure that it reverses the purchase of the livestock. also check if this is also true on fixed asset
+
+
+what l want is that when the owne who created the company i
+
+
+cmd.exe /c "npx firebase deploy --only firestore:rules --project gen-lang-client-0801418948"

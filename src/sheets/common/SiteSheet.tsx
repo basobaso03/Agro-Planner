@@ -21,13 +21,11 @@ export const SiteSheet: React.FC<SiteSheetProps> = ({
   onSiteCreated,
 }) => {
   const { showToast } = useToast();
-  const [isLocating, setIsLocating] = useState(false);
 
   const form = useForm({
     initial: {
       name: '',
       region: '',
-      gpsCoordinates: '',
       primaryOperatorName: activeMember.fullName || '',
     },
     validate: (values) => ({
@@ -40,7 +38,6 @@ export const SiteSheet: React.FC<SiteSheetProps> = ({
         dataService.addLocation({
           name: values.name.trim(),
           region: values.region.trim(),
-          gpsCoordinates: values.gpsCoordinates.trim() || '-17.8292, 31.0522',
           primaryOperatorName: values.primaryOperatorName.trim(),
           actor: activeMember,
         });
@@ -61,34 +58,6 @@ export const SiteSheet: React.FC<SiteSheetProps> = ({
       }
     },
   });
-
-  const handleGetCurrentGps = async () => {
-    setIsLocating(true);
-    try {
-      if (typeof navigator !== 'undefined' && navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const coords = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
-            form.setValue('gpsCoordinates', coords);
-            setIsLocating(false);
-          },
-          () => {
-            setIsLocating(false);
-            showToast({
-              type: 'info',
-              title: 'GPS Unavailable',
-              message: 'Could not acquire location coordinates automatically.',
-            });
-          },
-          { timeout: 8000 }
-        );
-      } else {
-        setIsLocating(false);
-      }
-    } catch {
-      setIsLocating(false);
-    }
-  };
 
   return (
     <FormSheet
@@ -130,29 +99,6 @@ export const SiteSheet: React.FC<SiteSheetProps> = ({
             placeholder="e.g. John K."
             className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
           />
-        </Field>
-
-        <Field
-          label="GPS Coordinates"
-          hint="Lat, Long coordinates for satellite mapping."
-        >
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={form.values.gpsCoordinates}
-              onChange={(e) => form.setValue('gpsCoordinates', e.target.value)}
-              placeholder="-17.8292, 31.0522"
-              className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm font-mono"
-            />
-            <button
-              type="button"
-              onClick={handleGetCurrentGps}
-              disabled={isLocating}
-              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 flex items-center gap-1"
-            >
-              📍 {isLocating ? 'Locating...' : 'Get GPS'}
-            </button>
-          </div>
         </Field>
       </div>
     </FormSheet>

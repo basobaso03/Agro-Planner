@@ -15,6 +15,7 @@ import { generateRunwayReportPdf } from '../../services/pdf/generators/shared/ru
 import { buildExportFilename } from '../../utils/pdfFilename';
 import { PdfExportButton } from '../ui/PdfExportButton';
 import { dataService } from '../../services/dataService';
+import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 
 interface RunwayReportProps {
   plan: RunwayPlan;
@@ -23,6 +24,7 @@ interface RunwayReportProps {
   livestockEvents?: LivestockLifecycleEvent[];
   creditSales?: CreditSaleEvent[];
   layers: RunwayFundingLayers;
+  showNumbers?: boolean;
 }
 
 export const RunwayReport: React.FC<RunwayReportProps> = ({
@@ -32,7 +34,9 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
   livestockEvents = [],
   creditSales = [],
   layers,
+  showNumbers,
 }) => {
+  const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
   // Revenue for recovery (scoped strictly to this plan's active lifecycle & organization)
   const planStart = new Date(plan.activatedAt || plan.startDate).getTime();
   const planEnd = plan.completedAt ? new Date(plan.completedAt).getTime() : Infinity;
@@ -151,25 +155,25 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
               {recovery.isBreakEven ? 'Break-Even Payback Reached' : 'Capital Recovery Tracking'}
             </span>
             <span className="text-xs font-mono font-bold text-slate-600">
-              {recovery.recoveredPct}% Recouped
+              {isMasked ? '••% Recouped' : `${recovery.recoveredPct}% Recouped`}
             </span>
           </div>
 
           <h4 className="text-sm sm:text-base font-black text-slate-950 truncate">
-            ${recovery.recoveredAmount.toLocaleString()} Recovered
+            {formatMoney(recovery.recoveredAmount, !isMasked)} Recovered
             <span className="text-xs font-normal text-slate-500 ml-1.5 font-sans">
-              (out of ${layers.executed.toLocaleString()} spent)
+              (out of {formatMoney(layers.executed, !isMasked)} spent)
             </span>
           </h4>
 
           <p className="text-xs text-slate-600 font-medium leading-relaxed">
             {recovery.isBreakEven
-              ? `The venture has fully recouped its operational disbursement and is generating surplus cashflow ($${recovery.surplus.toFixed(2)} net profit).`
+              ? `The venture has fully recouped its operational disbursement and is generating surplus cashflow (${formatMoney(recovery.surplus, !isMasked)} net profit).`
               : layers.executed === 0
                 ? 'No capital has been disbursed for this cycle yet.'
                 : recovery.recoveredAmount === 0
-                  ? `Awaiting harvest & product sales. Sales from this batch will automatically recoup the $${layers.executed.toFixed(2)} spent on inputs towards break-even.`
-                  : `$${recovery.shortfall.toFixed(2)} remaining to achieve break-even payback on capital spent.`}
+                  ? `Awaiting harvest & product sales. Sales from this batch will automatically recoup the ${formatMoney(layers.executed, !isMasked)} spent on inputs towards break-even.`
+                  : `${formatMoney(recovery.shortfall, !isMasked)} remaining to achieve break-even payback on capital spent.`}
           </p>
         </div>
       </div>
@@ -188,7 +192,7 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
             {offPlanExpenses.map((e) => (
               <div key={e.id} className="py-2 flex items-center justify-between">
                 <div>
-                  <span className="font-bold text-slate-950">${e.amount.toFixed(2)}</span>
+                  <span className="font-bold text-slate-950">{formatMoney(e.amount, !isMasked)}</span>
                   <span className="text-slate-600 ml-2">({e.category}) {e.note}</span>
                 </div>
                 <span className="text-[10px] text-slate-500 font-semibold">{new Date(e.createdAt).toLocaleDateString()}</span>
@@ -229,13 +233,13 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
                   <div>
                     <span className="text-[10px] text-slate-600 block font-semibold">Planned</span>
                     <span className="font-mono font-bold text-slate-950">
-                      ${cat.planned.toFixed(2)}
+                      {formatMoney(cat.planned, !isMasked)}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-600 block font-semibold">Actual</span>
                     <span className="font-mono font-black text-slate-950">
-                      ${cat.actual.toFixed(2)}
+                      {formatMoney(cat.actual, !isMasked)}
                     </span>
                   </div>
                   <div>
@@ -244,11 +248,17 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
                       className={`font-mono font-bold ${isOver ? 'text-rose-600' : 'text-emerald-600'
                         }`}
                     >
-                      {cat.variance >= 0
-                        ? `+$${cat.variance.toFixed(2)}`
-                        : `-$${Math.abs(cat.variance).toFixed(2)}`}
+                      {isMasked
+                        ? '••••••'
+                        : cat.variance >= 0
+                          ? `+$${cat.variance.toFixed(2)}`
+                          : `-$${Math.abs(cat.variance).toFixed(2)}`}
                       <span className="block text-[10px] opacity-80 font-normal">
-                        {cat.variancePct >= 0 ? `+${cat.variancePct.toFixed(1)}%` : `${cat.variancePct.toFixed(1)}%`}
+                        {isMasked
+                          ? '••%'
+                          : cat.variancePct >= 0
+                            ? `+${cat.variancePct.toFixed(1)}%`
+                            : `${cat.variancePct.toFixed(1)}%`}
                       </span>
                     </span>
                   </div>
@@ -259,7 +269,7 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
           <div className="p-3.5 bg-[#FAF8F5] text-xs font-black text-slate-950 flex items-center justify-between border-t border-[#E8DFCE]">
             <span>Total Planned vs Actual:</span>
             <span className="font-mono font-bold">
-              ${varianceReport.totals.planned.toFixed(2)} / ${varianceReport.totals.actual.toFixed(2)}
+              {formatMoney(varianceReport.totals.planned, !isMasked)} / {formatMoney(varianceReport.totals.actual, !isMasked)}
             </span>
           </div>
         </div>
@@ -286,19 +296,27 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
                       {cat.category}
                     </td>
                     <td className="py-3 px-4 text-slate-700 font-semibold">
-                      ${cat.planned.toFixed(2)}
+                      {formatMoney(cat.planned, !isMasked)}
                     </td>
                     <td className="py-3 px-4 font-bold text-slate-950">
-                      ${cat.actual.toFixed(2)}
+                      {formatMoney(cat.actual, !isMasked)}
                     </td>
                     <td
                       className={`py-3 px-4 font-bold ${isOver ? 'text-rose-600' : 'text-emerald-600'
                         }`}
                     >
-                      {cat.variance >= 0 ? `+$${cat.variance.toFixed(2)}` : `-$${Math.abs(cat.variance).toFixed(2)}`}
+                      {isMasked
+                        ? '••••••'
+                        : cat.variance >= 0
+                          ? `+$${cat.variance.toFixed(2)}`
+                          : `-$${Math.abs(cat.variance).toFixed(2)}`}
                     </td>
                     <td className="py-3 px-4 font-semibold text-slate-600">
-                      {cat.variancePct >= 0 ? `+${cat.variancePct.toFixed(1)}%` : `${cat.variancePct.toFixed(1)}%`}
+                      {isMasked
+                        ? '••%'
+                        : cat.variancePct >= 0
+                          ? `+${cat.variancePct.toFixed(1)}%`
+                          : `${cat.variancePct.toFixed(1)}%`}
                     </td>
                     <td className="py-3 px-4">
                       <span
@@ -319,20 +337,24 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
             <tfoot className="bg-[#FAF8F5] font-black text-slate-950 border-t border-[#E8DFCE]">
               <tr>
                 <td className="py-3 px-4">Totals</td>
-                <td className="py-3 px-4">${varianceReport.totals.planned.toFixed(2)}</td>
-                <td className="py-3 px-4">${varianceReport.totals.actual.toFixed(2)}</td>
+                <td className="py-3 px-4">{formatMoney(varianceReport.totals.planned, !isMasked)}</td>
+                <td className="py-3 px-4">{formatMoney(varianceReport.totals.actual, !isMasked)}</td>
                 <td
                   className={`py-3 px-4 font-black ${varianceReport.totals.variance < 0 ? 'text-rose-600' : 'text-emerald-600'
                     }`}
                 >
-                  {varianceReport.totals.variance >= 0
-                    ? `+$${varianceReport.totals.variance.toFixed(2)}`
-                    : `-$${Math.abs(varianceReport.totals.variance).toFixed(2)}`}
+                  {isMasked
+                    ? '••••••'
+                    : varianceReport.totals.variance >= 0
+                      ? `+$${varianceReport.totals.variance.toFixed(2)}`
+                      : `-$${Math.abs(varianceReport.totals.variance).toFixed(2)}`}
                 </td>
                 <td className="py-3 px-4">
-                  {varianceReport.totals.variancePct >= 0
-                    ? `+${varianceReport.totals.variancePct.toFixed(1)}%`
-                    : `${varianceReport.totals.variancePct.toFixed(1)}%`}
+                  {isMasked
+                    ? '••%'
+                    : varianceReport.totals.variancePct >= 0
+                      ? `+${varianceReport.totals.variancePct.toFixed(1)}%`
+                      : `${varianceReport.totals.variancePct.toFixed(1)}%`}
                 </td>
                 <td className="py-3 px-4">
                   <span
