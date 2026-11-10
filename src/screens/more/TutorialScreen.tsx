@@ -117,7 +117,7 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
       },
     ],
     importantTip:
-      'Manual code refreshing keeps Firebase cloud costs minimal while guaranteeing that expired codes can never be reused by former partners.',
+      'Manual code refreshing keeps expired codes not to be reused by former partners.',
   },
   {
     id: 'pledges-and-contributions',
@@ -202,9 +202,9 @@ const TUTORIAL_TOPICS: TutorialTopic[] = [
           'Navigate to the Audit Trail screen to inspect individual transaction blocks. Each block is cryptographically linked to the previous block hash.',
       },
       {
-        title: '4. 11 Standardized Zero-Underscore PDF Reports',
+        title: '4. 11 Standardized PDF Reports',
         description:
-          'Export tamper-proof PDF reports (Runway Plans, Balance Sheets, Health Certificates, Invoices) with clean, underscore-free filenames ready to share on WhatsApp or Email.',
+          'Export tamper-proof PDF reports (Runway Plans, Balance Sheets, Health Certificates, Invoices) ready to share on WhatsApp or Email.',
       },
     ],
     importantTip:

@@ -326,3 +326,5 @@ what l want is that when the owne who created the company i
 
 
 cmd.exe /c "npx firebase deploy --only firestore:rules --project gen-lang-client-0801418948"
+
+- Option C: Local Code-Based Video (Remotion / FFmpeg)
