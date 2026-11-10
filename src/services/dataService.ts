@@ -431,6 +431,18 @@ class AgroDataService {
       if (item.collectionPath !== 'members') {
         await this.ensureCloudAuthUserAndMemberSynced(item.data?.orgId);
       }
+      // For append-only ledger collections (update: if false), check if doc already exists in Firestore
+      // to prevent false permission-denied rejections on retries.
+      if (item.collectionPath === 'capital_contributions' || item.collectionPath === 'fixed_assets_ledger') {
+        try {
+          const snap = await getDoc(doc(firestoreDb, item.collectionPath, item.docId));
+          if (snap.exists()) {
+            return; // Already safely committed in cloud database
+          }
+        } catch {
+          // If read check encounters network error, proceed to write
+        }
+      }
       await setDoc(doc(firestoreDb, item.collectionPath, item.docId), item.data);
     });
 
@@ -3408,7 +3420,9 @@ class AgroDataService {
             // Ignore pre-check warning and continue
           }
         }
-        await setDoc(doc(firestoreDb, collectionPath, docId), cleanData);
+        if (collectionPath !== 'capital_contributions' && collectionPath !== 'fixed_assets_ledger') {
+          await setDoc(doc(firestoreDb, collectionPath, docId), cleanData);
+        }
       } catch (error) {
         console.warn(`Cloud persistence notice (${collectionPath}/${docId}):`, error);
       }
@@ -8398,8 +8412,10 @@ class AgroDataService {
       orgId: (this.state.organizations && this.state.organizations[0]?.id) || '',
       fullName: 'Protocol Automation System',
       email: 'system@agro.local',
-      role: 'ADMIN',
-      status: 'ACTIVE',
+      phoneOrEmail: 'system@agro.local',
+      role: 'ORG_ADMIN',
+      approvalStatus: 'APPROVED',
+      active: true,
       joinedAt: new Date().toISOString(),
     };
 
