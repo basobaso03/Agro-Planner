@@ -577,9 +577,9 @@ export default function App() {
   }, [allLivestockStatuses, selectedLocationId]);
 
   const visibleExpenses = useMemo(() => {
-    if (selectedLocationId === 'ALL') return orgExpenses;
+    if (!isAgroEnabled || selectedLocationId === 'ALL') return orgExpenses;
     return orgExpenses.filter((e) => e.locationId === selectedLocationId);
-  }, [orgExpenses, selectedLocationId]);
+  }, [orgExpenses, selectedLocationId, isAgroEnabled]);
 
   const financials = useMemo(() => {
     return computeFinancialSummary({
@@ -591,7 +591,7 @@ export default function App() {
       debtLiabilities: orgDebtLiabilities,
       loansGiven: orgLoansGiven,
       creditSales: orgCreditSales,
-      filterLocationId: selectedLocationId,
+      filterLocationId: isAgroEnabled ? selectedLocationId : 'ALL',
     });
   }, [
     orgCapitalContributions,
@@ -603,6 +603,7 @@ export default function App() {
     orgLoansGiven,
     orgCreditSales,
     selectedLocationId,
+    isAgroEnabled,
   ]);
 
   const memberEquities = useMemo(() => {

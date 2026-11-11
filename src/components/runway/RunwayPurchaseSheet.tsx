@@ -132,20 +132,20 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
   const initialAmount = actualRemainingBudget > 0 ? actualRemainingBudget : 0;
   const initialQty = actualRemainingUnits > 0 ? actualRemainingUnits : 0;
 
+  // Check if current venture/plan belongs to Agricultural Farming (livestock is strictly disabled for GENERAL_VENTURE)
+  const activeOrg = dataService.getActiveOrganization(plan.orgId);
+  const isAgroPlan = plan.orgType !== 'GENERAL_VENTURE' && activeOrg?.type !== 'GENERAL_VENTURE';
+
   const [purchaseQtyStr, setPurchaseQtyStr] = useState<string>(String(initialQty));
   const [purchaseAmountStr, setPurchaseAmountStr] = useState<string>(String(Number(initialAmount.toFixed(2))));
   const [selectedLocationId, setSelectedLocationId] = useState<string>(
-    locations[0]?.id || plan.locationId || 'LOC-MAIN'
+    isAgroPlan ? locations[0]?.id || plan.locationId || '' : ''
   );
   const [note, setNote] = useState<string>(`Purchase of ${line.title}`);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | undefined>(undefined);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check if current venture/plan belongs to Agricultural Farming (livestock is strictly disabled for GENERAL_VENTURE)
-  const activeOrg = dataService.getActiveOrganization(plan.orgId);
-  const isAgroPlan = plan.orgType !== 'GENERAL_VENTURE' && activeOrg?.type !== 'GENERAL_VENTURE';
 
   // Auto-detection for livestock vs capital assets vs operational spend
   const isDefaultLivestock = isAgroPlan && isAnimalCategoryOrTitle(line.category, line.title);
@@ -394,7 +394,7 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
       setIsCapitalAsset(isCapex);
       setAssetCategory(mapLineCategoryToAssetCategory(line.category));
 
-      const chosenLoc = locations[0]?.id || plan.locationId || 'LOC-MAIN';
+      const chosenLoc = isAgroPlan ? locations[0]?.id || plan.locationId || '' : '';
       setSelectedLocationId(chosenLoc);
 
       // Pre-select linked batch if plan has one
@@ -537,7 +537,7 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
       return;
     }
 
-    if (!selectedLocationId) {
+    if (isAgroPlan && !selectedLocationId) {
       setErrorMsg('Please select a valid site/location.');
       return;
     }
@@ -637,7 +637,7 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
         dataService.logFixedAssetEvent({
           assetName: line.title,
           category: assetCategory,
-          locationId: selectedLocationId,
+          locationId: isAgroPlan ? selectedLocationId : undefined,
           direction: 'INITIAL',
           quantityDelta: validQty,
           valueDelta: Number(validAmount.toFixed(2)),
@@ -659,7 +659,7 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
           planId: plan.id,
           allocation: lineAllocation,
           amount: Number(validAmount.toFixed(2)),
-          locationId: selectedLocationId,
+          locationId: isAgroPlan ? selectedLocationId : undefined,
           category: mapLineCategoryToExpenseCategory(line.category, isAgroPlan),
           note: detailedNote,
           actor: currentMember,
@@ -917,23 +917,29 @@ export const RunwayPurchaseSheet: React.FC<RunwayPurchaseSheetProps> = ({
             </div>
           )}
 
-          {/* Location / Site */}
-          <div>
-            <label className="block text-xs font-bold text-slate-950 mb-1">
-              Disbursement Location / Site <span className="text-rose-500">*</span>
-            </label>
-            <select
-              value={selectedLocationId}
-              onChange={(e) => setSelectedLocationId(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950"
-            >
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name} {loc.region ? `(${loc.region})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Location / Site (Agro-Farming only) */}
+          {isAgroPlan && (
+            <div>
+              <label className="block text-xs font-bold text-slate-950 mb-1">
+                Disbursement Location / Site <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-white text-xs font-bold text-slate-950"
+              >
+                {locations.length === 0 ? (
+                  <option value="">No farm site registered</option>
+                ) : (
+                  locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name} {loc.region ? `(${loc.region})` : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
 
           {/* Livestock Registration Integration Card - strictly for AGRO_FARMING plans */}
           {isAgroPlan && (

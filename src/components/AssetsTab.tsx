@@ -27,6 +27,7 @@ import { AssetSheet } from '../sheets/assets/AssetSheet.tsx';
 import { AdjustAssetSheet } from '../sheets/assets/AdjustAssetSheet.tsx';
 import { TransferAssetSheet } from '../sheets/assets/TransferAssetSheet.tsx';
 import { ImageViewerSheet } from './ui/ImageViewerSheet.tsx';
+import { dataService } from '../services/dataService.ts';
 import type { RunwayAllocation } from '../types/runway.ts';
 import { RunwayError } from '../types/runway.ts';
 
@@ -40,7 +41,7 @@ interface AssetsTabProps {
     assetGroupId?: string;
     assetName: string;
     category: FixedAssetCategory;
-    locationId: string;
+    locationId?: string;
     direction: FixedAssetLedgerEvent['direction'];
     quantityDelta: number;
     valueDelta: number;
@@ -84,6 +85,7 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
   onTransferAsset,
   showNumbers = true,
 }) => {
+  const isAgro = dataService.isAgroOrganization(activeMember?.orgId);
   const runway = useRunway();
   const [spendGateOpen, setSpendGateOpen] = useState(false);
   const [pendingAssetData, setPendingAssetData] = useState<{
@@ -161,7 +163,7 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
       return;
     }
     const targetLocId = astLocId || locations[0]?.id;
-    if (!targetLocId) {
+    if (isAgro && !targetLocId) {
       setAstError('Please register a farm site location first before adding fixed assets.');
       return;
     }
@@ -192,7 +194,7 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
     const assetPayload: Parameters<typeof onLogAssetEvent>[0] = {
       assetName: astName.trim(),
       category: finalCategory,
-      locationId: targetLocId,
+      locationId: isAgro ? targetLocId : undefined,
       direction: 'INITIAL',
       quantityDelta: qty,
       valueDelta: val,
@@ -415,29 +417,31 @@ export const AssetsTab: React.FC<AssetsTabProps> = ({
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const otherLoc =
-                        locations.find((l) => l.id !== group.locationId)?.id || '';
-                      setTransferTarget(group);
-                      setTrToLocId(otherLoc);
-                      setTrQty('1');
-                      setTrVal(
-                        String(
-                          group.currentQuantity > 0
-                            ? Math.round(group.currentValue / group.currentQuantity)
-                            : group.currentValue
-                        )
-                      );
-                      setTrNote('');
-                      setTrError('');
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-sky-300 flex items-center gap-1"
-                  >
-                    <Truck className="w-3.5 h-3.5" />
-                    Transfer Between Sites
-                  </button>
+                  {isAgro && locations.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const otherLoc =
+                          locations.find((l) => l.id !== group.locationId)?.id || '';
+                        setTransferTarget(group);
+                        setTrToLocId(otherLoc);
+                        setTrQty('1');
+                        setTrVal(
+                          String(
+                            group.currentQuantity > 0
+                              ? Math.round(group.currentValue / group.currentQuantity)
+                              : group.currentValue
+                          )
+                        );
+                        setTrNote('');
+                        setTrError('');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-sky-300 flex items-center gap-1"
+                    >
+                      <Truck className="w-3.5 h-3.5" />
+                      Transfer Between Sites
+                    </button>
+                  )}
                 </div>
 
                 <button

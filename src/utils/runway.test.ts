@@ -18,6 +18,7 @@ import {
   fundingGapCoach,
   runStressTest,
   suggestUnitCosts,
+  getTimelineGuideCopy,
 } from './runway.ts';
 import type {
   RunwayPlan,
@@ -1093,4 +1094,24 @@ test('U-16: fundingGapCoach provides prioritized recommendations when a funding 
   ];
   // median of 25 and 35 is 30
   assert.equal(suggestUnitCosts('FEED', pastExpenses), 30);
+});
+
+test('U-17: Timeline "How to Read" guide excludes agro terminology for General Business', () => {
+  const generalCopy = getTimelineGuideCopy(false);
+  const combinedGeneral = [
+    generalCopy.subtitle,
+    generalCopy.guideTitle,
+    generalCopy.dipDescription,
+    generalCopy.breakEvenPrefix,
+    generalCopy.breakEvenSuffix,
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  assert.doesNotMatch(combinedGeneral, /\b(agriculture|farming|farm|feed|chicks|harvest)\b/);
+  assert.match(generalCopy.guideTitle, /Business Cash Flow/);
+
+  const agroCopy = getTimelineGuideCopy(true);
+  assert.match(agroCopy.guideTitle, /Agriculture/);
+  assert.match(agroCopy.dipDescription, /feed, chicks/i);
 });

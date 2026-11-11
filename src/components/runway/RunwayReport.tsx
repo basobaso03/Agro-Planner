@@ -172,7 +172,9 @@ export const RunwayReport: React.FC<RunwayReportProps> = ({
               : layers.executed === 0
                 ? 'No capital has been disbursed for this cycle yet.'
                 : recovery.recoveredAmount === 0
-                  ? `Awaiting harvest & product sales. Sales from this batch will automatically recoup the ${formatMoney(layers.executed, !isMasked)} spent on inputs towards break-even.`
+                  ? plan.orgType === 'GENERAL_VENTURE'
+                    ? `Awaiting business sales & revenue. Incoming revenue will automatically recoup the ${formatMoney(layers.executed, !isMasked)} spent towards break-even.`
+                    : `Awaiting harvest & product sales. Sales from this batch will automatically recoup the ${formatMoney(layers.executed, !isMasked)} spent on inputs towards break-even.`
                   : `${formatMoney(recovery.shortfall, !isMasked)} remaining to achieve break-even payback on capital spent.`}
           </p>
         </div>

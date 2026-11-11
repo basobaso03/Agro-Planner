@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Plus,
   RotateCcw,
@@ -38,6 +38,7 @@ import { useRunway } from '../hooks/useRunway.ts';
 import { SpendGateDialog } from './runway/SpendGateDialog.tsx';
 import type { RunwayAllocation } from '../types/runway.ts';
 import { RunwayError } from '../types/runway.ts';
+import { dataService } from '../services/dataService.ts';
 import { ContraExpenseSheet } from '../sheets/expenses/ContraExpenseSheet.tsx';
 import { LogExpenseSheet } from '../sheets/expenses/LogExpenseSheet.tsx';
 import { FeedEventSheet } from '../sheets/expenses/FeedEventSheet.tsx';
@@ -52,7 +53,7 @@ interface ExpensesFeedTabProps {
   selectedLocationId: string;
   activeMember: OrgMember;
   onLogExpense: (data: {
-    locationId: string;
+    locationId?: string;
     batchOrAnimalId?: string;
     category: ExpenseCategory;
     direction: 'DEDUCTION' | 'CONTRA_REVERSAL';
@@ -102,7 +103,14 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
   onLogFeedEvent,
   showNumbers = true,
 }) => {
+  const isAgro = dataService.isAgroOrganization(activeMember?.orgId);
   const [subTab, setSubTab] = useState<'LEDGER' | 'MULTISIG' | 'FEED'>('LEDGER');
+
+  useEffect(() => {
+    if (!isAgro && subTab === 'FEED') {
+      setSubTab('LEDGER');
+    }
+  }, [isAgro, subTab]);
 
   const runway = useRunway();
   const activePlan = runway.isEnabled && runway.plan?.status === 'ACTIVE' ? runway.plan : null;
@@ -193,7 +201,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       return;
     }
     const loc = locations.find((l) => l.id === expLocationId) || locations[0];
-    if (!loc) {
+    if (isAgro && !loc) {
       setExpError('Please register a farm site location first before logging expenses.');
       return;
     }
@@ -203,13 +211,13 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
 
     try {
       onLogExpense({
-        locationId: loc.id,
-        batchOrAnimalId: expBatchId || undefined,
+        locationId: isAgro ? loc?.id : undefined,
+        batchOrAnimalId: isAgro ? expBatchId || undefined : undefined,
         category: expCategory,
         direction: 'DEDUCTION',
         amount: amt,
         note: expNote.trim(),
-        gpsStamp: loc.gpsCoordinates,
+        gpsStamp: loc?.gpsCoordinates,
         receiptPhotoDataUrl: expReceiptDataUrl || undefined,
         runwayAllocation: alloc,
       });
@@ -230,10 +238,10 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
         setPendingGateData({
           amount: amt,
           category: expCategory,
-          locId: loc.id,
-          batchId: expBatchId || undefined,
+          locId: isAgro ? loc?.id || '' : '',
+          batchId: isAgro ? expBatchId || undefined : undefined,
           note: expNote.trim(),
-          gpsStamp: loc.gpsCoordinates,
+          gpsStamp: loc?.gpsCoordinates,
           receiptUrl: expReceiptDataUrl || undefined,
         });
         setSpendGateOpen(true);
@@ -353,7 +361,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
     <div className="space-y-4 pb-6">
       {/* Sub-Tabs & Primary Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className={`grid ${canApproveMultiSig ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-[#FAF8F5] border border-[#E8DFCE] rounded-2xl`}>
+        <div className={`grid ${canApproveMultiSig && isAgro ? 'grid-cols-3' : canApproveMultiSig || isAgro ? 'grid-cols-2' : 'grid-cols-1'} gap-1 p-1 bg-[#FAF8F5] border border-[#E8DFCE] rounded-2xl`}>
           <button
             type="button"
             onClick={() => setSubTab('LEDGER')}
@@ -376,43 +384,47 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
               Multi-Sig ({!showNumbers ? '••' : pendingExpenses.length})
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setSubTab('FEED')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${subTab === 'FEED'
-              ? 'tab-brand-active'
-              : 'text-slate-600 hover:text-slate-900'
-              }`}
-          >
-            Feed Store ({!showNumbers ? '••' : feedSummaries.length})
-          </button>
+          {isAgro && (
+            <button
+              type="button"
+              onClick={() => setSubTab('FEED')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-center cursor-pointer ${subTab === 'FEED'
+                ? 'tab-brand-active'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
+            >
+              Feed Store ({!showNumbers ? '••' : feedSummaries.length})
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className={`${isAgro ? 'grid grid-cols-2' : 'flex'} sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto`}>
           <button
             type="button"
             onClick={() => setShowExpenseModal(true)}
-            className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer min-h-[42px] whitespace-nowrap"
+            className="w-full sm:w-auto px-3.5 sm:px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer min-h-[42px] whitespace-nowrap"
           >
             <Plus className="w-4 h-4 shrink-0" />
-            <span>Log Farm Expense</span>
+            <span>{isAgro ? 'Log Farm Expense' : 'Log Expense'}</span>
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFeedLocId(
-                selectedLocationId !== 'ALL' ? selectedLocationId : locations[0]?.id || ''
-              );
-              setFeedBags('1.5');
-              setFeedNote('');
-              setFeedError('');
-              setShowFeedModal({ direction: 'DAILY_CONSUMPTION' });
-            }}
-            className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer min-h-[42px] whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4 shrink-0" />
-            <span>Log Daily Feed Used</span>
-          </button>
+          {isAgro && (
+            <button
+              type="button"
+              onClick={() => {
+                setFeedLocId(
+                  selectedLocationId !== 'ALL' ? selectedLocationId : locations[0]?.id || ''
+                );
+                setFeedBags('1.5');
+                setFeedNote('');
+                setFeedError('');
+                setShowFeedModal({ direction: 'DAILY_CONSUMPTION' });
+              }}
+              className="px-3.5 sm:px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer min-h-[42px] whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              <span>Log Daily Feed Used</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -430,7 +442,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
               </span>
             </div>
             <h3 className="text-lg font-bold text-slate-900 mt-0.5">
-              Expense Burn vs Production Return
+              {isAgro ? 'Expense Burn vs Production Return' : 'Expense Burn vs Capital Position'}
             </h3>
           </div>
 
@@ -496,11 +508,11 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
           <div className="absolute top-2 left-4 flex items-center gap-3 text-[10px] font-semibold">
             <span className="flex items-center gap-1 text-amber-800">
               <span className="w-2.5 h-1 rounded-full bg-amber-500" />
-              Cumulative Farm Spend ({!showNumbers ? '••••••••' : `$${financials.approvedExpenses.toFixed(0)}`})
+              {isAgro ? 'Cumulative Farm Spend' : 'Cumulative Venture Spend'} ({!showNumbers ? '••••••••' : `$${financials.approvedExpenses.toFixed(0)}`})
             </span>
             <span className="flex items-center gap-1 text-emerald-800">
               <span className="w-2.5 h-1 rounded-full bg-emerald-500" />
-              Projected NAV Harvest ({!showNumbers ? '••••••••' : `$${financials.totalNav.toFixed(0)}`})
+              {isAgro ? 'Projected NAV Harvest' : 'Net Asset Value'} ({!showNumbers ? '••••••••' : `$${financials.totalNav.toFixed(0)}`})
             </span>
           </div>
         </div>
@@ -607,8 +619,12 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                     <span className="font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 shrink-0 whitespace-nowrap">
                       {exp.category.replace(/_/g, ' ')}
                     </span>
-                    <span aria-hidden="true" className="text-slate-300">·</span>
-                    <span className="font-medium text-slate-700 whitespace-nowrap">{exp.locationName}</span>
+                    {isAgro && exp.locationName && (
+                      <>
+                        <span aria-hidden="true" className="text-slate-300">·</span>
+                        <span className="font-medium text-slate-700 whitespace-nowrap">{exp.locationName}</span>
+                      </>
+                    )}
                   </div>
                   <span className="font-mono text-slate-500 whitespace-nowrap text-[11px]">
                     {new Date(exp.createdAt).toLocaleDateString('en-US', {
@@ -749,7 +765,12 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
                 </div>
                 <p className="text-sm font-medium text-slate-800 leading-relaxed">{exp.note}</p>
                 <div className="text-xs text-slate-500">
-                  Site: <strong className="text-slate-800">{exp.locationName}</strong> · Logged by <strong className="text-slate-800">{exp.loggedByName}</strong>
+                  {isAgro && exp.locationName && (
+                    <>
+                      Site: <strong className="text-slate-800">{exp.locationName}</strong> ·{' '}
+                    </>
+                  )}
+                  Logged by <strong className="text-slate-800">{exp.loggedByName}</strong>
                 </div>
                 <div className="pt-2 border-t border-[#F0EBE1] flex items-center justify-between gap-2">
                   {canPostContra && (
@@ -784,7 +805,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       )}
 
       {/* SUB-TAB 3: FEED INVENTORY & BURN-RATE */}
-      {subTab === 'FEED' && (
+      {isAgro && subTab === 'FEED' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -1030,7 +1051,7 @@ export const ExpensesFeedTab: React.FC<ExpensesFeedTabProps> = ({
       )}
 
       {/* FEED CONSUMPTION BOTTOM SHEET */}
-      {showFeedModal && (
+      {isAgro && showFeedModal && (
         <FeedEventSheet
           isOpen={Boolean(showFeedModal)}
           onClose={() => setShowFeedModal(null)}

@@ -401,6 +401,116 @@ test('Multi-Device Authentication: Global revocation stamps sessionsRevokedAt an
   assert.equal(dataService.checkAndEnforceActiveSessionValidity(), true);
 });
 
+test('General Business Venture (GENERAL_VENTURE): Logs expenses and fixed assets without requiring a farm site', () => {
+  const adminActor: OrgMember = {
+    id: 'mem-gb-admin-nosite',
+    fullName: 'General Venture Founder',
+    phoneOrEmail: 'founder@generalbiz.test',
+    role: 'ORG_ADMIN',
+    approvalStatus: 'APPROVED',
+    active: true,
+    joinedAt: new Date().toISOString(),
+  };
+
+  const gbOrg = dataService.createOrganization({
+    name: 'Metro Trading & Logistics',
+    type: 'GENERAL_VENTURE',
+    actor: adminActor,
+    defaultTargetContributionUsd: 2000,
+  });
+
+  assert.equal(gbOrg.type, 'GENERAL_VENTURE');
+  assert.equal(gbOrg.features.livestockModule, false);
+  assert.equal(gbOrg.features.farmSitesModule, false);
+  assert.equal(dataService.isAgroOrganization(gbOrg.id), false);
+
+  const gbAdminInOrg: OrgMember = {
+    ...adminActor,
+    orgId: gbOrg.id,
+  };
+
+  // Seed pool cash so asset purchase can succeed
+  dataService.logCapitalContribution({
+    memberId: gbAdminInOrg.id,
+    direction: 'ADDITION',
+    amount: 1000,
+    note: 'Initial general venture working capital',
+    actor: gbAdminInOrg,
+  });
+
+  // 1. Log expense with NO locationId -> must succeed without requiring a farm site
+  const exp = dataService.logExpense({
+    category: 'LABOR_WAGES',
+    direction: 'DEDUCTION',
+    amount: 120,
+    note: 'Monthly store assistant wages',
+    actor: gbAdminInOrg,
+  });
+
+  assert.equal(exp.orgId, gbOrg.id);
+  assert.equal(exp.locationId, 'ALL');
+  assert.equal(exp.locationName, 'General Business');
+  assert.equal(exp.approvalStatus, 'APPROVED');
+
+  // 2. Contra-reversal of general business expense -> must succeed without a farm site
+  const contra = dataService.logExpense({
+    locationId: exp.locationId,
+    category: exp.category,
+    direction: 'CONTRA_REVERSAL',
+    amount: -20,
+    referenceTransactionId: exp.id,
+    note: 'Overpayment adjustment on wages',
+    actor: gbAdminInOrg,
+  });
+  assert.equal(contra.locationId, 'ALL');
+  assert.equal(contra.locationName, 'General Business');
+
+  // 3. Log fixed asset with NO locationId -> must succeed without requiring a farm site
+  const asset = dataService.logFixedAssetEvent({
+    assetName: 'POS Thermal Terminal',
+    category: 'IT, POS & Electronics',
+    direction: 'INITIAL',
+    quantityDelta: 1,
+    valueDelta: 250,
+    condition: 'EXCELLENT',
+    note: 'Point of sale counter terminal',
+    deductFromLeftMoney: true,
+    actor: gbAdminInOrg,
+  });
+  assert.equal(asset.locationId, 'ALL');
+
+  // 4. Agro-Farming org must still enforce farm site location
+  const agroAdmin: OrgMember = {
+    id: 'mem-agro-admin-sitecheck',
+    fullName: 'Agro Admin',
+    phoneOrEmail: 'agro@farm.test',
+    role: 'ORG_ADMIN',
+    approvalStatus: 'APPROVED',
+    active: true,
+    joinedAt: new Date().toISOString(),
+  };
+  const agroOrg = dataService.createOrganization({
+    name: 'Sunrise Poultry Farm',
+    type: 'AGRO_FARMING',
+    actor: agroAdmin,
+  });
+  assert.equal(agroOrg.features.farmSitesModule, true);
+  assert.equal(dataService.isAgroOrganization(agroOrg.id), true);
+
+  assert.throws(
+    () => {
+      dataService.logExpense({
+        category: 'FEED',
+        direction: 'DEDUCTION',
+        amount: 50,
+        note: 'Attempt agro expense without site',
+        actor: { ...agroAdmin, orgId: agroOrg.id },
+      });
+    },
+    /Farm location is required/
+  );
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

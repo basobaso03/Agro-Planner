@@ -3894,8 +3894,60 @@ class AgroDataService {
     return newEvent;
   }
 
-  public logExpense(params: {
+  /**
+   * Resolves whether an organization runs in Agro-Farming mode (sites, livestock, feed)
+   * versus General Business Venture mode (pooled capital, expenses, assets without farm sites).
+   */
+  public isAgroOrganization(orgId?: string): boolean {
+    const targetId = orgId || this.getActiveOrgId();
+    if (!targetId) return true;
+    const org = (this.state.organizations || []).find((o) => o.id === targetId);
+    if (!org) return true;
+    return org.type === 'AGRO_FARMING' || Boolean(org.features?.livestockModule);
+  }
+
+  private resolveLocationForOrg(params: {
+    locationId?: string;
+    orgId?: string;
+    plan?: RunwayPlan;
+    errorMessage: string;
+  }): {
+    loc?: FarmLocation;
     locationId: string;
+    locationName: string;
+    targetOrgId: string;
+    isGeneralVenture: boolean;
+  } {
+    const rawLocationId = params.locationId?.trim();
+    const loc =
+      rawLocationId &&
+      rawLocationId !== 'ALL' &&
+      rawLocationId !== 'GENERAL' &&
+      rawLocationId !== 'LOC-MAIN'
+        ? this.state.locations.find((l) => l.id === rawLocationId)
+        : undefined;
+
+    const targetOrgId =
+      params.plan?.orgId || params.orgId || loc?.orgId || this.getActiveOrgId() || '';
+    const targetOrg = (this.state.organizations || []).find((o) => o.id === targetOrgId);
+    const isGeneralVenture =
+      targetOrg?.type === 'GENERAL_VENTURE' || params.plan?.orgType === 'GENERAL_VENTURE';
+
+    if (!loc && !isGeneralVenture) {
+      throw new Error(params.errorMessage);
+    }
+
+    return {
+      loc,
+      locationId: loc?.id || 'ALL',
+      locationName: loc?.name || 'General Business',
+      targetOrgId,
+      isGeneralVenture,
+    };
+  }
+
+  public logExpense(params: {
+    locationId?: string;
     batchOrAnimalId?: string;
     category: ExpenseCategory;
     direction: 'DEDUCTION' | 'CONTRA_REVERSAL';
@@ -3908,18 +3960,6 @@ class AgroDataService {
     runwayAllocation?: RunwayAllocation;
     runwayPlanId?: string;
   }): ExpenseLedgerEvent {
-    const loc = this.state.locations.find((l) => l.id === params.locationId);
-    if (!loc) throw new Error('Farm location is required.');
-    if (params.note.trim().length < 4) {
-      throw new Error('Mandatory detailed note is required explaining what the money was used for.');
-    }
-
-    const now = new Date().toISOString();
-    const isContra = params.direction === 'CONTRA_REVERSAL';
-    const id = `TX-EXP-${Date.now().toString(36).toUpperCase()}${isContra ? '-CONTRA' : ''}`;
-    const cleanAmount = Number(params.amount.toFixed(2));
-    const cleanNote = params.note.trim().slice(0, 500);
-
     let targetPlanId = params.runwayPlanId;
     const expAlloc = params.runwayAllocation;
     if (!targetPlanId && expAlloc?.mode === 'LINE') {
@@ -3930,7 +3970,23 @@ class AgroDataService {
       ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
       : undefined;
 
-    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
+    const { loc, locationId: resolvedLocationId, locationName: resolvedLocationName, targetOrgId } =
+      this.resolveLocationForOrg({
+        locationId: params.locationId,
+        orgId: params.actor.orgId,
+        plan: targetPlan,
+        errorMessage: 'Farm location is required.',
+      });
+
+    if (params.note.trim().length < 4) {
+      throw new Error('Mandatory detailed note is required explaining what the money was used for.');
+    }
+
+    const now = new Date().toISOString();
+    const isContra = params.direction === 'CONTRA_REVERSAL';
+    const id = `TX-EXP-${Date.now().toString(36).toUpperCase()}${isContra ? '-CONTRA' : ''}`;
+    const cleanAmount = Number(params.amount.toFixed(2));
+    const cleanNote = params.note.trim().slice(0, 500);
 
     let runwayPlanId: string | undefined;
     let runwayLineId: string | undefined;
@@ -3972,8 +4028,8 @@ class AgroDataService {
     const newExpense: ExpenseLedgerEvent = {
       id,
       orgId: targetOrgId,
-      locationId: loc.id,
-      locationName: loc.name,
+      locationId: resolvedLocationId,
+      locationName: resolvedLocationName,
       batchOrAnimalId: params.batchOrAnimalId || undefined,
       category: params.category,
       direction: params.direction,
@@ -3982,7 +4038,7 @@ class AgroDataService {
       note: cleanNote,
       loggedByMemberId: params.actor.id,
       loggedByName: params.actor.fullName,
-      gpsStamp: params.gpsStamp || loc.gpsCoordinates,
+      gpsStamp: params.gpsStamp || loc?.gpsCoordinates,
       receiptPhotoDataUrl: params.receiptPhotoDataUrl,
       approvalStatus,
       approvedByMemberIds: [params.actor.id],
@@ -4005,8 +4061,8 @@ class AgroDataService {
 
     const audit = this.createChainedAuditEvent({
       actor: params.actor,
-      locationId: loc.id,
-      locationName: loc.name,
+      locationId: resolvedLocationId,
+      locationName: resolvedLocationName,
       eventType: isContra ? 'EXPENSE_CONTRA' : 'EXPENSE_LOGGED',
       severity: isContra ? 'WARNING_CONTRA' : requiresMultiSig ? 'URGENT_GROUND' : 'FINANCIAL',
       title: isContra
@@ -4016,7 +4072,7 @@ class AgroDataService {
           : `Expense Deducted: -$${cleanAmount.toFixed(2)} (${params.category.replace('_', ' ')})`,
       message: isContra
         ? `${id} linked to ${params.referenceTransactionId}: ${cleanNote}. Left Money impact: ${leftMoneyImpact >= 0 ? '+' : ''}$${leftMoneyImpact.toFixed(2)}.`
-        : `${id} at ${loc.name}: ${cleanNote}${requiresMultiSig ? ' [Status: PENDING MULTI-SIG APPROVAL > $150]' : ' [Deducted from Left Money]'}.`,
+        : `${id}${loc ? ` at ${resolvedLocationName}` : ''}: ${cleanNote}${requiresMultiSig ? ' [Status: PENDING MULTI-SIG APPROVAL > $150]' : ' [Deducted from Left Money]'}.`,
       deltaFinancial: leftMoneyImpact,
       referenceEntityId: id,
       timestamp: now,
@@ -5590,7 +5646,7 @@ class AgroDataService {
     assetGroupId?: string;
     assetName: string;
     category: FixedAssetCategory;
-    locationId: string;
+    locationId?: string;
     direction: FixedAssetLedgerEvent['direction'];
     quantityDelta: number;
     valueDelta: number;
@@ -5603,17 +5659,6 @@ class AgroDataService {
     runwayAllocation?: RunwayAllocation;
     runwayPlanId?: string;
   }): FixedAssetLedgerEvent {
-    const loc = this.state.locations.find((l) => l.id === params.locationId);
-    if (!loc) throw new Error('Valid farm location is required.');
-    if (params.note.trim().length < 4) {
-      throw new Error('Mandatory note is required for fixed asset ledger events.');
-    }
-
-    const now = new Date().toISOString();
-    const id = `AST-EV-${Date.now().toString(36).toUpperCase()}`;
-    const groupId = params.assetGroupId || `AGRP-${Date.now().toString(36).toUpperCase()}`;
-    const cleanNote = params.note.trim().slice(0, 500);
-
     let targetPlanId = params.runwayPlanId;
     const expAlloc = params.runwayAllocation;
     if (!targetPlanId && expAlloc?.mode === 'LINE') {
@@ -5624,7 +5669,22 @@ class AgroDataService {
       ? (this.state.runwayPlans || []).find((p) => p.id === targetPlanId)
       : undefined;
 
-    const targetOrgId = targetPlan?.orgId || params.actor.orgId || loc.orgId || this.getActiveOrgId() || '';
+    const { loc, locationId: resolvedLocationId, locationName: resolvedLocationName, targetOrgId } =
+      this.resolveLocationForOrg({
+        locationId: params.locationId,
+        orgId: params.actor.orgId,
+        plan: targetPlan,
+        errorMessage: 'Valid farm location is required.',
+      });
+
+    if (params.note.trim().length < 4) {
+      throw new Error('Mandatory note is required for fixed asset ledger events.');
+    }
+
+    const now = new Date().toISOString();
+    const id = `AST-EV-${Date.now().toString(36).toUpperCase()}`;
+    const groupId = params.assetGroupId || `AGRP-${Date.now().toString(36).toUpperCase()}`;
+    const cleanNote = params.note.trim().slice(0, 500);
 
     const newAssetEvent: FixedAssetLedgerEvent = {
       id,
@@ -5632,7 +5692,7 @@ class AgroDataService {
       assetGroupId: groupId,
       assetName: params.assetName.trim().slice(0, 140),
       category: params.category,
-      locationId: loc.id,
+      locationId: resolvedLocationId,
       direction: params.direction,
       quantityDelta: params.quantityDelta,
       valueDelta: Number(params.valueDelta.toFixed(2)),
@@ -5680,14 +5740,14 @@ class AgroDataService {
 
     const assetAudit = this.createChainedAuditEvent({
       actor: params.actor,
-      locationId: loc.id,
-      locationName: loc.name,
+      locationId: resolvedLocationId,
+      locationName: resolvedLocationName,
       eventType: isContra ? 'ASSET_CONTRA' : 'ASSET_LOGGED',
       severity: isContra ? 'WARNING_CONTRA' : 'FINANCIAL',
       title: isContra
         ? `Fixed Asset Adjustment: ${newAssetEvent.assetName} (${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)})`
         : `Fixed Asset Logged: ${newAssetEvent.assetName} ($${params.valueDelta.toFixed(2)})`,
-      message: `${id} at ${loc.name}: Qty ${params.quantityDelta >= 0 ? '+' : ''}${params.quantityDelta}, Val ${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)}. Note: ${cleanNote}`,
+      message: `${id}${loc ? ` at ${resolvedLocationName}` : ''}: Qty ${params.quantityDelta >= 0 ? '+' : ''}${params.quantityDelta}, Val ${params.valueDelta >= 0 ? '+' : ''}$${params.valueDelta.toFixed(2)}. Note: ${cleanNote}`,
       deltaFinancial: shouldDeduct ? -Math.abs(params.valueDelta) : undefined,
       referenceEntityId: id,
       photoUrl: params.photoUrl,
@@ -5709,12 +5769,12 @@ class AgroDataService {
       if (!newAssetEvent.referenceTransactionId) {
         newAssetEvent.referenceTransactionId = expId;
       }
-      const expNote = `Fixed asset acquisition: ${newAssetEvent.assetName} (${params.quantityDelta} units) at ${loc.name}. ${cleanNote}`;
+      const expNote = `Fixed asset acquisition: ${newAssetEvent.assetName} (${params.quantityDelta} units)${loc ? ` at ${resolvedLocationName}` : ''}. ${cleanNote}`;
       const expEvent: ExpenseLedgerEvent = {
         id: expId,
         orgId: targetOrgId,
-        locationId: loc.id,
-        locationName: loc.name,
+        locationId: resolvedLocationId,
+        locationName: resolvedLocationName,
         batchOrAnimalId: newAssetEvent.id,
         category: 'FIXED_ASSET_PURCHASE',
         direction: 'DEDUCTION',
@@ -5722,7 +5782,7 @@ class AgroDataService {
         note: expNote.slice(0, 500),
         loggedByMemberId: params.actor.id,
         loggedByName: params.actor.fullName,
-        gpsStamp: loc.gpsCoordinates,
+        gpsStamp: loc?.gpsCoordinates,
         receiptPhotoDataUrl: params.photoUrl,
         approvalStatus: 'APPROVED',
         approvedByMemberIds: [params.actor.id],
@@ -6098,7 +6158,7 @@ class AgroDataService {
       currencySymbol: '$',
       features: {
         livestockModule: params.type === 'AGRO_FARMING',
-        farmSitesModule: true,
+        farmSitesModule: params.type === 'AGRO_FARMING',
         feedInventoryModule: params.type === 'AGRO_FARMING',
         multiSigApprovals: true,
         publicAuditVerifier: true,
@@ -6318,6 +6378,7 @@ class AgroDataService {
       features: {
         ...org.features,
         livestockModule: updatedType === 'AGRO_FARMING',
+        farmSitesModule: updatedType === 'AGRO_FARMING',
         feedInventoryModule: updatedType === 'AGRO_FARMING',
       },
       updatedAt: nowIso,
@@ -8240,7 +8301,7 @@ class AgroDataService {
     planId: string;
     allocation: RunwayAllocation;
     amount: number;
-    locationId: string;
+    locationId?: string;
     category?: ExpenseCategory;
     batchOrAnimalId?: string;
     note: string;

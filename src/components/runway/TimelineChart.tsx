@@ -24,14 +24,16 @@ import {
   Clock,
 } from 'lucide-react';
 import type { RunwayPlan, RunwayLine } from '../../types/runway';
-import { buildCashTimeline } from '../../utils/runway';
+import { buildCashTimeline, getTimelineGuideCopy } from '../../utils/runway';
 import { formatMoney, isPrivacyMasked } from '../../utils/currency';
+import { dataService } from '../../services/dataService';
 
 interface TimelineChartProps {
   plan: RunwayPlan;
   lines: RunwayLine[];
   openingCash?: number;
   showNumbers?: boolean;
+  isAgro?: boolean;
 }
 
 const formatDateShort = (isoDate: string): string => {
@@ -61,8 +63,15 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
   lines,
   openingCash = 0,
   showNumbers,
+  isAgro: isAgroProp,
 }) => {
   const isMasked = showNumbers !== undefined ? !showNumbers : isPrivacyMasked();
+  const isAgro =
+    isAgroProp !== undefined
+      ? isAgroProp
+      : plan.orgType !== 'GENERAL_VENTURE' &&
+      (plan.orgId ? dataService.isAgroOrganization(plan.orgId) : true);
+  const guideCopy = getTimelineGuideCopy(isAgro);
   const [costIncreasePct, setCostIncreasePct] = useState<number>(0);
   const [incomeHaircutPct, setIncomeHaircutPct] = useState<number>(0);
   const [incomeDelayMonths, setIncomeDelayMonths] = useState<number>(0);
@@ -116,7 +125,7 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
             </h4>
           </div>
           <p className="text-xs text-slate-600 font-medium">
-            Projected bank balance from initial seed capital through operational spending to harvest sales.
+            {guideCopy.subtitle}
           </p>
         </div>
 
@@ -134,8 +143,8 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
             type="button"
             onClick={() => setShowStressSliders(!showStressSliders)}
             className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${showStressSliders || costIncreasePct > 0 || incomeHaircutPct > 0
-                ? 'border-amber-400 bg-amber-50 text-amber-950'
-                : 'border-[#E8DFCE] hover:bg-stone-50 text-slate-800'
+              ? 'border-amber-400 bg-amber-50 text-amber-950'
+              : 'border-[#E8DFCE] hover:bg-stone-50 text-slate-800'
               }`}
           >
             <Sliders className="w-3.5 h-3.5" />
@@ -149,13 +158,13 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
         <div className="p-3.5 sm:p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-xs text-indigo-950 space-y-2.5 animate-in fade-in">
           <div className="flex items-center space-x-2 font-bold text-indigo-900">
             <Info className="w-4 h-4 text-indigo-600 shrink-0" />
-            <span>General User Guide: Understanding Cash Flow in Agriculture</span>
+            <span>{guideCopy.guideTitle}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] leading-relaxed">
             <div className="p-2.5 rounded-xl bg-white/80 border border-indigo-100 space-y-1">
               <strong className="text-indigo-900 block font-bold">1. The Upfront Outflow Dip</strong>
               <p className="text-slate-600">
-                Farming requires upfront spending on feed, chicks, and infrastructure before any product can be sold. The graph naturally drops early on.
+                {guideCopy.dipDescription}
               </p>
             </div>
             <div className="p-2.5 rounded-xl bg-white/80 border border-indigo-100 space-y-1">
@@ -165,9 +174,11 @@ export const TimelineChart: React.FC<TimelineChartProps> = ({
               </p>
             </div>
             <div className="p-2.5 rounded-xl bg-white/80 border border-indigo-100 space-y-1">
-              <strong className="text-indigo-900 block font-bold">3. Break-Even & Profit</strong>
+              <strong className="text-indigo-900 block font-bold">3. Break-Even &amp; Profit</strong>
               <p className="text-slate-600">
-                When harvest sales begin, the line rises. Crossing the <strong>$0.00 red threshold</strong> means all initial costs are recouped, entering pure farm profit.
+                {guideCopy.breakEvenPrefix}
+                <strong>$0.00 red threshold</strong>
+                {guideCopy.breakEvenSuffix}
               </p>
             </div>
           </div>

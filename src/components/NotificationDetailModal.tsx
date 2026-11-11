@@ -302,13 +302,13 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             </div>
             <div className="min-w-0">
               <span className="text-[10px] font-bold uppercase text-slate-500 block">
-                Site Location
+                {parsed.locationName === 'General Business' ? 'Business Scope' : 'Site Location'}
               </span>
               <div className="font-bold text-slate-950 truncate mt-0.5">
                 {parsed.locationName}
               </div>
               <span className="text-[10px] text-slate-500 block mt-0.5 font-medium">
-                Verified Site Record
+                {parsed.locationName === 'General Business' ? 'Verified Venture Record' : 'Verified Site Record'}
               </span>
             </div>
           </div>

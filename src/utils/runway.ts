@@ -1061,3 +1061,38 @@ export function suggestUnitCosts(category: string, pastExpenses: ExpenseLedgerEv
   }
   return round2((matches[mid - 1] + matches[mid]) / 2);
 }
+
+export interface TimelineGuideCopy {
+  subtitle: string;
+  guideTitle: string;
+  dipDescription: string;
+  breakEvenPrefix: string;
+  breakEvenSuffix: string;
+}
+
+/**
+ * Returns business-mode-appropriate copy for the Runway Cash Flow Timeline and its "How to Read" guide.
+ */
+export function getTimelineGuideCopy(isAgro: boolean): TimelineGuideCopy {
+  if (isAgro) {
+    return {
+      subtitle:
+        'Projected bank balance from initial seed capital through operational spending to harvest sales.',
+      guideTitle: 'General User Guide: Understanding Cash Flow in Agriculture',
+      dipDescription:
+        'Farming requires upfront spending on feed, chicks, and infrastructure before any product can be sold. The graph naturally drops early on.',
+      breakEvenPrefix: 'When harvest sales begin, the line rises. Crossing the ',
+      breakEvenSuffix: ' means all initial costs are recouped, entering pure farm profit.',
+    };
+  }
+
+  return {
+    subtitle:
+      'Projected bank balance from initial capital through operational spending to business revenue.',
+    guideTitle: 'General User Guide: Understanding Business Cash Flow',
+    dipDescription:
+      'Running a business requires upfront spending on inventory, equipment, and operating costs before sales revenue comes in. The graph naturally drops early on.',
+    breakEvenPrefix: 'When sales and customer revenue begin, the line rises. Crossing the ',
+    breakEvenSuffix: ' means all initial costs are recouped, entering net business profit.',
+  };
+}

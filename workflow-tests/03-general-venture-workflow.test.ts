@@ -32,10 +32,26 @@ test('WF-13: General Business Venture — Adaptive Workspace & Feature Toggles',
 
   assert.equal(org.type, 'GENERAL_VENTURE');
   assert.equal(org.features.livestockModule, false);
+  assert.equal(org.features.farmSitesModule, false);
   assert.equal(org.features.feedInventoryModule, false);
   assert.equal(org.features.multiSigApprovals, true);
   assert.equal(org.features.publicAuditVerifier, true);
   assert.equal(org.defaultTargetContributionUsd, 3000);
+  assert.equal(dataService.isAgroOrganization(org.id), false);
+
+  // General Venture must allow logging expenses without any farm site registered
+  const orgAdminActor: OrgMember = { ...adminActor, orgId: org.id };
+  const siteFreeExpense = dataService.logExpense({
+    category: 'UTILITIES_SECURITY',
+    direction: 'DEDUCTION',
+    amount: 95,
+    note: 'Office internet and power bill without farm site',
+    actor: orgAdminActor,
+  });
+  assert.equal(siteFreeExpense.orgId, org.id);
+  assert.equal(siteFreeExpense.locationId, 'ALL');
+  assert.equal(siteFreeExpense.locationName, 'General Business');
+  assert.equal(siteFreeExpense.approvalStatus, 'APPROVED');
 });
 
 test('WF-14: Member Target Capital Commitments, Progress Bars & Equity Math', () => {

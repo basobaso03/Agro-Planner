@@ -484,6 +484,7 @@ export const RunwayTab: React.FC<RunwayTabProps> = ({
               lines={planLines}
               openingCash={currentPlan.openingCashAdopted || 0}
               showNumbers={showNumbers}
+              isAgro={isAgro}
             />
           )}
 

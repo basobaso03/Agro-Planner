@@ -82,7 +82,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
 
   // Step 1: Basics (Locked to registered business account type)
   const [name, setName] = useState<string>('');
-  const [locationId, setLocationId] = useState<string>(locations[0]?.id || '');
+  const [locationId, setLocationId] = useState<string>(isAgro ? locations[0]?.id || '' : '');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   // Step 2: Template
@@ -379,7 +379,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
         orgId,
         name: name.trim(),
         orgType: registeredOrgType,
-        locationId: locationId || undefined,
+        locationId: isAgro ? locationId || undefined : undefined,
         startDate,
         contingencyMode,
         contingencyPercent: contingencyMode === 'PERCENT' ? contingencyPercent : undefined,
@@ -590,7 +590,7 @@ export const RunwayWizard: React.FC<RunwayWizardProps> = ({
                 />
               </div>
 
-              {locations.length > 0 && (
+              {isAgro && locations.length > 0 && (
                 <div>
                   <label className="block text-xs font-bold text-slate-950 mb-1">
                     Operating Site

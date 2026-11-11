@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { FormSheet } from '../../components/ui/FormSheet.tsx';
 import { Field } from '../../components/ui/Field.tsx';
 import { MoneyInput } from '../../components/ui/MoneyInput.tsx';
@@ -10,9 +10,29 @@ import { useToast } from '../../components/ui/Toast.tsx';
 import { nativeCamera } from '../../native/camera.ts';
 import { nativeFiles } from '../../native/files.ts';
 import { ImageViewerSheet } from '../../components/ui/ImageViewerSheet.tsx';
-import { Camera, Image as ImageIcon, MapPin, X, Eye, Upload } from 'lucide-react';
+import { Camera, Image as ImageIcon, X, Eye, Upload } from 'lucide-react';
 import type { ExpenseCategory, FarmLocation, LivestockEntry, OrgMember } from '../../types/agro.ts';
 import type { RunwayAllocation } from '../../types/runway.ts';
+
+const AGRO_EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: 'FEED', label: 'Feed / Animal Rations' },
+  { value: 'VACCINES_MEDICATION', label: 'Medication / Vaccines' },
+  { value: 'FIXED_ASSET_PURCHASE', label: 'Equipment & Tools' },
+  { value: 'LABOR_WAGES', label: 'Labor & Staff Wages' },
+  { value: 'TRANSPORT_LOGISTICS', label: 'Transport & Fuel' },
+  { value: 'UTILITIES_SECURITY', label: 'Electricity & Water' },
+  { value: 'LIVESTOCK_PURCHASE', label: 'Livestock / Day-Old Chicks' },
+  { value: 'OTHER', label: 'Other Expense' },
+];
+
+const GENERAL_EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: 'OTHER', label: 'General Operating / Inventory' },
+  { value: 'LABOR_WAGES', label: 'Payroll & Staff Wages' },
+  { value: 'TRANSPORT_LOGISTICS', label: 'Transport, Fuel & Logistics' },
+  { value: 'UTILITIES_SECURITY', label: 'Rent, Utilities & Security' },
+  { value: 'FIXED_ASSET_PURCHASE', label: 'Equipment & Supplies' },
+  { value: 'MAINTENANCE', label: 'Maintenance & Repairs' },
+];
 
 export interface LogExpenseSheetProps {
   isOpen: boolean;
@@ -29,8 +49,8 @@ export interface LogExpenseSheetProps {
 export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
   isOpen,
   onClose,
-  locations = dataService.getState().locations || [],
-  batches = dataService.getState().livestockEntries || [],
+  locations: locationsProp,
+  batches: batchesProp,
   activeMember,
   leftMoney = dataService.getFinancialSummary().leftMoney,
   runwayAllocation,
@@ -42,26 +62,54 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
   const [previewOpen, setPreviewOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isAgro = dataService.isAgroOrganization(activeMember?.orgId);
+  const categoryOptions = isAgro ? AGRO_EXPENSE_CATEGORIES : GENERAL_EXPENSE_CATEGORIES;
+  const defaultCategory = (isAgro ? 'FEED' : 'OTHER') as ExpenseCategory;
+
+  const locations = useMemo(() => {
+    if (locationsProp) return locationsProp;
+    const all = dataService.getState().locations || [];
+    return activeMember?.orgId
+      ? all.filter((l) => !l.orgId || l.orgId === activeMember.orgId)
+      : all;
+  }, [locationsProp, activeMember?.orgId, isOpen]);
+
+  const batches = useMemo(() => {
+    if (batchesProp) return batchesProp;
+    const all = dataService.getState().livestockEntries || [];
+    return activeMember?.orgId
+      ? all.filter((b) => !b.orgId || b.orgId === activeMember.orgId)
+      : all;
+  }, [batchesProp, activeMember?.orgId, isOpen]);
+
   const form = useForm({
     initial: {
       amount: '',
-      category: 'FEED' as ExpenseCategory,
-      locationId: locations[0]?.id || '',
+      category: defaultCategory as ExpenseCategory,
+      locationId: isAgro ? locations[0]?.id || '' : '',
       batchId: '',
       note: '',
     },
-    draftKey: 'expense_log_draft',
-    validate: (values) => ({
-      amount: validators.positiveNumber(values.amount, 'Expense amount'),
-      note: validators.minAuditNote(values.note, 4),
-    }),
+    draftKey: `expense_log_draft_${activeMember?.orgId || 'default'}_${isAgro ? 'agro' : 'general'}`,
+    validate: (values) => {
+      const errs: Record<string, string | null> = {
+        amount: validators.positiveNumber(values.amount, 'Expense amount'),
+        note: validators.minAuditNote(values.note, 4),
+      };
+      if (isAgro && !(values.locationId || locations[0]?.id)) {
+        errs.locationId = 'Please register and select a farm site location first.';
+      }
+      return errs;
+    },
     onSubmit: async (values) => {
       const amt = parseFloat(values.amount);
+      const resolvedLocationId = isAgro ? values.locationId || locations[0]?.id : undefined;
+      const resolvedBatchId = isAgro ? values.batchId || undefined : undefined;
 
       try {
         dataService.logExpense({
-          locationId: values.locationId || locations[0]?.id,
-          batchOrAnimalId: values.batchId || undefined,
+          locationId: resolvedLocationId,
+          batchOrAnimalId: resolvedBatchId,
           category: values.category,
           direction: 'DEDUCTION',
           amount: amt,
@@ -71,7 +119,15 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
           runwayAllocation,
         });
 
-        showToast(`Logged ${values.category} expense of ${formatMoney(amt)}.`);
+        showToast(`Logged ${values.category.replace(/_/g, ' ')} expense of ${formatMoney(amt)}.`);
+        form.reset({
+          amount: '',
+          category: defaultCategory,
+          locationId: isAgro ? locations[0]?.id || '' : '',
+          batchId: '',
+          note: '',
+        });
+        setPhotoDataUrl(null);
         if (onExpenseLogged) onExpenseLogged();
         onClose();
       } catch (err: any) {
@@ -82,8 +138,8 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
 
         if (isRunwayGate && onRequestSpendGate) {
           onRequestSpendGate(amt, {
-            locationId: values.locationId || locations[0]?.id,
-            batchOrAnimalId: values.batchId || undefined,
+            locationId: resolvedLocationId,
+            batchOrAnimalId: resolvedBatchId,
             category: values.category,
             direction: 'DEDUCTION',
             amount: amt,
@@ -98,6 +154,31 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
       }
     },
   });
+
+  useEffect(() => {
+    const validValues = categoryOptions.map((c) => c.value);
+    const hasValidCategory = validValues.includes(form.values.category);
+    const nextCategory = hasValidCategory ? form.values.category : defaultCategory;
+    const nextLocationId = isAgro ? form.values.locationId || locations[0]?.id || '' : '';
+    const nextBatchId = isAgro ? form.values.batchId : '';
+
+    if (
+      nextCategory !== form.values.category ||
+      nextLocationId !== form.values.locationId ||
+      nextBatchId !== form.values.batchId
+    ) {
+      form.setValues(
+        (prev) => ({
+          ...prev,
+          category: nextCategory,
+          locationId: nextLocationId,
+          batchId: nextBatchId,
+        }),
+        form.isDirty
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isAgro, activeMember?.orgId, locations]);
 
   const handleCapturePhoto = async () => {
     try {
@@ -164,14 +245,11 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
               onChange={(e) => form.setFieldValue('category', e.target.value as ExpenseCategory)}
               className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="FEED">Feed / Animal Rations</option>
-              <option value="MEDICATION">Medication / Vaccines</option>
-              <option value="EQUIPMENT">Equipment &amp; Tools</option>
-              <option value="LABOR">Labor &amp; Staff Wages</option>
-              <option value="LOGISTICS">Transport &amp; Fuel</option>
-              <option value="UTILITIES">Electricity &amp; Water</option>
-              <option value="LIVESTOCK_PURCHASE">Livestock / Day-Old Chicks</option>
-              <option value="OTHER">Other Expense</option>
+              {categoryOptions.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
             </select>
           </Field>
 
@@ -184,38 +262,44 @@ export const LogExpenseSheet: React.FC<LogExpenseSheetProps> = ({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Site Location" required>
-            <select
-              value={form.values.locationId}
-              onChange={(e) => form.setFieldValue('locationId', e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-            >
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {batches.length > 0 && (
-            <Field label="Linked Batch" hint="Optional">
+        {isAgro && (
+          <div className={batches.length > 0 ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'}>
+            <Field label="Site Location" required error={form.errors.locationId}>
               <select
-                value={form.values.batchId}
-                onChange={(e) => form.setFieldValue('batchId', e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                value={form.values.locationId}
+                onChange={(e) => form.setFieldValue('locationId', e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="">Farm General / Overhead</option>
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nameOrTag}
-                  </option>
-                ))}
+                {locations.length === 0 ? (
+                  <option value="">No farm site registered</option>
+                ) : (
+                  locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))
+                )}
               </select>
             </Field>
-          )}
-        </div>
+
+            {batches.length > 0 && (
+              <Field label="Linked Batch" hint="Optional">
+                <select
+                  value={form.values.batchId}
+                  onChange={(e) => form.setFieldValue('batchId', e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">Farm General / Overhead</option>
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nameOrTag}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+        )}
 
         {/* Receipt Attachment Buttons */}
         <div>

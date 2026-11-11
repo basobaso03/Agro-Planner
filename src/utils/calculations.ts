@@ -499,7 +499,9 @@ export function computeFixedAssetGroups(
       assetName: first.assetName,
       category: first.category,
       locationId: first.locationId,
-      locationName: locMap.get(first.locationId) || first.locationId,
+      locationName:
+        locMap.get(first.locationId) ||
+        (first.locationId === 'ALL' ? 'General Business' : first.locationId),
       currentQuantity: Math.max(0, currentQuantity),
       currentValue: Math.max(0, Number(currentValue.toFixed(2))),
       latestCondition: latest.condition,

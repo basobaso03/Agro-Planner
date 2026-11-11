@@ -9,7 +9,7 @@ import { dataService } from '../../services/dataService.ts';
 import { useToast } from '../../components/ui/Toast.tsx';
 import type { FarmLocation, OrgMember, FixedAssetCategory, AssetCondition, FixedAssetLedgerEvent } from '../../types/agro.ts';
 
-const STANDARD_CATEGORIES = [
+const AGRO_ASSET_CATEGORIES = [
   'Poultry & Livestock Housing',
   'Solar, Borehole & Water',
   'Feeders, Drinkers & Equipment',
@@ -17,6 +17,16 @@ const STANDARD_CATEGORIES = [
   'Land, Fencing & Security',
   'Processing & Cold Storage',
   'Custom / Other Infrastructure',
+];
+
+const GENERAL_ASSET_CATEGORIES = [
+  'Equipment & Machinery',
+  'Vehicles & Fleet Transport',
+  'Office & Store Fit-Out',
+  'IT, POS & Electronics',
+  'Cold Storage & Refrigeration',
+  'Property & Security',
+  'Custom / Other Asset',
 ];
 
 export interface AssetSheetProps {
@@ -37,6 +47,8 @@ export const AssetSheet: React.FC<AssetSheetProps> = ({
   onAssetCreated,
 }) => {
   const { showToast } = useToast();
+  const isAgro = dataService.isAgroOrganization(activeMember?.orgId);
+  const standardCategories = isAgro ? AGRO_ASSET_CATEGORIES : GENERAL_ASSET_CATEGORIES;
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [customError, setCustomError] = useState<string | null>(null);
@@ -45,7 +57,7 @@ export const AssetSheet: React.FC<AssetSheetProps> = ({
   const existingCategories = useMemo(() => {
     try {
       const state = dataService.getState();
-      const set = new Set<string>(STANDARD_CATEGORIES);
+      const set = new Set<string>(standardCategories);
       (state.fixedAssets || []).forEach((ev: FixedAssetLedgerEvent) => {
         if (ev.category && typeof ev.category === 'string') {
           set.add(ev.category);
@@ -53,24 +65,30 @@ export const AssetSheet: React.FC<AssetSheetProps> = ({
       });
       return Array.from(set);
     } catch {
-      return STANDARD_CATEGORIES;
+      return standardCategories;
     }
-  }, []);
+  }, [standardCategories]);
 
   const form = useForm({
     initial: {
       name: '',
-      category: 'Poultry & Livestock Housing',
+      category: standardCategories[0],
       cost: '',
-      locationId: locations[0]?.id || '',
+      locationId: isAgro ? locations[0]?.id || '' : '',
       note: '',
     },
-    draftKey: 'asset_create_draft',
-    validate: (values) => ({
-      name: validators.required(values.name, 'Asset name'),
-      cost: validators.positiveNumber(values.cost, 'Purchase cost'),
-      note: validators.minAuditNote(values.note, 4),
-    }),
+    draftKey: `asset_create_draft_${activeMember?.orgId || 'default'}_${isAgro ? 'agro' : 'general'}`,
+    validate: (values) => {
+      const errs: Record<string, string | null> = {
+        name: validators.required(values.name, 'Asset name'),
+        cost: validators.positiveNumber(values.cost, 'Purchase cost'),
+        note: validators.minAuditNote(values.note, 4),
+      };
+      if (isAgro && !(values.locationId || locations[0]?.id)) {
+        errs.locationId = 'Please register and select a farm site location first.';
+      }
+      return errs;
+    },
     crossValidate: (values) => {
       if (isCustomCategory && !customCategoryInput.trim()) {
         setCustomError('Please specify custom category name');
@@ -97,7 +115,7 @@ export const AssetSheet: React.FC<AssetSheetProps> = ({
       const c = parseFloat(values.cost);
 
       dataService.logFixedAssetEvent({
-        locationId: values.locationId || locations[0]?.id,
+        locationId: isAgro ? values.locationId || locations[0]?.id : undefined,
         assetGroupId: finalCategory.toLowerCase().replace(/[^a-z0-9]/g, '_'),
         assetName: values.name.trim(),
         category: finalCategory as FixedAssetCategory,
@@ -203,19 +221,25 @@ export const AssetSheet: React.FC<AssetSheetProps> = ({
           </Field>
         </div>
 
-        <Field label="Assigned Farm Site Location" required>
-          <select
-            value={form.values.locationId}
-            onChange={(e) => form.setFieldValue('locationId', e.target.value)}
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-          >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>
-                {loc.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {isAgro && (
+          <Field label="Assigned Farm Site Location" required error={form.errors.locationId}>
+            <select
+              value={form.values.locationId}
+              onChange={(e) => form.setFieldValue('locationId', e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            >
+              {locations.length === 0 ? (
+                <option value="">No farm site registered</option>
+              ) : (
+                locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </Field>
+        )}
 
         <Field label="Mandatory Audit Note" required hint="Min 4 characters" error={form.errors.note}>
           <textarea
