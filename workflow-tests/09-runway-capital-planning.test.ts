@@ -1213,6 +1213,72 @@ runTest('WF-RUN-24: Persistence regression (G1): sanitizeSnapshot preserves runw
   assert.ok(Array.isArray(state.runwayPledges), 'runwayPledges must be preserved in state');
   assert.ok(Array.isArray(state.runwayClaims), 'runwayClaims must be preserved in state');
   assert.ok(Array.isArray(state.runwayTemplates), 'runwayTemplates must be preserved in state');
+  assert.ok(Array.isArray(state.memberClaimRequests), 'memberClaimRequests must be preserved in state');
+});
+
+runTest('WF-RUN-25: Runway Pledge & Pay-In on unregistered mock contributor resolves cleanly when claimed', async () => {
+  const orgId = adminActor.orgId || 'org-agro-prod-01';
+  dataService.setRunwayModuleEnabled({ orgId, enabled: true, actor: adminActor });
+  const { plan } = dataService.createRunwayPlan({
+    orgId,
+    name: 'Mock Claim Consolidation Check',
+    enforcement: 'STRICT',
+    startDate: new Date().toISOString(),
+    contingencyMode: 'PERCENT',
+    contingencyPercent: 0,
+    targetBasis: 'GROSS',
+    activationThresholdPct: 100,
+    actor: adminActor,
+  });
+  dataService.upsertRunwayLine({
+    planId: plan.id,
+    line: {
+      title: 'Cycle Feed Reserve',
+      category: 'FEED',
+      kind: 'COST',
+      qty: 1,
+      unitCost: 1500,
+      priority: 'ESSENTIAL',
+    },
+    actor: adminActor,
+  });
+  dataService.lockRunwayPlan({ planId: plan.id, actor: adminActor });
+
+  const mockHolder = dataService.addMember({
+    fullName: 'Runway Mock Pledger',
+    phoneOrEmail: '',
+    role: 'MEMBER',
+    initialContributionUsd: 400,
+    initialContributionPlanId: plan.id,
+    initialPledgeAmount: 800,
+    initialPledgePlanId: plan.id,
+    isPlaceholder: true,
+    actor: adminActor,
+  });
+
+  const code = dataService.getPlaceholderClaimCode(mockHolder.id) || '';
+  const joiner: any = {
+    id: 'uid-runway-mock-claimer',
+    uid: 'uid-runway-mock-claimer',
+    fullName: 'Runway Claimer Real',
+    email: 'runway.claimer@agroplanner.com',
+    phoneOrEmail: 'runway.claimer@agroplanner.com',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    orgId,
+    joinedAt: new Date().toISOString(),
+    active: true,
+  };
+  await dataService.claimPlaceholderMemberWithCode({
+    claimCode: code,
+    actor: joiner,
+  });
+
+  const migratedPledge = (dataService.getState().runwayPledges || []).find(
+    (p) => p.planId === plan.id && p.memberId === joiner.id && p.status !== 'MERGED'
+  );
+  assert.ok(migratedPledge);
+  assert.equal(migratedPledge.amount, 800);
 });
 
 test.after(() => {

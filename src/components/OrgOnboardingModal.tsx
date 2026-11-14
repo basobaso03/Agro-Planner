@@ -42,6 +42,8 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
 
   // Join Form State
   const [inviteCode, setInviteCode] = useState('');
+  const [hasClaimCode, setHasClaimCode] = useState(false);
+  const [claimCode, setClaimCode] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -93,6 +95,7 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
     try {
       const org = await dataService.joinOrganizationWithCode({
         inviteCode: inviteCode.trim().toUpperCase(),
+        claimCode: hasClaimCode && claimCode.trim() ? claimCode.trim().toUpperCase() : undefined,
         actor: activeMember,
       });
       onOrganizationSelected(org);
@@ -370,6 +373,33 @@ export const OrgOnboardingModal: React.FC<OrgOnboardingModalProps> = ({
                 onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
                 className="w-full bg-[#FAF8F5] border border-[#E0D7C6] rounded-xl px-3.5 py-2.5 text-sm text-slate-950 font-mono font-black tracking-wider uppercase focus:outline-none focus:border-amber-500 focus:bg-white text-center"
               />
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-amber-950">
+                <input
+                  type="checkbox"
+                  checked={hasClaimCode}
+                  onChange={(e) => setHasClaimCode(e.target.checked)}
+                  className="rounded accent-amber-600"
+                />
+                <span>I already contributed before registering (I have a Personal Claim Code)</span>
+              </label>
+
+              {hasClaimCode && (
+                <input
+                  type="text"
+                  placeholder="e.g. CLM-7X9K2P4M"
+                  value={claimCode}
+                  onChange={(e) => setClaimCode(e.target.value.toUpperCase())}
+                  className="w-full bg-white border border-amber-300 rounded-xl px-3.5 py-2 text-xs text-slate-950 font-mono font-black tracking-wider uppercase text-center"
+                />
+              )}
+              <p className="text-[11px] text-amber-900 font-medium">
+                {hasClaimCode
+                  ? 'Entering both codes links your past contributions, pledges, and equity stake automatically.'
+                  : 'No personal code? Just join with the Organization Invite Code — your admin can link your profile once inside.'}
+              </p>
             </div>
 
             <button

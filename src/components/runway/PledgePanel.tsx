@@ -22,6 +22,12 @@ import type { RunwayPlan, RunwayPledge, RunwayFundingLayers } from '../../types/
 import type { OrgMember, CapitalContributionEvent } from '../../types/agro';
 import { suggestPledgeSplit } from '../../utils/runway';
 import { PERMISSIONS } from '../../utils/permissions';
+import {
+  getMemberMatchIds,
+  isUnclaimedPlaceholder,
+  isValidRealEmail,
+  matchesMemberRecord,
+} from '../../utils/memberIdentity';
 import { CountUp } from './CountUp';
 import { formatMoney, isPrivacyMasked } from '../../utils/currency';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -86,10 +92,12 @@ export const PledgePanel: React.FC<PledgePanelProps> = ({
 
   // Ensure currentMember is present in deduplicated org members list
   const activeMembers = useMemo(() => {
-    const currentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
-    const list = [...members];
+    const rawCurrentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
+    const currentEmail = isValidRealEmail(rawCurrentEmail) ? rawCurrentEmail : '';
+    const list = members.filter((m) => m.accountStatus !== 'CLAIMED');
     const hasCurrent = list.some(
       (m) =>
+        matchesMemberRecord(currentMember.id, m) ||
         m.id === currentMember.id ||
         (currentMember.uid && m.uid === currentMember.uid) ||
         (currentEmail && (m.email || m.phoneOrEmail || '').trim().toLowerCase() === currentEmail)
@@ -113,11 +121,19 @@ export const PledgePanel: React.FC<PledgePanelProps> = ({
 
   // Aggregate each member's pledge, paid contributions, and status
   const memberPledgeData = useMemo(() => {
-    const currentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
+    const rawCurrentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
+    const currentEmail = isValidRealEmail(rawCurrentEmail) ? rawCurrentEmail : '';
     return activeMembers.map((m) => {
-      const pledge = pledges.find((p) => p.planId === plan.id && p.memberId === m.id);
+      const pledge = pledges.find(
+        (p) =>
+          p.planId === plan.id &&
+          p.status !== 'MERGED' &&
+          p.status !== 'WITHDRAWN' &&
+          matchesMemberRecord(p.memberId, m)
+      );
+      const matchIds = getMemberMatchIds(m);
       const paid = contributions
-        .filter((c) => c.runwayPlanId === plan.id && (c.memberId === m.id || (pledge && c.pledgeId === pledge.id)))
+        .filter((c) => c.runwayPlanId === plan.id && (matchIds.has(c.memberId) || (pledge && c.pledgeId === pledge.id)))
         .reduce((acc, c) => (c.direction === 'CONTRA_REVERSAL' ? acc - Math.abs(c.amount) : acc + c.amount), 0);
 
       const pledgedAmount = pledge?.amount || 0;
@@ -138,9 +154,10 @@ export const PledgePanel: React.FC<PledgePanelProps> = ({
 
       const memEmail = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
       const isCurrent =
+        matchesMemberRecord(currentMember.id, m) ||
         m.id === currentMember.id ||
         Boolean(currentMember.uid && m.uid === currentMember.uid) ||
-        Boolean(currentEmail && memEmail === currentEmail);
+        Boolean(currentEmail && isValidRealEmail(memEmail) && memEmail === currentEmail);
 
       return {
         member: m,
@@ -475,6 +492,11 @@ export const PledgePanel: React.FC<PledgePanelProps> = ({
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-semibold">
                           {formatRole(mem.role)}
                         </span>
+                        {isUnclaimedPlaceholder(mem) && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold">
+                            Unclaimed · Mock
+                          </span>
+                        )}
                         <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold flex items-center gap-0.5 ${badge.bg}`}>
                           <BadgeIcon className="w-3 h-3" />
                           <span>{badge.label}</span>

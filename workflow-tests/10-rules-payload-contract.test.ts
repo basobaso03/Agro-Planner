@@ -285,3 +285,67 @@ test('WF-RULE-05: runway_plans & runway_pledges Contract', () => {
     true
   );
 });
+
+test('WF-RULE-06: claim_tokens, organizations/claim_codes & member_claim_requests Contracts', () => {
+  const vaultDoc = {
+    id: 'mem-mock-10',
+    orgId,
+    placeholderMemberId: 'mem-mock-10',
+    claimCode: 'CLM-ABCD2345',
+    claimCodeHash: 'hash_contract_01',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_codes',
+      orgId,
+      docId: 'mem-mock-10',
+      operation: 'create',
+      auth: adminAuth,
+      incomingData: vaultDoc,
+    }).allowed,
+    true
+  );
+
+  const openToken = {
+    id: 'hash_contract_01',
+    orgId,
+    placeholderMemberId: 'mem-mock-10',
+    role: 'MEMBER',
+    status: 'OPEN',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_tokens',
+      docId: 'hash_contract_01',
+      operation: 'create',
+      auth: adminAuth,
+      incomingData: openToken,
+    }).allowed,
+    true
+  );
+
+  assert.equal(
+    simulator.evaluate({
+      collection: 'member_claim_requests',
+      docId: 'CREQ-CONTRACT-1',
+      operation: 'create',
+      auth: memberAuth,
+      incomingData: {
+        id: 'CREQ-CONTRACT-1',
+        orgId,
+        placeholderMemberId: 'mem-mock-10',
+        placeholderName: 'Contract Mock',
+        requesterUid: memberAuth.uid,
+        requesterMemberId: memberAuth.uid,
+        requesterName: 'Tafadzwa Rushwaya',
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
+      },
+    }).allowed,
+    true
+  );
+});

@@ -31,6 +31,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  writeBatch,
   getDocs,
   getDocFromServer,
   getDocsFromServer,
@@ -60,6 +61,9 @@ import type {
   NotificationSeverity,
   Role,
   OrgMember,
+  MemberClaimRequest,
+  ClaimTokenLookup,
+  AdminClaimCodeVault,
   TrackingMode,
   AnimalCheckpoint,
   FarmRecipeTemplate,
@@ -133,6 +137,18 @@ import {
 import { outboxService, OUTBOX_STORAGE_KEY } from './outbox.ts';
 import { appStorage } from './storage.ts';
 import { nativeReminders } from '../native/reminders.ts';
+import {
+  computeClaimTokenId,
+  filterVisibleOrgMembers,
+  generateRandomClaimCode,
+  generateUniqueMemberId,
+  getMemberMatchIds,
+  isClaimedTombstone,
+  isUnclaimedPlaceholder,
+  isValidRealEmail,
+  matchesMemberRecord,
+  normalizeClaimCode,
+} from '../utils/memberIdentity.ts';
 import { setTemplateNameOverride } from '../utils/runwayTemplates.ts';
 
 export enum OperationType {
@@ -308,6 +324,7 @@ function sanitizeSnapshotOfLegacySeed(snapshot: AgroStateSnapshot): AgroStateSna
     runwayPledges: snapshot.runwayPledges || [],
     runwayClaims: snapshot.runwayClaims || [],
     runwayTemplates: snapshot.runwayTemplates || [],
+    memberClaimRequests: snapshot.memberClaimRequests || [],
   };
 }
 
@@ -393,6 +410,8 @@ class AgroDataService {
   private cloudSyncActive = false;
   private activeListenerUid: string | null = null;
   private isSigningOut = false;
+  private localClaimCodes: Map<string, string> = new Map();
+  private localClaimTokens: Map<string, ClaimTokenLookup> = new Map();
 
   constructor() {
     this.state = this.loadCleanProductionState();
@@ -1273,6 +1292,9 @@ class AgroDataService {
     };
 
     const sorted = [...candidates].sort((a, b) => {
+      // Never let a claimed placeholder tombstone outrank a live active account
+      const claimedDiff = (a.accountStatus === 'CLAIMED' ? 1 : 0) - (b.accountStatus === 'CLAIMED' ? 1 : 0);
+      if (claimedDiff !== 0) return claimedDiff;
       // Prefer records that already belong to an organization over un-org'd legacy stubs
       const orgDiff = (b.orgId ? 1 : 0) - (a.orgId ? 1 : 0);
       if (orgDiff !== 0) return orgDiff;
@@ -1285,11 +1307,21 @@ class AgroDataService {
 
     const winner = sorted[0];
     const allProviders = Array.from(new Set(candidates.flatMap((c) => c.authProviders || [])));
+    const allLinkedIds = Array.from(
+      new Set([
+        ...candidates.flatMap((c) => c.linkedMemberIds || []),
+        ...candidates.filter((c) => c.accountStatus === 'CLAIMED').map((c) => c.id),
+      ])
+    ).filter((id) => id && id !== winner.id);
     const hasPwd = candidates.some((c) => c.hasPasswordSetup || Boolean(c.passwordVerifierHash));
     const verifierHash = candidates.find((c) => Boolean(c.passwordVerifierHash))?.passwordVerifierHash;
     const assignedLoc = winner.assignedLocationId || candidates.find((c) => Boolean(c.assignedLocationId))?.assignedLocationId;
     const orgId = winner.orgId || candidates.find((c) => Boolean(c.orgId))?.orgId;
     const phone = winner.phone || candidates.find((c) => Boolean(c.phone))?.phone;
+    const targetContributionUsd =
+      winner.targetContributionUsd ?? candidates.find((c) => typeof c.targetContributionUsd === 'number')?.targetContributionUsd;
+    const contributionPace =
+      winner.contributionPace || candidates.find((c) => Boolean(c.contributionPace))?.contributionPace;
     const jobTitle =
       winner.jobTitle && winner.jobTitle !== 'Organization Member' && winner.jobTitle !== 'Syndicate Member'
         ? winner.jobTitle
@@ -1301,6 +1333,9 @@ class AgroDataService {
       assignedLocationId: assignedLoc,
       phone,
       jobTitle,
+      targetContributionUsd,
+      contributionPace,
+      linkedMemberIds: allLinkedIds.length > 0 ? allLinkedIds : winner.linkedMemberIds,
       authProviders: allProviders,
       hasPasswordSetup: hasPwd,
       passwordVerifierHash: verifierHash,
@@ -1311,10 +1346,12 @@ class AgroDataService {
     const normEmail = (email || '').trim().toLowerCase();
     const matches = this.state.members.filter(
       (m) =>
-        (uid && (m.id === uid || m.uid === uid)) ||
-        (normEmail &&
-          ((m.email || '').trim().toLowerCase() === normEmail ||
-            (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
+        m.accountStatus !== 'CLAIMED' &&
+        ((uid && (m.id === uid || m.uid === uid)) ||
+          (normEmail &&
+            isValidRealEmail(normEmail) &&
+            ((m.email || '').trim().toLowerCase() === normEmail ||
+              (isValidRealEmail(m.phoneOrEmail) && (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))))
     );
     return this.pickBestMemberRecord(matches);
   }
@@ -1463,13 +1500,15 @@ class AgroDataService {
       const nextMembers = [
         ...this.state.members.filter(
           (m) =>
-            m.id !== existing.id &&
-            !(params.uid && (m.id === params.uid || m.uid === params.uid)) &&
-            !(
-              normEmail &&
-              ((m.email || '').trim().toLowerCase() === normEmail ||
-                (m.phoneOrEmail || '').trim().toLowerCase() === normEmail)
-            )
+            m.accountStatus === 'CLAIMED' ||
+            (m.id !== existing.id &&
+              !(params.uid && (m.id === params.uid || m.uid === params.uid)) &&
+              !(
+                normEmail &&
+                isValidRealEmail(normEmail) &&
+                ((m.email || '').trim().toLowerCase() === normEmail ||
+                  (isValidRealEmail(m.phoneOrEmail) && (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
+              ))
         ),
         updatedMember,
       ];
@@ -2250,12 +2289,22 @@ class AgroDataService {
     if (firestoreDb) {
       try {
         await deleteDoc(doc(firestoreDb, 'members', target.id));
-        if (target.uid && target.uid !== target.id) {
+        if (target.uid && target.uid !== target.id && target.accountStatus !== 'CLAIMED') {
           await deleteDoc(doc(firestoreDb, 'members', target.uid));
+        }
+        if (target.claimCodeHash) {
+          await deleteDoc(doc(firestoreDb, 'claim_tokens', target.claimCodeHash)).catch(() => { });
+        }
+        if (target.orgId && target.isPlaceholder) {
+          await deleteDoc(doc(firestoreDb, 'organizations', target.orgId, 'claim_codes', target.id)).catch(() => { });
         }
       } catch (cloudErr) {
         console.warn(`Cloud member delete notice (${target.id}):`, cloudErr);
       }
+    }
+    this.localClaimCodes.delete(target.id);
+    if (target.claimCodeHash) {
+      this.localClaimTokens.delete(target.claimCodeHash);
     }
 
     const now = new Date().toISOString();
@@ -2640,14 +2689,17 @@ class AgroDataService {
     this.state.members.forEach((m) => existingLocalMap.set(m.id, m));
 
     const enriched = cloudMembers.map((cloudM) => {
+      const cloudRealEmail = isValidRealEmail(cloudM.email) ? cloudM.email!.trim().toLowerCase() : '';
       const localM =
         existingLocalMap.get(cloudM.id) ||
         Array.from(existingLocalMap.values()).find(
           (x) =>
-            (x.email && cloudM.email && x.email.trim().toLowerCase() === cloudM.email.trim().toLowerCase()) ||
-            (x.uid && cloudM.uid && x.uid === cloudM.uid)
+            x.accountStatus !== 'CLAIMED' &&
+            cloudM.accountStatus !== 'CLAIMED' &&
+            ((cloudRealEmail && x.email && x.email.trim().toLowerCase() === cloudRealEmail) ||
+              (!cloudM.isPlaceholder && !x.isPlaceholder && x.uid && cloudM.uid && x.uid === cloudM.uid))
         );
-      const email = (cloudM.email || localM?.email || '').trim().toLowerCase();
+      const email = cloudRealEmail || (localM?.email && isValidRealEmail(localM.email) ? localM.email.trim().toLowerCase() : '');
       const credRec = email ? creds[email] : null;
 
       const hasPassword = Boolean(
@@ -2670,6 +2722,24 @@ class AgroDataService {
         ])
       );
 
+      const mergedLinkedIds = Array.from(
+        new Set([
+          ...(localM?.linkedMemberIds || []),
+          ...(cloudM.linkedMemberIds || []),
+        ])
+      ).filter((id) => id && id !== cloudM.id);
+
+      // Preserve CLAIMED tombstone state strictly without flipping back to active
+      if (cloudM.accountStatus === 'CLAIMED') {
+        return {
+          ...localM,
+          ...cloudM,
+          phoneOrEmail: cloudM.phoneOrEmail || localM?.phoneOrEmail || 'Claimed Profile',
+          accountStatus: 'CLAIMED' as const,
+          active: false,
+        };
+      }
+
       // Preserve status and assigned role
       const isSuspended = cloudM.approvalStatus === 'SUSPENDED' || localM?.approvalStatus === 'SUSPENDED';
       const resolvedApproval: MemberApprovalStatus = isSuspended ? 'SUSPENDED' : 'APPROVED';
@@ -2684,10 +2754,17 @@ class AgroDataService {
       return {
         ...localM,
         ...cloudM,
-        phoneOrEmail: cloudM.phoneOrEmail || localM?.phoneOrEmail || cloudM.email || localM?.email || email || 'member',
+        phoneOrEmail:
+          cloudM.phoneOrEmail ||
+          localM?.phoneOrEmail ||
+          cloudM.email ||
+          localM?.email ||
+          email ||
+          (cloudM.isPlaceholder ? 'Pending Claim' : 'member'),
         role: resolvedRole,
         approvalStatus: resolvedApproval,
         active: resolvedApproval === 'APPROVED',
+        linkedMemberIds: mergedLinkedIds.length > 0 ? mergedLinkedIds : undefined,
         assignedLocationId: cloudM.assignedLocationId || localM?.assignedLocationId,
         hasPasswordSetup: hasPassword,
         passwordVerifierHash,
@@ -2695,13 +2772,20 @@ class AgroDataService {
       };
     });
 
-    // Deduplicate by email / uid so a stale PENDING_APPROVAL doc never shadows an APPROVED doc for the same user
+    // Preserve any locally created CLAIMED / UNCLAIMED records not yet reflected in server snapshot if pending outbox
     const groupsByIdentity = new Map<string, OrgMember[]>();
     for (const mem of enriched) {
-      const normEmail = (mem.email || (mem.phoneOrEmail?.includes('@') ? mem.phoneOrEmail : '') || '')
-        .trim()
-        .toLowerCase();
-      const key = normEmail || mem.uid || mem.id;
+      if (mem.accountStatus === 'CLAIMED') {
+        groupsByIdentity.set(`claimed::${mem.id}`, [mem]);
+        continue;
+      }
+      const normEmail = isValidRealEmail(mem.email)
+        ? mem.email!.trim().toLowerCase()
+        : isValidRealEmail(mem.phoneOrEmail)
+          ? mem.phoneOrEmail.trim().toLowerCase()
+          : '';
+      // Unclaimed no-email placeholders MUST stay keyed by mem.id so two mock members never merge accidentally
+      const key = normEmail || (!mem.isPlaceholder && mem.uid ? mem.uid : '') || mem.id;
       const list = groupsByIdentity.get(key) || [];
       list.push(mem);
       groupsByIdentity.set(key, list);
@@ -3043,13 +3127,42 @@ class AgroDataService {
             }
           },
         },
+        {
+          path: 'member_claim_requests',
+          apply: (docs) => {
+            this.state.memberClaimRequests = outboxService.reconcileSnapshot(
+              docs as MemberClaimRequest[],
+              this.state.memberClaimRequests || [],
+              'member_claim_requests'
+            );
+          },
+        },
       ];
 
+    const resolvedUid = uid || this.currentUser?.uid || this.activeSession?.uid;
+    const listenerMember = this.findMemberByUidOrEmail(
+      resolvedUid,
+      this.currentUser?.email || this.activeSession?.email
+    );
+    const isAdminViewer = Boolean(listenerMember && PERMISSIONS.canManageMembers(listenerMember.role));
+
     collectionsMap.forEach(({ path, apply }) => {
-      const targetQuery =
-        path === 'locations' || path === 'members' || path === 'organizations' || !activeOrgId
-          ? collection(db, path)
-          : query(collection(db, path), where('orgId', '==', activeOrgId));
+      let targetQuery;
+      if (path === 'member_claim_requests') {
+        if (!activeOrgId || !resolvedUid) return;
+        targetQuery = isAdminViewer
+          ? query(collection(db, path), where('orgId', '==', activeOrgId))
+          : query(
+            collection(db, path),
+            where('orgId', '==', activeOrgId),
+            where('requesterUid', '==', resolvedUid)
+          );
+      } else {
+        targetQuery =
+          path === 'locations' || path === 'members' || path === 'organizations' || !activeOrgId
+            ? collection(db, path)
+            : query(collection(db, path), where('orgId', '==', activeOrgId));
+      }
 
       const unsub = onSnapshot(
         targetQuery,
@@ -3064,6 +3177,27 @@ class AgroDataService {
       );
       this.firestoreUnsubscribes.push(unsub);
     });
+
+    // Hydrate Admin-only personal claim code vault when signed in as Org Admin
+    if (activeOrgId && isAdminViewer) {
+      const vaultCol = collection(db, 'organizations', activeOrgId, 'claim_codes');
+      const unsubVault = onSnapshot(
+        vaultCol,
+        (snap) => {
+          snap.docs.forEach((d) => {
+            const data = d.data() as AdminClaimCodeVault;
+            if (data?.placeholderMemberId && data?.claimCode) {
+              this.localClaimCodes.set(data.placeholderMemberId, data.claimCode);
+            }
+          });
+          this.notifyListeners();
+        },
+        () => {
+          // Safe silent fallback if vault not yet authorized or empty
+        }
+      );
+      this.firestoreUnsubscribes.push(unsubVault);
+    }
   }
 
   /**
@@ -3098,6 +3232,7 @@ class AgroDataService {
       'runway_pledges',
       'runway_claims',
       'runway_templates',
+      'member_claim_requests',
     ];
 
     // Attempt to ensure an active Firebase Auth user session exists if available
@@ -3110,11 +3245,29 @@ class AgroDataService {
     }
 
     const activeOrgId = this.getActiveOrgId();
+    const syncUid = firebaseAuth?.currentUser?.uid || this.activeSession?.uid;
+    const syncMember = this.findMemberByUidOrEmail(
+      syncUid,
+      firebaseAuth?.currentUser?.email || this.activeSession?.email
+    );
+    const isAdminSync = Boolean(syncMember && PERMISSIONS.canManageMembers(syncMember.role));
+
     const fetchCol = async (colPath: string) => {
+      if (colPath === 'member_claim_requests') {
+        if (!activeOrgId || !syncUid) return { colPath, docs: [] };
+      }
       const q =
-        colPath === 'locations' || colPath === 'members' || colPath === 'organizations' || !activeOrgId
-          ? collection(firestoreDb!, colPath)
-          : query(collection(firestoreDb!, colPath), where('orgId', '==', activeOrgId));
+        colPath === 'member_claim_requests'
+          ? isAdminSync
+            ? query(collection(firestoreDb!, colPath), where('orgId', '==', activeOrgId))
+            : query(
+              collection(firestoreDb!, colPath),
+              where('orgId', '==', activeOrgId),
+              where('requesterUid', '==', syncUid!)
+            )
+          : colPath === 'locations' || colPath === 'members' || colPath === 'organizations' || !activeOrgId
+            ? collection(firestoreDb!, colPath)
+            : query(collection(firestoreDb!, colPath), where('orgId', '==', activeOrgId));
       try {
         const snap = await getDocsFromServer(q);
         return { colPath, docs: snap.docs.map((d) => d.data()) };
@@ -3251,6 +3404,12 @@ class AgroDataService {
           docs as RunwayTemplate[],
           this.state.runwayTemplates || [],
           'runway_templates'
+        );
+      } else if (colPath === 'member_claim_requests') {
+        this.state.memberClaimRequests = outboxService.reconcileSnapshot(
+          docs as MemberClaimRequest[],
+          this.state.memberClaimRequests || [],
+          'member_claim_requests'
         );
       }
     }
@@ -3699,11 +3858,20 @@ class AgroDataService {
 
   public addMember(params: {
     fullName: string;
-    phoneOrEmail: string;
+    phoneOrEmail?: string;
+    phone?: string;
     role: Role;
     assignedLocationId?: string;
+    targetContributionUsd?: number;
+    contributionPace?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
     initialContributionUsd?: number;
     contributionNote?: string;
+    initialContributionPlanId?: string;
+    initialPledgeAmount?: number;
+    initialPledgePlanId?: string;
+    initialPledgeNote?: string;
+    isPlaceholder?: boolean;
+    notes?: string;
     actor: OrgMember;
   }): OrgMember {
     if (!PERMISSIONS.canManageMembers(params.actor.role)) {
@@ -3711,20 +3879,47 @@ class AgroDataService {
     }
 
     const now = new Date().toISOString();
-    const id = `mem-${Date.now().toString(36)}`;
-    const contact = params.phoneOrEmail.trim().slice(0, 160);
-    const isEmail = contact.includes('@');
+    const id = generateUniqueMemberId('mem');
+    const orgId = params.actor.orgId || this.getActiveOrgId() || '';
+    const rawContact = (params.phoneOrEmail || params.phone || '').trim().slice(0, 160);
+    const isEmail = isValidRealEmail(rawContact);
+    const cleanPhone = (params.phone || (!isEmail ? rawContact : '')).trim().slice(0, 60) || undefined;
+    const isMockPlaceholder = Boolean(params.isPlaceholder || !isEmail);
+    const assignedLocation = this.isAgroOrganization(orgId)
+      ? params.assignedLocationId || undefined
+      : undefined;
+
+    let plainClaimCode: string | undefined;
+    let claimCodeHash: string | undefined;
+    if (isMockPlaceholder && orgId) {
+      plainClaimCode = generateRandomClaimCode();
+      claimCodeHash = computeClaimTokenId(orgId, plainClaimCode);
+      this.localClaimCodes.set(id, plainClaimCode);
+    }
+
+    const activeOrg = (this.state.organizations || []).find((o) => o.id === orgId);
+    const targetContributionUsd =
+      typeof params.targetContributionUsd === 'number' && params.targetContributionUsd > 0
+        ? Number(params.targetContributionUsd.toFixed(2))
+        : activeOrg?.defaultTargetContributionUsd;
 
     const newMember: OrgMember = {
       id,
-      orgId: params.actor.orgId || this.getActiveOrgId() || '',
-      email: isEmail ? contact.toLowerCase() : undefined,
+      orgId,
+      email: isEmail ? rawContact.toLowerCase() : undefined,
       fullName: params.fullName.trim().slice(0, 120),
-      phoneOrEmail: contact,
-      phone: !isEmail ? contact : undefined,
+      phoneOrEmail: rawContact || (isMockPlaceholder ? 'Pending Claim' : 'member'),
+      phone: cleanPhone,
       role: params.role,
       approvalStatus: 'APPROVED',
-      assignedLocationId: params.assignedLocationId || undefined,
+      isPlaceholder: isMockPlaceholder,
+      accountStatus: isMockPlaceholder ? 'UNCLAIMED' : 'ACTIVE',
+      claimCodeHash,
+      createdByUid: params.actor.uid || params.actor.id,
+      notes: params.notes?.trim().slice(0, 300) || undefined,
+      assignedLocationId: assignedLocation,
+      targetContributionUsd,
+      contributionPace: params.contributionPace || activeOrg?.contributionPaceDefault || 'MONTHLY',
       joinedAt: now,
       updatedAt: now,
       active: true,
@@ -3735,14 +3930,18 @@ class AgroDataService {
 
     const memberAudit = this.createChainedAuditEvent({
       actor: params.actor,
-      locationId: params.assignedLocationId || 'ALL',
+      locationId: assignedLocation || 'ALL',
       locationName:
-        this.state.locations.find((l) => l.id === params.assignedLocationId)?.name ||
+        this.state.locations.find((l) => l.id === assignedLocation)?.name ||
         'All Locations (Master Organization)',
-      eventType: 'MEMBER_ADDED',
+      eventType: isMockPlaceholder ? 'PLACEHOLDER_MEMBER_CREATED' : 'MEMBER_ADDED',
       severity: 'INFO',
-      title: `Member Added: ${newMember.fullName}`,
-      message: `${newMember.fullName} added to the organization as ${newMember.role.replace('_', ' ')} (Approved). Contact: ${newMember.phoneOrEmail}.`,
+      title: isMockPlaceholder
+        ? `Mock Contributor Created: ${newMember.fullName}`
+        : `Member Added: ${newMember.fullName}`,
+      message: isMockPlaceholder
+        ? `${newMember.fullName} added as an unclaimed mock contributor (${newMember.role.replace('_', ' ')}). Awaiting future account claim.`
+        : `${newMember.fullName} added to the organization as ${newMember.role.replace('_', ' ')} (Approved). Contact: ${newMember.phoneOrEmail}.`,
       referenceEntityId: newMember.id,
       timestamp: now,
     });
@@ -3750,7 +3949,7 @@ class AgroDataService {
     this.state.auditNotifications = updatedAudits;
 
     if (params.initialContributionUsd && params.initialContributionUsd > 0) {
-      const capId = `TX-CAP-${Date.now().toString(36).toUpperCase()}`;
+      const capId = generateUniqueMemberId('TX-CAP').toUpperCase();
       const note =
         params.contributionNote?.trim() ||
         `Initial capital contribution by ${newMember.fullName} upon joining organization`;
@@ -3762,6 +3961,7 @@ class AgroDataService {
         direction: 'INITIAL',
         amount: Number(params.initialContributionUsd.toFixed(2)),
         note,
+        runwayPlanId: params.initialContributionPlanId || undefined,
         createdAt: now,
         createdByMemberId: params.actor.id,
         auditHash: computeLedgerRecordHash('CAPITAL', capId, now, params.initialContributionUsd, note),
@@ -3792,6 +3992,52 @@ class AgroDataService {
 
     this.saveLocalState(nextState);
     void this.persistDocumentToCloudIfActive('members', newMember.id, newMember);
+
+    if (isMockPlaceholder && claimCodeHash && plainClaimCode && orgId) {
+      const claimToken: ClaimTokenLookup = {
+        id: claimCodeHash,
+        orgId,
+        placeholderMemberId: newMember.id,
+        role: newMember.role,
+        assignedLocationId: newMember.assignedLocationId,
+        targetContributionUsd: newMember.targetContributionUsd,
+        contributionPace: newMember.contributionPace,
+        status: 'OPEN',
+        createdAt: now,
+      };
+      this.localClaimTokens.set(claimCodeHash, claimToken);
+      void this.persistDocumentToCloudIfActive('claim_tokens', claimToken.id, claimToken);
+
+      if (firestoreDb && firebaseAuth?.currentUser) {
+        const vaultDoc: AdminClaimCodeVault = {
+          id: newMember.id,
+          orgId,
+          placeholderMemberId: newMember.id,
+          claimCode: plainClaimCode,
+          claimCodeHash,
+          createdAt: now,
+        };
+        void this.ensureCloudAuthUserAndMemberSynced(orgId)
+          .then(() =>
+            firestoreDb
+              ? setDoc(doc(firestoreDb, 'organizations', orgId, 'claim_codes', newMember.id), vaultDoc)
+              : undefined
+          )
+          .catch((err) => console.warn('Claim code vault sync notice:', err));
+      }
+    }
+
+    if (params.initialPledgeAmount && params.initialPledgeAmount > 0 && params.initialPledgePlanId) {
+      this.pledgeToRunwayPlan({
+        planId: params.initialPledgePlanId,
+        memberId: newMember.id,
+        amount: params.initialPledgeAmount,
+        pace: params.contributionPace || 'FLEXIBLE',
+        note: params.initialPledgeNote?.trim() || `Pre-registered pledge for ${newMember.fullName}`,
+        actor: params.actor,
+      });
+    }
+
     return newMember;
   }
 
@@ -3809,7 +4055,9 @@ class AgroDataService {
     if (!PERMISSIONS.canLogCapitalDeposit(params.actor.role)) {
       throw new Error('Access Denied: Only Treasurers and Organization Admins can record capital contributions.');
     }
-    const member = this.state.members.find((m) => m.id === params.memberId);
+    const member =
+      this.state.members.find((m) => m.accountStatus !== 'CLAIMED' && matchesMemberRecord(params.memberId, m)) ||
+      this.state.members.find((m) => m.id === params.memberId);
     if (!member) throw new Error('Selected member not found.');
     if (params.note.trim().length < 4) {
       throw new Error('A mandatory explanation note (at least 4 characters) is required.');
@@ -3817,7 +4065,7 @@ class AgroDataService {
 
     const now = new Date().toISOString();
     const isContra = params.direction === 'CONTRA_REVERSAL';
-    const id = `TX-CAP-${Date.now().toString(36).toUpperCase()}${isContra ? '-CONTRA' : ''}`;
+    const id = `${generateUniqueMemberId('TX-CAP').toUpperCase()}${isContra ? '-CONTRA' : ''}`;
     const cleanAmount = Number(params.amount.toFixed(2));
     const cleanNote = params.note.trim().slice(0, 500);
 
@@ -3834,7 +4082,11 @@ class AgroDataService {
       }
     } else if (planId && !plgId) {
       const matchedPledge = (this.state.runwayPledges || []).find(
-        (p) => p.planId === planId && p.memberId === member.id
+        (p) =>
+          p.planId === planId &&
+          p.status !== 'MERGED' &&
+          p.status !== 'WITHDRAWN' &&
+          matchesMemberRecord(p.memberId, member)
       );
       if (matchedPledge) {
         plgId = matchedPledge.id;
@@ -6136,7 +6388,7 @@ class AgroDataService {
   }): Organization {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
-    const orgId = `org-${now.toString(36)}`;
+    const orgId = `org-${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const expiresAt = new Date(now + 24 * 60 * 60 * 1000).toISOString();
     const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
     const currentInviteCode = `SEED-${rand}`;
@@ -6599,8 +6851,19 @@ class AgroDataService {
 
   public async joinOrganizationWithCode(params: {
     inviteCode: string;
+    claimCode?: string;
     actor: OrgMember;
   }): Promise<Organization> {
+    if (params.claimCode && params.claimCode.trim().length > 0) {
+      const claimed = await this.claimPlaceholderMemberWithCode({
+        orgInviteCode: params.inviteCode,
+        claimCode: params.claimCode,
+        actor: params.actor,
+      });
+      if (claimed.org) return claimed.org;
+      throw new Error('Organization not found after claiming placeholder profile.');
+    }
+
     const cleanCode = params.inviteCode.trim().toUpperCase();
     let orgData: any = null;
 
@@ -7756,7 +8019,9 @@ class AgroDataService {
       throw new Error('Access Denied: Only Admins and Treasurers can record a pledge on behalf of another member.');
     }
 
-    const member = this.state.members.find((m) => m.id === params.memberId);
+    const member =
+      this.state.members.find((m) => m.accountStatus !== 'CLAIMED' && matchesMemberRecord(params.memberId, m)) ||
+      this.state.members.find((m) => m.id === params.memberId);
     if (!member) throw new Error('Target member not found.');
 
     const cleanAmount = Number(params.amount.toFixed(2));
@@ -7766,18 +8031,23 @@ class AgroDataService {
 
     const now = new Date().toISOString();
     const existingPledge = (this.state.runwayPledges || []).find(
-      (p) => p.planId === plan.id && p.memberId === member.id
+      (p) =>
+        p.planId === plan.id &&
+        p.status !== 'MERGED' &&
+        p.status !== 'WITHDRAWN' &&
+        matchesMemberRecord(p.memberId, member)
     );
 
     let updatedPledge: RunwayPledge;
 
     if (existingPledge) {
+      const memberIds = getMemberMatchIds(member);
       if (cleanAmount < existingPledge.amount) {
         const paidContributions = (this.state.capitalContributions || [])
           .filter(
             (c) =>
               c.runwayPlanId === plan.id &&
-              (c.pledgeId === existingPledge.id || c.memberId === member.id) &&
+              (c.pledgeId === existingPledge.id || memberIds.has(c.memberId)) &&
               c.direction !== 'CONTRA_REVERSAL'
           )
           .reduce((acc, c) => acc + c.amount, 0);
@@ -7804,6 +8074,8 @@ class AgroDataService {
 
       updatedPledge = {
         ...existingPledge,
+        memberId: member.id,
+        memberName: member.fullName,
         amount: cleanAmount,
         pace: params.pace || existingPledge.pace,
         instalments: params.instalments || existingPledge.instalments,
@@ -7932,15 +8204,22 @@ class AgroDataService {
     }
 
     const targetMember =
+      this.state.members.find((m) => m.accountStatus !== 'CLAIMED' && matchesMemberRecord(targetMemberId, m)) ||
       this.state.members.find((m) => m.id === targetMemberId) ||
       (isSelf ? params.actor : undefined);
     if (!targetMember) {
       throw new Error('Selected member not found.');
     }
 
-    const pledge = (this.state.runwayPledges || []).find(
-      (p) => (params.pledgeId ? p.id === params.pledgeId : p.planId === plan.id && p.memberId === targetMember.id)
-    );
+    const pledge = (this.state.runwayPledges || []).find((p) => {
+      if (params.pledgeId) return p.id === params.pledgeId;
+      return (
+        p.planId === plan.id &&
+        p.status !== 'MERGED' &&
+        p.status !== 'WITHDRAWN' &&
+        matchesMemberRecord(p.memberId, targetMember)
+      );
+    });
 
     const now = new Date().toISOString();
     const claimId = `CLM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
@@ -8006,10 +8285,16 @@ class AgroDataService {
     let updatedClaim: RunwayPaymentClaim;
 
     if (params.decision === 'CONFIRM') {
+      const claimOwner =
+        this.state.members.find((m) => m.accountStatus !== 'CLAIMED' && matchesMemberRecord(claim.memberId, m)) ||
+        this.state.members.find((m) => m.id === claim.memberId);
       const matchedPledge = (this.state.runwayPledges || []).find(
         (p) =>
           (claim.pledgeId && p.id === claim.pledgeId) ||
-          (p.planId === claim.planId && p.memberId === claim.memberId)
+          (p.planId === claim.planId &&
+            p.status !== 'MERGED' &&
+            p.status !== 'WITHDRAWN' &&
+            (claimOwner ? matchesMemberRecord(p.memberId, claimOwner) : p.memberId === claim.memberId))
       );
       const resolvedPledgeId = claim.pledgeId || matchedPledge?.id;
 
@@ -8521,6 +8806,851 @@ class AgroDataService {
     }
 
     return dispatchedCount;
+  }
+
+  // =========================================================================
+  // PRE-REGISTERED MOCK MEMBERS, PERSONAL CLAIM CODES & ACCOUNT MERGING
+  // =========================================================================
+
+  public getPlaceholderClaimCode(memberId: string): string | undefined {
+    return this.localClaimCodes.get(memberId);
+  }
+
+  public async fetchPlaceholderClaimCode(memberId: string, orgId?: string): Promise<string | undefined> {
+    const cached = this.localClaimCodes.get(memberId);
+    if (cached) return cached;
+    const targetOrg = orgId || this.getActiveOrgId();
+    if (!firestoreDb || !firebaseAuth?.currentUser || !targetOrg) return undefined;
+    try {
+      const snap = await getDoc(doc(firestoreDb, 'organizations', targetOrg, 'claim_codes', memberId));
+      if (snap.exists()) {
+        const data = snap.data() as AdminClaimCodeVault;
+        if (data?.claimCode) {
+          this.localClaimCodes.set(memberId, data.claimCode);
+          return data.claimCode;
+        }
+      }
+    } catch (err) {
+      console.warn('Fetch placeholder claim code notice:', err);
+    }
+    return undefined;
+  }
+
+  public async regeneratePlaceholderClaimCode(params: {
+    placeholderMemberId: string;
+    actor: OrgMember;
+  }): Promise<string> {
+    if (!PERMISSIONS.canManageMembers(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can regenerate claim codes.');
+    }
+    const placeholder = this.state.members.find((m) => m.id === params.placeholderMemberId);
+    if (!placeholder) throw new Error('Placeholder member not found.');
+    if (!isUnclaimedPlaceholder(placeholder)) {
+      throw new Error('This member account has already been claimed.');
+    }
+    const orgId = placeholder.orgId || params.actor.orgId || this.getActiveOrgId() || '';
+    if (params.actor.orgId && placeholder.orgId && params.actor.orgId !== placeholder.orgId) {
+      throw new Error('Tenant Boundary Violation: Cannot manage claim codes outside your organization.');
+    }
+
+    const oldHash = placeholder.claimCodeHash;
+    const now = new Date().toISOString();
+    const newCode = generateRandomClaimCode();
+    const newHash = computeClaimTokenId(orgId, newCode);
+
+    const updatedPlaceholder: OrgMember = {
+      ...placeholder,
+      claimCodeHash: newHash,
+      updatedAt: now,
+    };
+
+    const newToken: ClaimTokenLookup = {
+      id: newHash,
+      orgId,
+      placeholderMemberId: placeholder.id,
+      role: placeholder.role,
+      assignedLocationId: placeholder.assignedLocationId,
+      targetContributionUsd: placeholder.targetContributionUsd,
+      contributionPace: placeholder.contributionPace,
+      status: 'OPEN',
+      createdAt: now,
+    };
+
+    this.localClaimCodes.set(placeholder.id, newCode);
+    if (oldHash) this.localClaimTokens.delete(oldHash);
+    this.localClaimTokens.set(newHash, newToken);
+
+    this.saveLocalState({
+      ...this.state,
+      members: this.state.members.map((m) => (m.id === placeholder.id ? updatedPlaceholder : m)),
+    });
+
+    if (firestoreDb && firebaseAuth?.currentUser) {
+      if (oldHash) {
+        await deleteDoc(doc(firestoreDb, 'claim_tokens', oldHash)).catch(() => { });
+      }
+      void this.persistDocumentToCloudIfActive('members', placeholder.id, updatedPlaceholder);
+      void this.persistDocumentToCloudIfActive('claim_tokens', newToken.id, newToken);
+      const vaultDoc: AdminClaimCodeVault = {
+        id: placeholder.id,
+        orgId,
+        placeholderMemberId: placeholder.id,
+        claimCode: newCode,
+        claimCodeHash: newHash,
+        createdAt: placeholder.joinedAt,
+        updatedAt: now,
+      };
+      await setDoc(doc(firestoreDb, 'organizations', orgId, 'claim_codes', placeholder.id), vaultDoc).catch(() => { });
+    }
+
+    return newCode;
+  }
+
+  public addBulkPlaceholderMembers(params: {
+    defaultRunwayPlanId?: string;
+    entries: Array<{
+      fullName: string;
+      phone?: string;
+      role?: Role;
+      assignedLocationId?: string;
+      targetContributionUsd?: number;
+      contributionPace?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+      initialContributionUsd?: number;
+      contributionNote?: string;
+      initialPledgeAmount?: number;
+      runwayPlanId?: string;
+      pledgeNote?: string;
+    }>;
+    actor: OrgMember;
+  }): { created: Array<{ member: OrgMember; claimCode: string }>; errors: string[] } {
+    if (!PERMISSIONS.canManageMembers(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can batch-create mock contributors.');
+    }
+
+    const created: Array<{ member: OrgMember; claimCode: string }> = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < params.entries.length; i++) {
+      const row = params.entries[i];
+      const name = (row.fullName || '').trim();
+      if (!name) {
+        errors.push(`Row ${i + 1}: Name is required.`);
+        continue;
+      }
+
+      const planId = row.runwayPlanId || params.defaultRunwayPlanId;
+      const member = this.addMember({
+        fullName: name,
+        phoneOrEmail: row.phone?.trim() || '',
+        phone: row.phone?.trim(),
+        role: row.role || 'MEMBER',
+        assignedLocationId: row.assignedLocationId,
+        targetContributionUsd: row.targetContributionUsd,
+        contributionPace: row.contributionPace,
+        initialContributionUsd: row.initialContributionUsd,
+        contributionNote:
+          row.contributionNote?.trim() ||
+          `Pre-registered initial capital by ${name}`,
+        initialContributionPlanId:
+          row.initialContributionUsd && row.initialContributionUsd > 0 ? planId : undefined,
+        initialPledgeAmount: row.initialPledgeAmount,
+        initialPledgePlanId: row.initialPledgeAmount && row.initialPledgeAmount > 0 ? planId : undefined,
+        initialPledgeNote: row.pledgeNote,
+        isPlaceholder: true,
+        actor: params.actor,
+      });
+
+      created.push({
+        member,
+        claimCode: this.getPlaceholderClaimCode(member.id) || '',
+      });
+    }
+
+    return { created, errors };
+  }
+
+  private consolidateMemberRunwayPledges(
+    placeholder: OrgMember,
+    targetMember: OrgMember,
+    actor: OrgMember,
+    now: string
+  ): { nextPledges: RunwayPledge[]; changedPledges: RunwayPledge[] } {
+    const placeholderIds = getMemberMatchIds(placeholder);
+    const rawTargetIds = getMemberMatchIds(targetMember);
+    const targetIds = new Set<string>(
+      Array.from(rawTargetIds).filter(
+        (id) => !placeholderIds.has(id) || id === targetMember.id || (Boolean(targetMember.uid) && id === targetMember.uid)
+      )
+    );
+    const currentPledges = [...(this.state.runwayPledges || [])];
+    const changedMap = new Map<string, RunwayPledge>();
+
+    // Index existing active target pledges per planId
+    const targetPledgeByPlan = new Map<string, RunwayPledge>();
+    for (const p of currentPledges) {
+      if (p.status !== 'MERGED' && p.status !== 'WITHDRAWN' && targetIds.has(p.memberId)) {
+        targetPledgeByPlan.set(p.planId, p);
+      }
+    }
+
+    const nextPledges = currentPledges.map((p) => {
+      if (p.status === 'MERGED' || p.status === 'WITHDRAWN') return p;
+      const belongsToPlaceholder = placeholderIds.has(p.memberId) && !targetIds.has(p.memberId);
+      if (!belongsToPlaceholder) return p;
+
+      const existingTargetPledge = targetPledgeByPlan.get(p.planId);
+      if (existingTargetPledge && existingTargetPledge.id !== p.id) {
+        // Defer adding onto canonical target pledge in second pass below; mark placeholder pledge MERGED
+        const absorbed: RunwayPledge = {
+          ...p,
+          amount: 0,
+          ...(p.pledgedAmount !== undefined ? { pledgedAmount: 0 } : {}),
+          status: 'MERGED',
+          absorbedIntoPledgeId: existingTargetPledge.id,
+          updatedAt: now,
+        };
+        changedMap.set(absorbed.id, absorbed);
+        return absorbed;
+      }
+
+      // No overlapping target pledge on this plan: re-point placeholder pledge cleanly to targetMember
+      const reassigned: RunwayPledge = {
+        ...p,
+        memberId: targetMember.id,
+        memberName: targetMember.fullName,
+        updatedAt: now,
+      };
+      targetPledgeByPlan.set(reassigned.planId, reassigned);
+      changedMap.set(reassigned.id, reassigned);
+      return reassigned;
+    });
+
+    // Apply absorbed amounts onto canonical target pledges
+    const absorbedByCanonicalId = new Map<string, { addAmount: number; notes: string[] }>();
+    for (const changed of changedMap.values()) {
+      if (changed.status === 'MERGED' && changed.absorbedIntoPledgeId) {
+        const orig = currentPledges.find((x) => x.id === changed.id);
+        const origAmount = orig ? (orig.amount ?? orig.pledgedAmount ?? 0) : 0;
+        if (orig && origAmount > 0) {
+          const entry = absorbedByCanonicalId.get(changed.absorbedIntoPledgeId) || { addAmount: 0, notes: [] };
+          entry.addAmount = round2(entry.addAmount + origAmount);
+          entry.notes.push(`${orig.id} (+$${origAmount.toFixed(2)})`);
+          absorbedByCanonicalId.set(changed.absorbedIntoPledgeId, entry);
+        }
+      }
+    }
+
+    const finalizedPledges = nextPledges.map((p) => {
+      const boost = absorbedByCanonicalId.get(p.id);
+      if (!boost) return p;
+      const baseAmount = p.amount ?? p.pledgedAmount ?? 0;
+      const newAmount = round2(baseAmount + boost.addAmount);
+      const mergeEvent = {
+        id: `PEV-${Date.now().toString(36).toUpperCase()}-M`,
+        type: 'INCREASE' as const,
+        previousAmount: baseAmount,
+        newAmount,
+        note: `Consolidated claimed placeholder pledge ${boost.notes.join(', ')}`,
+        byMemberId: actor.id,
+        at: now,
+        auditHash: computeLedgerRecordHash('PLEDGE_EVENT', p.id, now, newAmount, 'Consolidated claimed pledge'),
+      };
+      const updated: RunwayPledge = {
+        ...p,
+        memberId: targetMember.id,
+        memberName: targetMember.fullName,
+        amount: newAmount,
+        ...(p.pledgedAmount !== undefined ? { pledgedAmount: newAmount } : {}),
+        history: [...(p.history || []), mergeEvent],
+        updatedAt: now,
+      };
+      changedMap.set(updated.id, updated);
+      return updated;
+    });
+
+    return {
+      nextPledges: finalizedPledges,
+      changedPledges: Array.from(changedMap.values()),
+    };
+  }
+
+  public async claimPlaceholderMemberWithCode(params: {
+    orgInviteCode?: string;
+    orgId?: string;
+    claimCode: string;
+    actor: OrgMember;
+  }): Promise<{ org?: Organization; member: OrgMember; claimedPlaceholder: OrgMember }> {
+    const cleanClaimCode = normalizeClaimCode(params.claimCode);
+    if (!cleanClaimCode || cleanClaimCode.length < 7) {
+      throw new Error('Please enter a valid Personal Claim Code (e.g. CLM-XXXXXXXX).');
+    }
+
+    const useLiveFirestore = Boolean(firestoreDb && firebaseAuth?.currentUser);
+    if (useLiveFirestore && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new Error('Internet connection is required to verify and claim an existing contributor profile.');
+    }
+
+    let orgData: Organization | undefined;
+    let resolvedOrgId = params.orgId || params.actor.orgId || '';
+
+    if (params.orgInviteCode?.trim()) {
+      const cleanOrgCode = params.orgInviteCode.trim().toUpperCase();
+      if (useLiveFirestore && firestoreDb) {
+        try {
+          const inviteSnap = await getDoc(doc(firestoreDb, 'invite_codes', cleanOrgCode));
+          if (inviteSnap.exists()) {
+            const inv = inviteSnap.data() as { orgId: string; expiresAt: string };
+            if (new Date(inv.expiresAt).getTime() < Date.now()) {
+              throw new Error('This organization invitation code has expired after 24 hours.');
+            }
+            resolvedOrgId = inv.orgId;
+            const orgSnap = await getDoc(doc(firestoreDb, 'organizations', inv.orgId));
+            if (orgSnap.exists()) {
+              orgData = orgSnap.data() as Organization;
+            }
+          }
+        } catch (err: any) {
+          if (err?.message?.includes('expired')) throw err;
+        }
+      }
+      if (!orgData) {
+        const localOrg = (this.state.organizations || []).find(
+          (o) => o.currentInviteCode && o.currentInviteCode.toUpperCase() === cleanOrgCode
+        );
+        if (localOrg) {
+          if (new Date(localOrg.inviteCodeExpiresAt).getTime() < Date.now()) {
+            throw new Error('This organization invitation code has expired after 24 hours.');
+          }
+          orgData = localOrg;
+          resolvedOrgId = localOrg.id;
+        }
+      }
+    } else if (resolvedOrgId) {
+      orgData = (this.state.organizations || []).find((o) => o.id === resolvedOrgId);
+      if (!orgData && useLiveFirestore && firestoreDb) {
+        const orgSnap = await getDoc(doc(firestoreDb, 'organizations', resolvedOrgId)).catch(() => null);
+        if (orgSnap?.exists()) orgData = orgSnap.data() as Organization;
+      }
+    }
+
+    if (!resolvedOrgId) {
+      throw new Error('Organization could not be resolved. Please enter the Organization Invite Code alongside your Personal Claim Code.');
+    }
+
+    const tokenHash = computeClaimTokenId(resolvedOrgId, cleanClaimCode);
+    let token: ClaimTokenLookup | undefined;
+    let placeholder: OrgMember | undefined;
+
+    if (useLiveFirestore && firestoreDb) {
+      const tokenSnap = await getDoc(doc(firestoreDb, 'claim_tokens', tokenHash)).catch(() => null);
+      if (tokenSnap?.exists()) {
+        token = tokenSnap.data() as ClaimTokenLookup;
+      }
+      if (!token) {
+        token = this.localClaimTokens.get(tokenHash);
+      }
+    } else {
+      token = this.localClaimTokens.get(tokenHash);
+    }
+
+    if (!token || token.orgId !== resolvedOrgId) {
+      throw new Error('Invalid Personal Claim Code for this organization. Please check the code with your administrator.');
+    }
+    if (token.status !== 'OPEN') {
+      throw new Error('This Personal Claim Code has already been used or revoked.');
+    }
+    if (token.expiresAt && new Date(token.expiresAt).getTime() < Date.now()) {
+      throw new Error('This Personal Claim Code has expired. Ask your admin to regenerate a fresh code.');
+    }
+
+    if (useLiveFirestore && firestoreDb) {
+      const phSnap = await getDoc(doc(firestoreDb, 'members', token.placeholderMemberId)).catch(() => null);
+      if (phSnap?.exists()) {
+        placeholder = phSnap.data() as OrgMember;
+      }
+    }
+    if (!placeholder) {
+      placeholder = this.state.members.find((m) => m.id === token!.placeholderMemberId);
+    }
+
+    if (!placeholder) {
+      throw new Error('Placeholder contributor profile not found.');
+    }
+    if (placeholder.accountStatus === 'CLAIMED') {
+      throw new Error('This contributor profile has already been claimed by another account.');
+    }
+    if (placeholder.orgId && placeholder.orgId !== resolvedOrgId) {
+      throw new Error('Tenant Boundary Violation: Claim token does not match organization.');
+    }
+
+    const now = new Date().toISOString();
+    const authUid = firebaseAuth?.currentUser?.uid || params.actor.uid || params.actor.id;
+    const isAgro = orgData
+      ? orgData.type === 'AGRO_FARMING' || Boolean(orgData.features?.livestockModule)
+      : this.isAgroOrganization(resolvedOrgId);
+
+    const linkedSet = new Set<string>([
+      ...(params.actor.linkedMemberIds || []),
+      placeholder.id,
+      ...(placeholder.linkedMemberIds || []),
+    ]);
+    linkedSet.delete(authUid);
+
+    const updatedMember: OrgMember = {
+      ...params.actor,
+      id: authUid,
+      uid: authUid,
+      orgId: resolvedOrgId,
+      role: token.role || placeholder.role,
+      approvalStatus: 'APPROVED',
+      active: true,
+      isPlaceholder: false,
+      accountStatus: 'ACTIVE',
+      linkedMemberIds: Array.from(linkedSet),
+      redeemedClaimTokenHash: tokenHash,
+      assignedLocationId: isAgro
+        ? token.assignedLocationId || placeholder.assignedLocationId || params.actor.assignedLocationId
+        : undefined,
+      phone: params.actor.phone || placeholder.phone,
+      targetContributionUsd:
+        placeholder.targetContributionUsd ?? token.targetContributionUsd ?? params.actor.targetContributionUsd ?? orgData?.defaultTargetContributionUsd ?? 1000,
+      contributionPace:
+        placeholder.contributionPace || token.contributionPace || params.actor.contributionPace || orgData?.contributionPaceDefault || 'MONTHLY',
+      updatedAt: now,
+    };
+
+    const placeholderTombstone: OrgMember = {
+      ...placeholder,
+      accountStatus: 'CLAIMED',
+      claimedByUid: authUid,
+      claimedByMemberId: authUid,
+      claimedAt: now,
+      active: false,
+      updatedAt: now,
+    };
+
+    const claimedToken: ClaimTokenLookup = {
+      ...token,
+      status: 'CLAIMED',
+      claimedByUid: authUid,
+      claimedAt: now,
+    };
+
+    if (useLiveFirestore && firestoreDb) {
+      const batch = writeBatch(firestoreDb);
+      batch.update(doc(firestoreDb, 'claim_tokens', tokenHash), {
+        status: 'CLAIMED',
+        claimedByUid: authUid,
+        claimedAt: now,
+      });
+      batch.update(doc(firestoreDb, 'members', placeholder.id), {
+        accountStatus: 'CLAIMED',
+        claimedByUid: authUid,
+        claimedByMemberId: authUid,
+        claimedAt: now,
+        active: false,
+        updatedAt: now,
+      });
+      const cleanMemberDoc = JSON.parse(JSON.stringify(updatedMember));
+      batch.set(doc(firestoreDb, 'members', authUid), cleanMemberDoc, { merge: true });
+      await batch.commit();
+    }
+
+    this.localClaimTokens.set(tokenHash, claimedToken);
+    this.localClaimCodes.delete(placeholder.id);
+
+    const { nextPledges, changedPledges } = this.consolidateMemberRunwayPledges(
+      placeholder,
+      updatedMember,
+      updatedMember,
+      now
+    );
+
+    const updatedRequests = (this.state.memberClaimRequests || []).map((req) =>
+      req.placeholderMemberId === placeholder!.id && req.status === 'PENDING'
+        ? {
+          ...req,
+          status: (req.requesterUid === authUid ? 'APPROVED' : 'REJECTED') as 'APPROVED' | 'REJECTED',
+          resolvedAt: now,
+          resolvedByUid: authUid,
+          resolutionNote:
+            req.requesterUid === authUid
+              ? 'Auto-resolved via Personal Claim Code'
+              : 'Placeholder was claimed using Personal Claim Code',
+        }
+        : req
+    );
+
+    const audit = this.createChainedAuditEvent({
+      actor: updatedMember,
+      locationId: updatedMember.assignedLocationId || 'ALL',
+      locationName: orgData?.name || 'Organization',
+      eventType: 'MEMBER_ACCOUNT_CLAIMED',
+      severity: 'INFO',
+      title: `Profile Claimed: ${updatedMember.fullName}`,
+      message: `${updatedMember.fullName} claimed pre-registered contributor profile "${placeholder.fullName}" (${placeholder.id}) via Personal Claim Code.`,
+      referenceEntityId: placeholder.id,
+      timestamp: now,
+    });
+
+    const orgList = this.state.organizations || [];
+    const nextOrgs = orgData && !orgList.some((o) => o.id === orgData!.id) ? [...orgList, orgData] : orgList;
+    const filteredMembers = this.state.members.filter(
+      (m) => m.id !== placeholder!.id && m.id !== updatedMember.id && m.id !== params.actor.id
+    );
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      organizations: nextOrgs,
+      activeOrgId: resolvedOrgId,
+      members: [...filteredMembers, updatedMember, placeholderTombstone],
+      runwayPledges: nextPledges,
+      memberClaimRequests: updatedRequests,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    if (this.activeSession) {
+      this.setActiveSession({
+        ...this.activeSession,
+        activeOrgId: resolvedOrgId,
+      });
+    }
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    changedPledges.forEach((p) => {
+      void this.persistDocumentToCloudIfActive('runway_pledges', p.id, p);
+    });
+
+    return {
+      org: orgData,
+      member: updatedMember,
+      claimedPlaceholder: placeholderTombstone,
+    };
+  }
+
+  public submitMemberClaimRequest(params: {
+    placeholderMemberId: string;
+    note?: string;
+    actor: OrgMember;
+  }): MemberClaimRequest {
+    const orgId = params.actor.orgId || this.getActiveOrgId() || '';
+    if (!orgId) throw new Error('You must join an organization before requesting a profile link.');
+    if (params.actor.approvalStatus === 'SUSPENDED') {
+      throw new Error('Suspended accounts cannot submit claim requests.');
+    }
+
+    const placeholder = this.state.members.find((m) => m.id === params.placeholderMemberId);
+    if (!placeholder) throw new Error('Selected contributor profile was not found.');
+    if (placeholder.orgId && placeholder.orgId !== orgId) {
+      throw new Error('Tenant Boundary Violation: Cannot request a profile from another organization.');
+    }
+    if (!isUnclaimedPlaceholder(placeholder)) {
+      throw new Error('This contributor profile is already claimed.');
+    }
+
+    const requesterUid = params.actor.uid || params.actor.id;
+    const duplicatePending = (this.state.memberClaimRequests || []).find(
+      (r) =>
+        r.orgId === orgId &&
+        r.placeholderMemberId === placeholder.id &&
+        r.requesterUid === requesterUid &&
+        r.status === 'PENDING'
+    );
+    if (duplicatePending) {
+      throw new Error('You already have a pending link request for this profile awaiting admin confirmation.');
+    }
+
+    const now = new Date().toISOString();
+    const requestId = generateUniqueMemberId('CREQ').toUpperCase();
+    const request: MemberClaimRequest = {
+      id: requestId,
+      orgId,
+      placeholderMemberId: placeholder.id,
+      placeholderName: placeholder.fullName,
+      requesterUid,
+      requesterMemberId: params.actor.id,
+      requesterName: params.actor.fullName,
+      requesterEmail: params.actor.email || (isValidRealEmail(params.actor.phoneOrEmail) ? params.actor.phoneOrEmail : undefined),
+      note: params.note?.trim().slice(0, 300) || undefined,
+      status: 'PENDING',
+      createdAt: now,
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'All Locations (Master Organization)',
+      eventType: 'MEMBER_CLAIM_REQUESTED',
+      severity: 'INFO',
+      title: `Profile Link Requested: ${params.actor.fullName}`,
+      message: `${params.actor.fullName} requested to claim unclaimed contributor profile "${placeholder.fullName}" (${placeholder.id}).`,
+      referenceEntityId: request.id,
+      timestamp: now,
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      memberClaimRequests: [request, ...(this.state.memberClaimRequests || [])],
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+    void this.persistDocumentToCloudIfActive('member_claim_requests', request.id, request);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return request;
+  }
+
+  public async adminLinkAndMergeMember(params: {
+    placeholderMemberId: string;
+    targetMemberId: string;
+    claimRequestId?: string;
+    finalRole?: Role;
+    targetContributionUsd?: number;
+    note?: string;
+    actor: OrgMember;
+  }): Promise<{ mergedMember: OrgMember; placeholderTombstone: OrgMember }> {
+    if (!PERMISSIONS.canManageMembers(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can link and merge member accounts.');
+    }
+
+    const placeholder = this.state.members.find((m) => m.id === params.placeholderMemberId);
+    if (!placeholder) throw new Error('Unclaimed placeholder profile not found.');
+    if (placeholder.accountStatus === 'CLAIMED') {
+      throw new Error('This placeholder profile has already been claimed and merged.');
+    }
+
+    const target = this.state.members.find((m) => m.id === params.targetMemberId);
+    if (!target) throw new Error('Target registered member account not found.');
+    if (target.id === placeholder.id) {
+      throw new Error('Cannot merge a member account into itself.');
+    }
+    if (target.accountStatus === 'CLAIMED') {
+      throw new Error('Target member account is an archived placeholder tombstone.');
+    }
+
+    const actorOrg = params.actor.orgId || this.getActiveOrgId() || '';
+    if (
+      (actorOrg && placeholder.orgId && placeholder.orgId !== actorOrg) ||
+      (actorOrg && target.orgId && target.orgId !== actorOrg)
+    ) {
+      throw new Error('Tenant Boundary Violation: Both accounts must belong to the administrator\'s organization.');
+    }
+
+    const orgId = placeholder.orgId || target.orgId || actorOrg;
+    const isAgro = this.isAgroOrganization(orgId);
+    const now = new Date().toISOString();
+
+    const linkedSet = new Set<string>([
+      ...(target.linkedMemberIds || []),
+      placeholder.id,
+      ...(placeholder.linkedMemberIds || []),
+    ]);
+    linkedSet.delete(target.id);
+
+    const resolvedRole: Role =
+      params.finalRole ||
+      (placeholder.role !== 'MEMBER' ? placeholder.role : target.role) ||
+      'MEMBER';
+
+    const resolvedTargetUsd =
+      typeof params.targetContributionUsd === 'number' && params.targetContributionUsd > 0
+        ? Number(params.targetContributionUsd.toFixed(2))
+        : placeholder.targetContributionUsd ?? target.targetContributionUsd;
+
+    const mergedMember: OrgMember = {
+      ...target,
+      orgId,
+      role: resolvedRole,
+      approvalStatus: target.approvalStatus === 'SUSPENDED' ? 'SUSPENDED' : 'APPROVED',
+      active: target.approvalStatus !== 'SUSPENDED',
+      isPlaceholder: false,
+      accountStatus: 'ACTIVE',
+      linkedMemberIds: Array.from(linkedSet),
+      assignedLocationId: isAgro
+        ? target.assignedLocationId || placeholder.assignedLocationId
+        : undefined,
+      phone: target.phone || placeholder.phone,
+      targetContributionUsd: resolvedTargetUsd,
+      contributionPace: placeholder.contributionPace || target.contributionPace,
+      updatedAt: now,
+    };
+
+    const placeholderTombstone: OrgMember = {
+      ...placeholder,
+      accountStatus: 'CLAIMED',
+      claimedByUid: target.uid || target.id,
+      claimedByMemberId: target.id,
+      claimedAt: now,
+      active: false,
+      updatedAt: now,
+    };
+
+    const { nextPledges, changedPledges } = this.consolidateMemberRunwayPledges(
+      placeholder,
+      mergedMember,
+      params.actor,
+      now
+    );
+
+    const updatedRequests = (this.state.memberClaimRequests || []).map((req) => {
+      if (params.claimRequestId && req.id === params.claimRequestId) {
+        return {
+          ...req,
+          status: 'APPROVED' as const,
+          resolvedAt: now,
+          resolvedByUid: params.actor.uid || params.actor.id,
+          resolutionNote: params.note?.trim() || `Approved and merged with ${placeholder.fullName}`,
+        };
+      }
+      if (req.placeholderMemberId === placeholder.id && req.status === 'PENDING') {
+        const isRequesterTarget = req.requesterMemberId === target.id || req.requesterUid === target.uid;
+        return {
+          ...req,
+          status: (isRequesterTarget ? 'APPROVED' : 'REJECTED') as 'APPROVED' | 'REJECTED',
+          resolvedAt: now,
+          resolvedByUid: params.actor.uid || params.actor.id,
+          resolutionNote: isRequesterTarget
+            ? `Linked by Admin ${params.actor.fullName}`
+            : `Profile linked to ${mergedMember.fullName}`,
+        };
+      }
+      return req;
+    });
+
+    if (placeholder.claimCodeHash) {
+      const tok = this.localClaimTokens.get(placeholder.claimCodeHash);
+      if (tok) {
+        this.localClaimTokens.set(placeholder.claimCodeHash, {
+          ...tok,
+          status: 'CLAIMED',
+          claimedByUid: mergedMember.uid || mergedMember.id,
+          claimedAt: now,
+        });
+      }
+      this.localClaimCodes.delete(placeholder.id);
+    }
+
+    const reasonSuffix = params.note?.trim() ? ` Note: ${params.note.trim()}` : '';
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: mergedMember.assignedLocationId || 'ALL',
+      locationName: 'All Locations (Master Organization)',
+      eventType: 'MEMBER_ACCOUNT_LINKED',
+      severity: 'INFO',
+      title: `Account Linked & Merged: ${mergedMember.fullName}`,
+      message: `${params.actor.fullName} linked placeholder "${placeholder.fullName}" (${placeholder.id}) into registered account "${mergedMember.fullName}" (${mergedMember.id}). Historical contributions and pledges unified.${reasonSuffix}`,
+      referenceEntityId: mergedMember.id,
+      timestamp: now,
+    });
+
+    const nextMembers = this.state.members.map((m) => {
+      if (m.id === mergedMember.id || (mergedMember.uid && m.id === mergedMember.uid)) return mergedMember;
+      if (m.id === placeholder.id) return placeholderTombstone;
+      return m;
+    });
+
+    const nextState: AgroStateSnapshot = {
+      ...this.state,
+      members: nextMembers,
+      runwayPledges: nextPledges,
+      memberClaimRequests: updatedRequests,
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    };
+
+    this.saveLocalState(nextState);
+
+    if (firestoreDb && firebaseAuth?.currentUser) {
+      try {
+        const batch = writeBatch(firestoreDb);
+        batch.set(doc(firestoreDb, 'members', mergedMember.id), JSON.parse(JSON.stringify(mergedMember)), { merge: true });
+        if (mergedMember.uid && mergedMember.uid !== mergedMember.id) {
+          batch.set(
+            doc(firestoreDb, 'members', mergedMember.uid),
+            JSON.parse(JSON.stringify({ ...mergedMember, id: mergedMember.uid, uid: mergedMember.uid })),
+            { merge: true }
+          );
+        }
+        batch.set(doc(firestoreDb, 'members', placeholderTombstone.id), JSON.parse(JSON.stringify(placeholderTombstone)), { merge: true });
+        if (placeholder.claimCodeHash) {
+          batch.update(doc(firestoreDb, 'claim_tokens', placeholder.claimCodeHash), {
+            status: 'CLAIMED',
+            claimedByUid: mergedMember.uid || mergedMember.id,
+            claimedAt: now,
+          });
+        }
+        for (const cp of changedPledges) {
+          batch.set(doc(firestoreDb, 'runway_pledges', cp.id), JSON.parse(JSON.stringify(cp)), { merge: true });
+        }
+        for (const req of updatedRequests) {
+          if (req.placeholderMemberId === placeholder.id) {
+            batch.set(doc(firestoreDb, 'member_claim_requests', req.id), JSON.parse(JSON.stringify(req)), { merge: true });
+          }
+        }
+        await batch.commit();
+      } catch (err) {
+        console.warn('Cloud batch adminLinkAndMergeMember fallback to outbox:', err);
+        void this.persistDocumentToCloudIfActive('members', mergedMember.id, mergedMember);
+        void this.persistDocumentToCloudIfActive('members', placeholderTombstone.id, placeholderTombstone);
+        changedPledges.forEach((p) => void this.persistDocumentToCloudIfActive('runway_pledges', p.id, p));
+      }
+    } else {
+      void this.persistDocumentToCloudIfActive('members', mergedMember.id, mergedMember);
+      void this.persistDocumentToCloudIfActive('members', placeholderTombstone.id, placeholderTombstone);
+      changedPledges.forEach((p) => void this.persistDocumentToCloudIfActive('runway_pledges', p.id, p));
+    }
+
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return { mergedMember, placeholderTombstone };
+  }
+
+  public rejectMemberClaimRequest(params: {
+    requestId: string;
+    note?: string;
+    actor: OrgMember;
+  }): MemberClaimRequest {
+    if (!PERMISSIONS.canManageMembers(params.actor.role)) {
+      throw new Error('Access Denied: Only Organization Admins can reject claim requests.');
+    }
+    const existing = (this.state.memberClaimRequests || []).find((r) => r.id === params.requestId);
+    if (!existing) throw new Error('Claim request not found.');
+    if (params.actor.orgId && params.actor.orgId !== existing.orgId) {
+      throw new Error('Tenant Boundary Violation: Cannot reject claim request from another organization.');
+    }
+    if (existing.status !== 'PENDING') {
+      throw new Error(`Claim request is already ${existing.status}.`);
+    }
+
+    const now = new Date().toISOString();
+    const updated: MemberClaimRequest = {
+      ...existing,
+      status: 'REJECTED',
+      resolvedAt: now,
+      resolvedByUid: params.actor.uid || params.actor.id,
+      resolutionNote: params.note?.trim() || 'Rejected by Organization Administrator',
+    };
+
+    const audit = this.createChainedAuditEvent({
+      actor: params.actor,
+      locationId: 'ALL',
+      locationName: 'All Locations (Master Organization)',
+      eventType: 'MEMBER_CLAIM_REJECTED',
+      severity: 'INFO',
+      title: `Profile Link Rejected: ${existing.requesterName}`,
+      message: `${params.actor.fullName} rejected request by ${existing.requesterName} to claim "${existing.placeholderName}". Note: ${updated.resolutionNote}.`,
+      referenceEntityId: existing.id,
+      timestamp: now,
+    });
+
+    this.saveLocalState({
+      ...this.state,
+      memberClaimRequests: (this.state.memberClaimRequests || []).map((r) =>
+        r.id === existing.id ? updated : r
+      ),
+      auditNotifications: [audit, ...this.state.auditNotifications],
+    });
+    void this.persistDocumentToCloudIfActive('member_claim_requests', updated.id, updated);
+    void this.persistDocumentToCloudIfActive('audit_notifications', audit.id, audit);
+    return updated;
   }
 }
 

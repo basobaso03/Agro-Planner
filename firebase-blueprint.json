@@ -117,6 +117,49 @@
           "type": "string",
           "maxLength": 128
         },
+        "isPlaceholder": {
+          "type": "boolean"
+        },
+        "accountStatus": {
+          "type": "string",
+          "enum": [
+            "UNCLAIMED",
+            "ACTIVE",
+            "CLAIMED",
+            "SUSPENDED"
+          ]
+        },
+        "linkedMemberIds": {
+          "type": "array"
+        },
+        "claimCodeHash": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "redeemedClaimTokenHash": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "claimedByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "claimedByMemberId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "claimedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
         "joinedAt": {
           "type": "string",
           "maxLength": 64
@@ -816,6 +859,18 @@
     "/audit_notifications/{auditId}": {
       "schema": "AuditNotificationEvent",
       "description": "Cryptographically hash-chained immutable audit log and real-time ground notifications"
+    },
+    "/claim_tokens/{claimTokenHash}": {
+      "schema": "ClaimTokenLookup",
+      "description": "SHA-256 hashed single-use Personal Claim Code tokens for unregistered contributors"
+    },
+    "/organizations/{orgId}/claim_codes/{placeholderId}": {
+      "schema": "AdminClaimCodeVault",
+      "description": "Admin-only plaintext claim code vault scoped to each organization"
+    },
+    "/member_claim_requests/{requestId}": {
+      "schema": "MemberClaimRequest",
+      "description": "Path B profile link requests from registered newcomers awaiting Admin verification"
     }
   }
 }

@@ -56,5 +56,27 @@ export const validators = {
     if (!val || val.trim().length < 3) return `${fieldName} is required (at least 3 characters).`;
     return null;
   },
+
+  optionalContact: (val: string | undefined, fieldName = 'Phone or Email'): string | null => {
+    const trimmed = (val || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.includes('@')) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+        ? null
+        : `Please enter a valid email address or leave blank for mock accounts.`;
+    }
+    if (trimmed.length < 5) {
+      return `${fieldName} must be at least 5 characters if provided, or leave blank.`;
+    }
+    return null;
+  },
+
+  claimCode: (val: string): string | null => {
+    const clean = (val || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!clean) return 'Personal Claim Code is required.';
+    const payload = clean.startsWith('CLM') ? clean.slice(3) : clean;
+    if (payload.length < 6) return 'Claim Code appears incomplete (expected CLM-XXXXXXXX).';
+    return null;
+  },
 };
 

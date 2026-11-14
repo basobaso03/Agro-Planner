@@ -45,6 +45,8 @@ export interface FarmLocation {
   updatedAt?: string;
 }
 
+export type MemberAccountStatus = 'ACTIVE' | 'UNCLAIMED' | 'CLAIM_PENDING' | 'CLAIMED';
+
 export interface OrgMember {
   id: string;
   orgId?: string;
@@ -58,6 +60,21 @@ export interface OrgMember {
   preferredContact?: 'EMAIL' | 'WHATSAPP' | 'SMS';
   role: Role;
   approvalStatus?: MemberApprovalStatus;
+  /** Distinguish active registered accounts from admin-created no-email placeholders */
+  isPlaceholder?: boolean;
+  accountStatus?: MemberAccountStatus;
+  /** Canonical historical/merged member IDs resolved under this active account */
+  linkedMemberIds?: string[];
+  /** SHA-256 hash of "${orgId}:${normalizedClaimCode}" stored on unclaimed placeholders */
+  claimCodeHash?: string;
+  /** Redeemed token hash supplied atomically during self-claim batch */
+  redeemedClaimTokenHash?: string;
+  /** Claim tracking when a placeholder is merged into a real user's account */
+  claimedByUid?: string;
+  claimedByMemberId?: string;
+  claimedAt?: string;
+  createdByUid?: string;
+  notes?: string;
   authProviders?: string[];
   hasPasswordSetup?: boolean;
   passwordVerifierHash?: string;
@@ -75,6 +92,48 @@ export interface OrgMember {
   updatedAt?: string;
   lastLoginAt?: string;
   active: boolean;
+}
+
+export interface MemberClaimRequest {
+  id: string;
+  orgId: string;
+  placeholderMemberId: string;
+  placeholderName: string;
+  requesterUid: string;
+  requesterMemberId: string;
+  requesterName: string;
+  requesterEmail?: string;
+  note?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedByUid?: string;
+  resolutionNote?: string;
+}
+
+export interface ClaimTokenLookup {
+  id: string; // sha256Hex(`${orgId}:${normalizedClaimCode}`)
+  orgId: string;
+  placeholderMemberId: string;
+  role: Role;
+  assignedLocationId?: string;
+  targetContributionUsd?: number;
+  contributionPace?: 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
+  status: 'OPEN' | 'CLAIMED' | 'REVOKED';
+  createdAt: string;
+  expiresAt?: string;
+  claimedByUid?: string;
+  claimedAt?: string;
+}
+
+export interface AdminClaimCodeVault {
+  id: string; // placeholderMemberId
+  orgId: string;
+  placeholderMemberId: string;
+  claimCode: string;
+  claimCodeHash: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // Backward-compatible alias for legacy references
@@ -313,7 +372,12 @@ export type AuditEventType =
   | 'RECIPE_TEMPLATE_SAVED'
   | 'CHECKPOINT_CUSTOMIZED'
   | 'MEMBER_ADDED'
+  | 'PLACEHOLDER_MEMBER_CREATED'
   | 'MEMBER_APPROVED'
+  | 'MEMBER_ACCOUNT_CLAIMED'
+  | 'MEMBER_ACCOUNT_LINKED'
+  | 'MEMBER_CLAIM_REQUESTED'
+  | 'MEMBER_CLAIM_REJECTED'
   | 'MEMBER_ROLE_CHANGED'
   | 'MEMBER_SUSPENDED'
   | 'MEMBER_DELETED'
@@ -528,6 +592,7 @@ export interface AgroStateSnapshot {
   runwayPledges?: RunwayPledge[];
   runwayClaims?: RunwayPaymentClaim[];
   runwayTemplates?: RunwayTemplate[];
+  memberClaimRequests?: MemberClaimRequest[];
 }
 
 export type CapitaSeedStateSnapshot = AgroStateSnapshot;

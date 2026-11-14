@@ -485,3 +485,114 @@ test('Cycle Recovery & Break-Even: Recoups Capital Spent and yields Farm Profit'
   assert.equal(recDone.surplus, 1200, 'Surplus of $1,200 represents pure distributable profit');
   assert.equal(recDone.shortfall, 0);
 });
+
+test('Linked Placeholder Parity: Merged mock + post-join contributions and consolidated pledges keep pool and layers reconciled', () => {
+  const linkedMember: OrgMember = {
+    id: 'uid-linked-user',
+    uid: 'uid-linked-user',
+    orgId: testOrg.id,
+    fullName: 'Nyasha Claimed',
+    phoneOrEmail: 'nyasha@sunland.org',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    isPlaceholder: false,
+    accountStatus: 'ACTIVE',
+    linkedMemberIds: ['mem-mock-nyasha'],
+    joinedAt: '2026-02-05T00:00:00Z',
+    targetContributionUsd: 2000,
+    contributionPace: 'MONTHLY',
+    active: true,
+  };
+
+  const claimedTombstone: OrgMember = {
+    id: 'mem-mock-nyasha',
+    orgId: testOrg.id,
+    fullName: 'Nyasha Mock',
+    phoneOrEmail: '',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    isPlaceholder: true,
+    accountStatus: 'CLAIMED',
+    claimedByUid: 'uid-linked-user',
+    claimedByMemberId: 'uid-linked-user',
+    joinedAt: '2026-01-15T00:00:00Z',
+    active: false,
+  };
+
+  const contributions: CapitalContributionEvent[] = [
+    {
+      id: 'CAP-PRE',
+      orgId: testOrg.id,
+      memberId: 'mem-mock-nyasha',
+      memberName: 'Nyasha Mock',
+      direction: 'INITIAL',
+      amount: 1200,
+      runwayPlanId: testPlan.id,
+      pledgeId: 'PLG-CONSOLIDATED',
+      note: 'Pre-registration contribution on Runway',
+      createdAt: '2026-01-15T00:00:00Z',
+      createdByMemberId: adminMember.id,
+      auditHash: 'h-pre',
+    },
+    {
+      id: 'CAP-AFTER',
+      orgId: testOrg.id,
+      memberId: 'uid-linked-user',
+      memberName: 'Nyasha Claimed',
+      direction: 'ADDITION',
+      amount: 800,
+      runwayPlanId: testPlan.id,
+      pledgeId: 'PLG-CONSOLIDATED',
+      note: 'Post-claim second installment',
+      createdAt: '2026-02-10T00:00:00Z',
+      createdByMemberId: 'uid-linked-user',
+      auditHash: 'h-after',
+    },
+  ];
+
+  const pledges: RunwayPledge[] = [
+    {
+      id: 'PLG-CONSOLIDATED',
+      planId: testPlan.id,
+      orgId: testOrg.id,
+      memberId: 'uid-linked-user',
+      memberName: 'Nyasha Claimed',
+      amount: 2000,
+      pledgedAmount: 2000,
+      paidAmount: 2000,
+      pace: 'MONTHLY',
+      status: 'ACTIVE',
+      history: [],
+      createdAt: '2026-01-15T00:00:00Z',
+      updatedAt: '2026-02-10T00:00:00Z',
+    },
+    {
+      id: 'PLG-OLD-DUPLICATE',
+      planId: testPlan.id,
+      orgId: testOrg.id,
+      memberId: 'uid-linked-user',
+      memberName: 'Nyasha Mock',
+      amount: 1200,
+      pledgedAmount: 1200,
+      paidAmount: 1200,
+      pace: 'MONTHLY',
+      status: 'MERGED',
+      absorbedIntoPledgeId: 'PLG-CONSOLIDATED',
+      history: [],
+      createdAt: '2026-01-15T00:00:00Z',
+      updatedAt: '2026-02-10T00:00:00Z',
+    },
+  ];
+
+  const equities = computeMemberEquities([adminMember, claimedTombstone, linkedMember], contributions, 2000);
+  assert.equal(equities.length, 2);
+  const nyashaEq = equities.find((e) => e.member.id === 'uid-linked-user')!;
+  assert.equal(nyashaEq.netContribution, 2000);
+  assert.equal(nyashaEq.profitSharePercentage, 100);
+  assert.equal(nyashaEq.isGoalMet, true);
+
+  const layers = computeFundingLayers(testPlan, allLines, pledges, contributions, []);
+  assert.equal(layers.pledged, 2000);
+  // testPlan has openingCashAdopted = 500 + 2,000 contributed = 2,500 collected
+  assert.equal(layers.collected, 2500);
+});

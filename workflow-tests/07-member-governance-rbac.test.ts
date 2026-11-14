@@ -465,6 +465,44 @@ test('WF-GOV-12: Farm Site-Level Viewport Isolation (Site A vs Site B vs Site C)
   assert.equal(siteBLivestock.some((l) => l.locationId === siteA.id), false);
 });
 
+test('WF-GOV-13: Claimed tombstone preserves historical ledger identity while hidden from visible partner lists', async () => {
+  const adminActor = toOrgMember(TEST_ACCOUNTS.agroAdmin);
+  const mock = dataService.addMember({
+    fullName: 'Governance Mock Partner',
+    phoneOrEmail: '',
+    role: 'MEMBER',
+    initialContributionUsd: 150,
+    isPlaceholder: true,
+    actor: adminActor,
+  });
+  const registeredTarget: OrgMember = {
+    id: 'uid-gov-real-partner',
+    uid: 'uid-gov-real-partner',
+    orgId: adminActor.orgId,
+    fullName: 'Governance Real Partner',
+    email: 'gov.real@agroplanner.com',
+    phoneOrEmail: 'gov.real@agroplanner.com',
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    joinedAt: new Date().toISOString(),
+    active: true,
+  };
+  dataService.saveLocalState({
+    ...dataService.getState(),
+    members: [...dataService.getState().members, registeredTarget],
+  });
+
+  const { mergedMember, placeholderTombstone } = await dataService.adminLinkAndMergeMember({
+    placeholderMemberId: mock.id,
+    targetMemberId: registeredTarget.id,
+    finalRole: 'TREASURER',
+    actor: adminActor,
+  });
+  assert.equal(mergedMember.role, 'TREASURER');
+  assert.equal(placeholderTombstone.accountStatus, 'CLAIMED');
+  assert.equal(placeholderTombstone.active, false);
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

@@ -37,6 +37,7 @@ import {
   type CelebrationMode,
 } from '../utils/celebrations.ts';
 import type { FarmLocation, OrgMember } from '../types/agro.ts';
+import { filterVisibleOrgMembers, isUnclaimedPlaceholder } from '../utils/memberIdentity.ts';
 import type { Organization, OrganizationType } from '../types/organization.ts';
 import {
   dataService,
@@ -317,8 +318,9 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
   const isPasswordConfigured = hasPasswordConfigured(activeMember);
   const isAgro = activeOrg?.type !== 'GENERAL_VENTURE';
 
-  const orgMembers = dataService.getState().members.filter(
-    (m) => !activeMember.orgId || m.orgId === activeMember.orgId
+  const orgMembers = filterVisibleOrgMembers(
+    dataService.getState().members,
+    activeMember.orgId
   );
 
   const handleCopyInviteCode = (code: string) => {
@@ -988,9 +990,14 @@ export const UserSettingsTab: React.FC<UserSettingsTabProps> = ({
                                     You
                                   </span>
                                 )}
+                                {isUnclaimedPlaceholder(member) && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                                    Unclaimed · Mock
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[11px] text-slate-500 block truncate">
-                                {member.email || member.phoneOrEmail}
+                                {member.email || member.phoneOrEmail || 'Unregistered · Awaiting Claim'}
                               </span>
                             </div>
                           </div>

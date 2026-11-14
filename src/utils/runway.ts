@@ -315,10 +315,10 @@ export function computeFundingLayers(
 
   const memberTarget = round2(Math.max(0, targetT - openingCash - plannedFinancingTotal));
 
-  // Pledged: sum of active pledge amounts for this plan
+  // Pledged: sum of active pledge amounts for this plan (ignore consolidated/withdrawn tombstones)
   const pledged = round2(
     pledges
-      .filter((p) => p.planId === plan.id)
+      .filter((p) => p.planId === plan.id && p.status !== 'MERGED' && p.status !== 'WITHDRAWN')
       .reduce((acc, p) => acc + (p.amount || 0), 0)
   );
 

@@ -20,6 +20,7 @@ import type {
   LoanGivenEvent,
   CreditSaleEvent,
 } from '../types/agro.ts';
+import { filterVisibleOrgMembers, matchesMemberRecord } from './memberIdentity.ts';
 
 const MS_PER_DAY = 86_400_000;
 
@@ -751,8 +752,9 @@ export function computeMemberEquities(
   capitalContributions: CapitalContributionEvent[],
   totalNav: number
 ): MemberEquitySummary[] {
-  const memberTotals = members.map((member) => {
-    const events = capitalContributions.filter((c) => c.memberId === member.id);
+  const visibleMembers = filterVisibleOrgMembers(members);
+  const memberTotals = visibleMembers.map((member) => {
+    const events = capitalContributions.filter((c) => matchesMemberRecord(c.memberId, member));
     const grossContributed = events
       .filter((c) => c.direction !== 'CONTRA_REVERSAL')
       .reduce((acc, c) => acc + c.amount, 0);

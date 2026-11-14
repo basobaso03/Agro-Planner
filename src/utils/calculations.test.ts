@@ -395,3 +395,99 @@ test('Debt and Loan Interest calculations: verifies Cash on Ground and Net Worth
   assert.equal(fin.totalNav, 2000);
 });
 
+test('Unclaimed placeholder equity and post-claim consolidated history avoid double-counting claimed tombstones', () => {
+  const members: any[] = [
+    {
+      id: 'mem-admin',
+      orgId: 'org-mix',
+      fullName: 'Founder Admin',
+      phoneOrEmail: 'admin@mix.org',
+      role: 'ORG_ADMIN',
+      approvalStatus: 'APPROVED',
+      joinedAt: '2026-01-01T00:00:00Z',
+      targetContributionUsd: 1000,
+      contributionPace: 'MONTHLY',
+      active: true,
+    },
+    {
+      id: 'mem-mock-pre',
+      orgId: 'org-mix',
+      fullName: 'Tariro (Mock Pre-Claim)',
+      phoneOrEmail: '',
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
+      isPlaceholder: true,
+      accountStatus: 'CLAIMED',
+      claimedByUid: 'uid-tariro-real',
+      claimedByMemberId: 'uid-tariro-real',
+      joinedAt: '2026-01-02T00:00:00Z',
+      targetContributionUsd: 1000,
+      contributionPace: 'MONTHLY',
+      active: false,
+    },
+    {
+      id: 'uid-tariro-real',
+      uid: 'uid-tariro-real',
+      orgId: 'org-mix',
+      fullName: 'Tariro Registered',
+      phoneOrEmail: 'tariro@mix.org',
+      role: 'MEMBER',
+      approvalStatus: 'APPROVED',
+      isPlaceholder: false,
+      accountStatus: 'ACTIVE',
+      linkedMemberIds: ['mem-mock-pre'],
+      joinedAt: '2026-02-01T00:00:00Z',
+      targetContributionUsd: 1000,
+      contributionPace: 'MONTHLY',
+      active: true,
+    },
+  ];
+
+  const contributions: any[] = [
+    {
+      id: 'CAP-A',
+      orgId: 'org-mix',
+      memberId: 'mem-admin',
+      memberName: 'Founder Admin',
+      direction: 'INITIAL',
+      amount: 1000,
+      note: 'Founder stake',
+      createdAt: '2026-01-01T00:00:00Z',
+      auditHash: 'h1',
+    },
+    {
+      id: 'CAP-MOCK',
+      orgId: 'org-mix',
+      memberId: 'mem-mock-pre',
+      memberName: 'Tariro (Mock Pre-Claim)',
+      direction: 'INITIAL',
+      amount: 600,
+      note: 'Pre-registration deposit',
+      createdAt: '2026-01-03T00:00:00Z',
+      auditHash: 'h2',
+    },
+    {
+      id: 'CAP-POST',
+      orgId: 'org-mix',
+      memberId: 'uid-tariro-real',
+      memberName: 'Tariro Registered',
+      direction: 'ADDITION',
+      amount: 400,
+      note: 'Post-registration top-up',
+      createdAt: '2026-02-05T00:00:00Z',
+      auditHash: 'h3',
+    },
+  ];
+
+  const equities = computeMemberEquities(members, contributions, 4000);
+  // Tombstone mem-mock-pre is excluded; total active partners = 2
+  assert.equal(equities.length, 2);
+
+  const tariroEq = equities.find((e) => e.member.id === 'uid-tariro-real')!;
+  const adminEq = equities.find((e) => e.member.id === 'mem-admin')!;
+  assert.equal(tariroEq.netContribution, 1000);
+  assert.equal(tariroEq.profitSharePercentage, 50);
+  assert.equal(tariroEq.impliedNavEquityUsd, 2000);
+  assert.equal(adminEq.profitSharePercentage, 50);
+});
+

@@ -603,6 +603,288 @@ test('RULE-08: Catch-All Rule — Any unlisted collection or path is strictly de
   }
 });
 
+// 9. ADMIN-ONLY CLAIM CODE VAULT (/organizations/{orgId}/claim_codes/{placeholderId})
+test('RULE-09: /organizations/{orgId}/claim_codes — Strictly isolated to verified Admin of same org', () => {
+  const adminAuth = { uid: TEST_ACCOUNTS.agroAdmin.uid, email: TEST_ACCOUNTS.agroAdmin.email };
+  const memberAuth = { uid: TEST_ACCOUNTS.agroMember.uid, email: TEST_ACCOUNTS.agroMember.email };
+  const crossOrgAdmin = { uid: TEST_ACCOUNTS.ventureAdmin.uid, email: TEST_ACCOUNTS.ventureAdmin.email };
+
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_codes',
+      orgId: TEST_ACCOUNTS.agroAdmin.orgId,
+      docId: 'mem-mock-01',
+      operation: 'read',
+      auth: adminAuth,
+    }).allowed,
+    true
+  );
+
+  // Regular member or cross-org Admin CANNOT read plaintext claim codes
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_codes',
+      orgId: TEST_ACCOUNTS.agroAdmin.orgId,
+      docId: 'mem-mock-01',
+      operation: 'read',
+      auth: memberAuth,
+    }).allowed,
+    false
+  );
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_codes',
+      orgId: TEST_ACCOUNTS.agroAdmin.orgId,
+      docId: 'mem-mock-01',
+      operation: 'create',
+      auth: crossOrgAdmin,
+      incomingData: { orgId: TEST_ACCOUNTS.agroAdmin.orgId, claimCode: 'CLM-STOLEN' },
+    }).allowed,
+    false
+  );
+});
+
+// 10. CLAIM TOKENS & ATOMIC CLAIM BATCH (/claim_tokens + /members getAfter())
+test('RULE-10: /claim_tokens & atomic placeholder claim prevent enumeration, replay & role escalation', () => {
+  const adminAuth = { uid: TEST_ACCOUNTS.agroAdmin.uid, email: TEST_ACCOUNTS.agroAdmin.email };
+  const newcomerAuth = { uid: 'uid-newcomer-claim-01', email: 'newcomer@agro.com' };
+  const tokenHash = 'sha256_token_abc123';
+  const orgId = TEST_ACCOUNTS.agroAdmin.orgId!;
+
+  // Listing /claim_tokens is strictly denied to prevent offline scanning
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_tokens',
+      docId: tokenHash,
+      operation: 'list',
+      auth: newcomerAuth,
+    }).allowed,
+    false
+  );
+
+  // Admin can mint OPEN token for their org; non-admin cannot
+  const openToken = {
+    id: tokenHash,
+    orgId,
+    placeholderMemberId: 'mem-mock-treasurer',
+    role: 'TREASURER',
+    status: 'OPEN',
+  };
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_tokens',
+      docId: tokenHash,
+      operation: 'create',
+      auth: adminAuth,
+      incomingData: openToken,
+    }).allowed,
+    true
+  );
+  assert.equal(
+    simulator.evaluate({
+      collection: 'claim_tokens',
+      docId: tokenHash,
+      operation: 'create',
+      auth: newcomerAuth,
+      incomingData: openToken,
+    }).allowed,
+    false
+  );
+
+  simulator.registerClaimToken(tokenHash, openToken);
+
+  const afterToken = {
+    ...openToken,
+    status: 'CLAIMED',
+    claimedByUid: newcomerAuth.uid,
+  };
+
+  // Atomic batch: Claimant creating own member doc matching token.role ('TREASURER') with valid getAfter token -> ALLOWED
+  assert.equal(
+    simulator.evaluate({
+      collection: 'members',
+      docId: newcomerAuth.uid,
+      operation: 'create',
+      auth: newcomerAuth,
+      incomingData: {
+        id: newcomerAuth.uid,
+        uid: newcomerAuth.uid,
+        orgId,
+        role: 'TREASURER',
+        approvalStatus: 'APPROVED',
+        active: true,
+        linkedMemberIds: ['mem-mock-treasurer'],
+        redeemedClaimTokenHash: tokenHash,
+      },
+      getAfterClaimToken: afterToken,
+    }).allowed,
+    true
+  );
+
+  // Role escalation attempt during claim (token says TREASURER, claimant tries ORG_ADMIN) -> DENIED!
+  assert.equal(
+    simulator.evaluate({
+      collection: 'members',
+      docId: newcomerAuth.uid,
+      operation: 'create',
+      auth: newcomerAuth,
+      incomingData: {
+        id: newcomerAuth.uid,
+        uid: newcomerAuth.uid,
+        orgId,
+        role: 'ORG_ADMIN',
+        approvalStatus: 'APPROVED',
+        active: true,
+        linkedMemberIds: ['mem-mock-treasurer'],
+        redeemedClaimTokenHash: tokenHash,
+      },
+      getAfterClaimToken: afterToken,
+    }).allowed,
+    false
+  );
+
+  // Claimant updating UNCLAIMED placeholder -> CLAIMED tombstone atomically -> ALLOWED; Replay -> DENIED!
+  const mockDoc = {
+    id: 'mem-mock-treasurer',
+    orgId,
+    role: 'TREASURER',
+    isPlaceholder: true,
+    accountStatus: 'UNCLAIMED',
+    claimCodeHash: tokenHash,
+    active: true,
+  };
+  assert.equal(
+    simulator.evaluate({
+      collection: 'members',
+      docId: mockDoc.id,
+      operation: 'update',
+      auth: newcomerAuth,
+      existingData: mockDoc,
+      incomingData: {
+        ...mockDoc,
+        accountStatus: 'CLAIMED',
+        claimedByUid: newcomerAuth.uid,
+        active: false,
+      },
+      getAfterClaimToken: afterToken,
+    }).allowed,
+    true
+  );
+  assert.equal(
+    simulator.evaluate({
+      collection: 'members',
+      docId: mockDoc.id,
+      operation: 'update',
+      auth: { uid: 'uid-second-user', email: 'second@agro.com' },
+      existingData: { ...mockDoc, accountStatus: 'CLAIMED', active: false },
+      incomingData: { ...mockDoc, accountStatus: 'CLAIMED', claimedByUid: 'uid-second-user', active: false },
+      getAfterClaimToken: { ...openToken, status: 'CLAIMED', claimedByUid: 'uid-second-user' },
+    }).allowed,
+    false
+  );
+});
+
+// 11. MEMBER CLAIM REQUESTS (/member_claim_requests/{requestId})
+test('RULE-11: /member_claim_requests — Requester creates PENDING only for self; only Admin resolves', () => {
+  const adminAuth = { uid: TEST_ACCOUNTS.agroAdmin.uid, email: TEST_ACCOUNTS.agroAdmin.email };
+  const memberAuth = { uid: TEST_ACCOUNTS.agroMember.uid, email: TEST_ACCOUNTS.agroMember.email };
+  const orgId = TEST_ACCOUNTS.agroAdmin.orgId!;
+
+  const pendingReq = {
+    id: 'CREQ-001',
+    orgId,
+    placeholderMemberId: 'mem-mock-01',
+    requesterUid: memberAuth.uid,
+    status: 'PENDING',
+  };
+
+  assert.equal(
+    simulator.evaluate({
+      collection: 'member_claim_requests',
+      docId: 'CREQ-001',
+      operation: 'create',
+      auth: memberAuth,
+      incomingData: pendingReq,
+    }).allowed,
+    true
+  );
+
+  // Member cannot self-approve a claim request
+  assert.equal(
+    simulator.evaluate({
+      collection: 'member_claim_requests',
+      docId: 'CREQ-001',
+      operation: 'update',
+      auth: memberAuth,
+      existingData: pendingReq,
+      incomingData: { ...pendingReq, status: 'APPROVED' },
+    }).allowed,
+    false
+  );
+
+  // Admin can approve/reject within their own org
+  assert.equal(
+    simulator.evaluate({
+      collection: 'member_claim_requests',
+      docId: 'CREQ-001',
+      operation: 'update',
+      auth: adminAuth,
+      existingData: pendingReq,
+      incomingData: { ...pendingReq, status: 'APPROVED' },
+    }).allowed,
+    true
+  );
+});
+
+// 12. RUNWAY PLEDGES RE-BINDING PROTECTION
+test('RULE-12: /runway_pledges update permits member consolidation only onto own uid for linkedMemberIds', () => {
+  const orgId = TEST_ACCOUNTS.agroAdmin.orgId!;
+  const memberUid = 'uid-claimed-pledger';
+  const memberAuth = { uid: memberUid, email: 'pledger@agro.com' };
+  simulator.registerMember(memberUid, {
+    role: 'MEMBER',
+    approvalStatus: 'APPROVED',
+    active: true,
+    orgId,
+    linkedMemberIds: ['mem-mock-pledger'],
+  });
+
+  const placeholderPledge = {
+    id: 'PLG-MOCK-1',
+    orgId,
+    planId: 'PLN-1',
+    memberId: 'mem-mock-pledger',
+    amount: 500,
+    status: 'ACTIVE',
+  };
+
+  // Linked owner can consolidate mock pledge onto their own uid
+  assert.equal(
+    simulator.evaluate({
+      collection: 'runway_pledges',
+      docId: 'PLG-MOCK-1',
+      operation: 'update',
+      auth: memberAuth,
+      existingData: placeholderPledge,
+      incomingData: { ...placeholderPledge, memberId: memberUid },
+    }).allowed,
+    true
+  );
+
+  // Hijacking an unrelated member's pledge -> DENIED!
+  assert.equal(
+    simulator.evaluate({
+      collection: 'runway_pledges',
+      docId: 'PLG-OTHER',
+      operation: 'update',
+      auth: memberAuth,
+      existingData: { ...placeholderPledge, memberId: 'mem-unrelated' },
+      incomingData: { ...placeholderPledge, memberId: memberUid },
+    }).allowed,
+    false
+  );
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

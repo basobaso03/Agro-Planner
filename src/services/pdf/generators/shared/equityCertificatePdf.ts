@@ -10,6 +10,7 @@ import { COMMON_TABLE_STYLES, PDF_THEME } from '../../core/pdfTheme.ts';
 import type { Organization } from '../../../../types/organization.ts';
 import type { MemberEquitySummary, OrgMember } from '../../../../types/agro.ts';
 import { formatCurrency } from '../../../../utils/currency.ts';
+import { isUnclaimedPlaceholder, matchesMemberRecord } from '../../../../utils/memberIdentity.ts';
 
 export interface EquityCertificatePdfInput {
   organization?: Partial<Organization> | null;
@@ -36,7 +37,7 @@ export function generateEquityCertificatePdf(input: EquityCertificatePdfInput): 
   });
 
   const memberSummary = input.targetMember
-    ? input.equitySummaries.find((s) => s.member.id === input.targetMember?.id)
+    ? input.equitySummaries.find((s) => matchesMemberRecord(s.member.id, input.targetMember) || matchesMemberRecord(input.targetMember?.id, s.member))
     : null;
 
   // 1. Stat Cards
@@ -70,7 +71,7 @@ export function generateEquityCertificatePdf(input: EquityCertificatePdfInput): 
   currentY += 3.5;
 
   const rows = input.equitySummaries.map((s) => [
-    s.member.fullName,
+    isUnclaimedPlaceholder(s.member) ? `${s.member.fullName} (Unclaimed)` : s.member.fullName,
     s.member.role.replace(/_/g, ' '),
     formatCurrency(s.grossContributed),
     formatCurrency(s.contraAdjustments),

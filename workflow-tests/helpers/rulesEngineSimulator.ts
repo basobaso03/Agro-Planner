@@ -30,6 +30,8 @@ export interface SecurityRulesEvaluationResult {
 
 export class RulesEngineSimulator {
   private membersDatabase: Record<string, any> = {};
+  private organizationsDatabase: Record<string, any> = {};
+  private claimTokensDatabase: Record<string, any> = {};
 
   constructor(membersDb: Record<string, any> = {}) {
     this.membersDatabase = membersDb;
@@ -43,6 +45,22 @@ export class RulesEngineSimulator {
     this.membersDatabase = {};
   }
 
+  public registerOrganization(orgId: string, data: any) {
+    this.organizationsDatabase[orgId] = data;
+  }
+
+  public clearOrganizations() {
+    this.organizationsDatabase = {};
+  }
+
+  public registerClaimToken(tokenHash: string, data: any) {
+    this.claimTokensDatabase[tokenHash] = data;
+  }
+
+  public clearClaimTokens() {
+    this.claimTokensDatabase = {};
+  }
+
   private isAuthenticated(context: RuleRequestContext): boolean {
     return context.request.auth !== null && Boolean(context.request.auth.uid);
   }
@@ -50,6 +68,51 @@ export class RulesEngineSimulator {
   private getMemberData(uid?: string): Record<string, any> | null {
     if (!uid) return null;
     return this.membersDatabase[uid] || null;
+  }
+
+  private isVerifiedOrgAdmin(context: RuleRequestContext, orgId?: string): boolean {
+    if (!this.isAuthenticated(context) || !orgId) return false;
+    const auth = context.request.auth!;
+    const member = this.getMemberData(auth.uid);
+    const isMemberAdmin = Boolean(
+      member &&
+      member.orgId === orgId &&
+      (member.approvalStatus === 'APPROVED' || !('approvalStatus' in member) || member.active === true) &&
+      ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN'].includes(member.role)
+    );
+    if (isMemberAdmin) return true;
+    const org = this.organizationsDatabase[orgId];
+    if (!org) return false;
+    return (
+      org.adminMemberId === auth.uid ||
+      Boolean(auth.email && org.adminEmail && org.adminEmail.toLowerCase() === auth.email.toLowerCase())
+    );
+  }
+
+  private isClaimingOwnToken(
+    context: RuleRequestContext,
+    memberDoc: Record<string, any> | undefined,
+    tokenHash: string | undefined,
+    afterTokenOverride?: Record<string, any> | null
+  ): boolean {
+    if (!this.isAuthenticated(context) || !memberDoc || typeof tokenHash !== 'string' || !tokenHash) {
+      return false;
+    }
+    const authUid = context.request.auth!.uid;
+    const beforeToken = this.claimTokensDatabase[tokenHash];
+    const afterToken = afterTokenOverride || null;
+    if (!beforeToken || !afterToken) return false;
+    return (
+      beforeToken.status === 'OPEN' &&
+      afterToken.status === 'CLAIMED' &&
+      afterToken.claimedByUid === authUid &&
+      memberDoc.orgId === afterToken.orgId &&
+      memberDoc.role === afterToken.role &&
+      memberDoc.approvalStatus === 'APPROVED' &&
+      memberDoc.active === true &&
+      Array.isArray(memberDoc.linkedMemberIds) &&
+      memberDoc.linkedMemberIds.includes(afterToken.placeholderMemberId)
+    );
   }
 
   // Multi-tenant helper: ZERO SUPER-ADMIN MONEY BACKDOOR
@@ -106,10 +169,12 @@ export class RulesEngineSimulator {
   public evaluate(params: {
     collection: string;
     docId: string;
-    operation: 'read' | 'create' | 'update' | 'delete';
+    operation: 'read' | 'get' | 'list' | 'create' | 'update' | 'delete';
     auth: AuthToken | null;
     existingData?: Record<string, any>;
     incomingData?: Record<string, any>;
+    orgId?: string;
+    getAfterClaimToken?: Record<string, any> | null;
   }): SecurityRulesEvaluationResult {
     const context: RuleRequestContext = {
       auth: params.auth,
@@ -120,7 +185,9 @@ export class RulesEngineSimulator {
       },
     };
 
-    const { collection, docId, operation } = params;
+    const { collection, docId, operation: rawOp } = params;
+    const operation: 'read' | 'create' | 'update' | 'delete' =
+      rawOp === 'get' || rawOp === 'list' ? 'read' : rawOp;
 
     // 1. /test/{docId}
     if (collection === 'test') {
@@ -148,6 +215,93 @@ export class RulesEngineSimulator {
       if (operation === 'delete') {
         const ok = this.isOrgAdmin(context, docId);
         return { allowed: ok, reason: ok ? undefined : 'Only admin can delete organization' };
+      }
+    }
+
+    // 2.5 /organizations/{orgId}/claim_codes/{placeholderId} (ADMIN-ONLY VAULT)
+    if (collection === 'claim_codes' || collection === 'organizations/claim_codes') {
+      const targetOrgId =
+        params.orgId || params.existingData?.orgId || params.incomingData?.orgId;
+      const placeholderId = docId.includes('/') ? docId.split('/').pop()! : docId;
+      const ok = this.isVerifiedOrgAdmin(context, targetOrgId) && this.isValidId(placeholderId);
+      return {
+        allowed: ok,
+        reason: ok ? undefined : 'Only verified Admins of this organization can access claim_codes vault',
+      };
+    }
+
+    // 2.6 /claim_tokens/{claimTokenHash} (HASHED ONE-TIME CLAIM TOKENS)
+    if (collection === 'claim_tokens') {
+      if (rawOp === 'list') {
+        return { allowed: false, reason: 'allow list: if false on claim_tokens' };
+      }
+      if (operation === 'read') {
+        const ok = this.isAuthenticated(context) && this.isValidId(docId);
+        return { allowed: ok, reason: ok ? undefined : 'Must be authenticated with valid token hash' };
+      }
+      if (operation === 'create') {
+        const incoming = context.request.resource?.data || {};
+        const ok =
+          this.isVerifiedOrgAdmin(context, incoming.orgId) &&
+          this.isValidId(docId) &&
+          incoming.status === 'OPEN';
+        return { allowed: ok, reason: ok ? undefined : 'Only verified Org Admin can mint OPEN claim_tokens' };
+      }
+      if (operation === 'update') {
+        const existing = context.resource?.data || {};
+        const incoming = context.request.resource?.data || {};
+        const adminAllowed = this.isVerifiedOrgAdmin(context, existing.orgId);
+        const claimantAllowed = Boolean(
+          this.isAuthenticated(context) &&
+          existing.status === 'OPEN' &&
+          incoming.status === 'CLAIMED' &&
+          incoming.claimedByUid === context.request.auth?.uid &&
+          incoming.orgId === existing.orgId &&
+          incoming.placeholderMemberId === existing.placeholderMemberId &&
+          incoming.role === existing.role
+        );
+        const ok = this.isValidId(docId) && (adminAllowed || claimantAllowed);
+        return { allowed: ok, reason: ok ? undefined : 'Claim token update denied (already claimed or mismatched)' };
+      }
+      if (operation === 'delete') {
+        const existing = context.resource?.data || {};
+        const ok = this.isVerifiedOrgAdmin(context, existing.orgId);
+        return { allowed: ok };
+      }
+    }
+
+    // 2.7 /member_claim_requests/{requestId} (PATH B LINK REQUESTS)
+    if (collection === 'member_claim_requests') {
+      const targetOrgId = params.existingData?.orgId || params.incomingData?.orgId;
+      const existing = context.resource?.data || {};
+      const incoming = context.request.resource?.data || {};
+      if (operation === 'read') {
+        const ok =
+          this.isVerifiedOrgAdmin(context, existing.orgId) ||
+          (this.isApprovedMemberOfOrg(context, existing.orgId) &&
+            existing.requesterUid === context.request.auth?.uid);
+        return { allowed: ok, reason: ok ? undefined : 'Claim requests restricted to Admin or requester' };
+      }
+      if (operation === 'create') {
+        const ok =
+          this.isApprovedMemberOfOrg(context, incoming.orgId) &&
+          this.isValidId(docId) &&
+          incoming.requesterUid === context.request.auth?.uid &&
+          incoming.status === 'PENDING';
+        return { allowed: ok, reason: ok ? undefined : 'Must create PENDING claim request for self within org' };
+      }
+      if (operation === 'update') {
+        const ok =
+          this.isVerifiedOrgAdmin(context, existing.orgId) && incoming.orgId === existing.orgId;
+        return { allowed: ok, reason: ok ? undefined : 'Only Org Admin can resolve claim requests' };
+      }
+      if (operation === 'delete') {
+        const ok =
+          this.isVerifiedOrgAdmin(context, targetOrgId) ||
+          (this.isAuthenticated(context) &&
+            existing.requesterUid === context.request.auth?.uid &&
+            existing.status === 'PENDING');
+        return { allowed: ok };
       }
     }
 
@@ -204,11 +358,9 @@ export class RulesEngineSimulator {
       }
       if (operation === 'create') {
         if (!this.isAuthenticated(context) || !this.isValidId(docId)) return { allowed: false };
-        const member = this.getMemberData(context.request.auth?.uid);
-        const isAdmin = Boolean(member && (member.role === 'ORG_ADMIN' || member.role === 'SYNDICATE_ADMIN'));
-        if (isAdmin) return { allowed: true };
-        const isSelf = context.request.auth?.uid === docId;
         const incoming = context.request.resource?.data || {};
+        if (this.isVerifiedOrgAdmin(context, incoming.orgId)) return { allowed: true };
+        const isSelf = context.request.auth?.uid === docId;
         const emailMatch = Boolean(
           context.request.auth?.email &&
           incoming.email &&
@@ -220,49 +372,97 @@ export class RulesEngineSimulator {
         const statusAllowed =
           !('approvalStatus' in incoming) ||
           ['PENDING_APPROVAL', 'APPROVED'].includes(incoming.approvalStatus);
-        const ok = (isSelf || emailMatch) && roleAllowed && statusAllowed;
+        const claimValid =
+          !('redeemedClaimTokenHash' in incoming) ||
+          incoming.redeemedClaimTokenHash == null ||
+          this.isClaimingOwnToken(
+            context,
+            incoming,
+            incoming.redeemedClaimTokenHash,
+            params.getAfterClaimToken
+          );
+        const ok = (isSelf || emailMatch) && roleAllowed && statusAllowed && claimValid;
         return { allowed: ok, reason: ok ? undefined : 'Unauthorized member creation payload' };
       }
       if (operation === 'update') {
         if (!this.isAuthenticated(context) || !this.isValidId(docId)) return { allowed: false };
         const member = this.getMemberData(context.request.auth?.uid);
         const targetOrgId = params.existingData?.orgId;
+        const existing = context.resource?.data || {};
+        const incoming = context.request.resource?.data || {};
 
-        // Admin of the organization can promote, demote, reassign, or suspend
+        // Verified Admin of the organization can promote, demote, reassign, merge, or suspend
         const isTenantAdmin = Boolean(
-          member &&
-          (member.role === 'ORG_ADMIN' || member.role === 'SYNDICATE_ADMIN') &&
-          (!targetOrgId || !member.orgId || member.orgId === targetOrgId)
+          (targetOrgId && this.isVerifiedOrgAdmin(context, targetOrgId)) ||
+          ((!('orgId' in existing) || existing.orgId == null) &&
+            this.isVerifiedOrgAdmin(context, incoming.orgId)) ||
+          (member &&
+            (member.role === 'ORG_ADMIN' || member.role === 'SYNDICATE_ADMIN') &&
+            (!targetOrgId || !member.orgId || member.orgId === targetOrgId))
         );
         if (isTenantAdmin) return { allowed: true };
 
+        // Claimant atomically marking an UNCLAIMED placeholder as CLAIMED in the same batch as claim_tokens/{hash}
+        const placeholderClaimOk = Boolean(
+          existing.isPlaceholder === true &&
+          (existing.accountStatus ?? 'UNCLAIMED') === 'UNCLAIMED' &&
+          typeof existing.claimCodeHash === 'string' &&
+          existing.claimCodeHash.length > 0 &&
+          incoming.accountStatus === 'CLAIMED' &&
+          incoming.active === false &&
+          incoming.claimedByUid === context.request.auth?.uid &&
+          incoming.orgId === existing.orgId &&
+          incoming.role === existing.role &&
+          params.getAfterClaimToken &&
+          params.getAfterClaimToken.status === 'CLAIMED' &&
+          params.getAfterClaimToken.claimedByUid === context.request.auth?.uid &&
+          params.getAfterClaimToken.placeholderMemberId === docId
+        );
+        if (placeholderClaimOk) return { allowed: true };
+
         const isSelf = context.request.auth?.uid === docId;
-        const existing = context.resource?.data || {};
-        const incoming = context.request.resource?.data || {};
         const affectedKeys = Object.keys(incoming).filter((k) => incoming[k] !== existing[k]);
-        const restrictedKeys = ['role', 'approvalStatus', 'active', 'assignedLocationId'];
+        const restrictedKeys = ['role', 'approvalStatus', 'active', 'assignedLocationId', 'linkedMemberIds'];
         const touchesRestricted = affectedKeys.some((k) => restrictedKeys.includes(k));
-        const isOnboardingWithoutOrg = !('orgId' in existing) || existing.orgId == null;
+        const isOnboardingWithoutOrg =
+          (!('orgId' in existing) || existing.orgId == null) &&
+          'orgId' in incoming &&
+          incoming.orgId != null;
+        const isClaimBatchSelf = Boolean(
+          'redeemedClaimTokenHash' in incoming &&
+          this.isClaimingOwnToken(
+            context,
+            incoming,
+            incoming.redeemedClaimTokenHash,
+            params.getAfterClaimToken
+          )
+        );
 
-        if (isSelf) {
-          if (!touchesRestricted || existing.approvalStatus === 'PENDING_APPROVAL' || isOnboardingWithoutOrg) {
-            return { allowed: true };
-          }
-          return { allowed: false, reason: 'Self cannot modify role, approvalStatus, active, or assignedLocation' };
-        }
-
-        const emailMatch =
+        const emailMatch = Boolean(
           context.request.auth?.email &&
           existing.email &&
-          context.request.auth.email.toLowerCase() === existing.email.toLowerCase();
-        if (emailMatch && (!touchesRestricted || existing.approvalStatus === 'PENDING_APPROVAL' || isOnboardingWithoutOrg)) {
-          return { allowed: true };
+          context.request.auth.email.toLowerCase() === existing.email.toLowerCase()
+        );
+        if (isSelf || emailMatch) {
+          if (existing.approvalStatus === 'SUSPENDED') {
+            return { allowed: false, reason: 'Suspended account cannot self-update' };
+          }
+          if (
+            !touchesRestricted ||
+            existing.approvalStatus === 'PENDING_APPROVAL' ||
+            isOnboardingWithoutOrg ||
+            isClaimBatchSelf ||
+            (isSelf && this.isVerifiedOrgAdmin(context, incoming.orgId))
+          ) {
+            return { allowed: true };
+          }
+          return { allowed: false, reason: 'Self cannot modify role, approvalStatus, active, assignedLocation, or linkedMemberIds' };
         }
         return { allowed: false, reason: 'Unauthorized member update' };
       }
       if (operation === 'delete') {
         const targetOrgId = params.existingData?.orgId;
-        return { allowed: this.isOrgAdmin(context, targetOrgId) };
+        return { allowed: this.isVerifiedOrgAdmin(context, targetOrgId) || context.request.auth?.uid === docId };
       }
     }
 
@@ -563,12 +763,34 @@ export class RulesEngineSimulator {
             member?.role !== 'GROUND_OPERATOR',
         };
       }
-      if (operation === 'create' || operation === 'update') {
+      if (operation === 'create') {
         const incoming = context.request.resource?.data || {};
         const isSelf = incoming.memberId === context.request.auth?.uid;
         const isTreas = this.isTreasurerOfOrg(context, targetOrgId);
-        const ok = this.isApprovedMemberOfOrg(context, targetOrgId) && (isSelf || isTreas);
+        const ok = this.isApprovedMemberOfOrg(context, targetOrgId) && this.isValidId(docId) && (isSelf || isTreas);
         return { allowed: ok };
+      }
+      if (operation === 'update') {
+        const existing = context.resource?.data || {};
+        const incoming = context.request.resource?.data || {};
+        const member = this.getMemberData(context.request.auth?.uid);
+        const isTreas = this.isTreasurerOfOrg(context, existing.orgId);
+        const isVerifiedAdmin = this.isVerifiedOrgAdmin(context, existing.orgId);
+        const ownsOrLinked = Boolean(
+          existing.memberId === context.request.auth?.uid ||
+          (Array.isArray(member?.linkedMemberIds) && member.linkedMemberIds.includes(existing.memberId))
+        );
+        const unchangedOwner =
+          incoming.memberId === existing.memberId &&
+          (existing.memberId === context.request.auth?.uid || isTreas);
+        const changedOwnerAllowed =
+          incoming.memberId !== existing.memberId &&
+          (isVerifiedAdmin || (ownsOrLinked && incoming.memberId === context.request.auth?.uid));
+        const ok =
+          this.isApprovedMemberOfOrg(context, existing.orgId) &&
+          incoming.orgId === existing.orgId &&
+          (unchangedOwner || changedOwnerAllowed);
+        return { allowed: ok, reason: ok ? undefined : 'Unauthorized pledge update or cross-member pledge re-binding' };
       }
       if (operation === 'delete') return { allowed: false };
     }

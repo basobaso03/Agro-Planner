@@ -55,6 +55,11 @@ import {
 } from './services/appUpdateService.ts';
 import { ForceUpdateModal } from './components/ForceUpdateModal.tsx';
 import { PERMISSIONS } from './utils/permissions.ts';
+import {
+  filterVisibleOrgMembers,
+  isValidRealEmail,
+  matchesMemberRecord,
+} from './utils/memberIdentity.ts';
 import { FONT_OPTIONS, type FontStyleId } from './types/theme.ts';
 import { SplashScreen } from './components/SplashScreen.tsx';
 import { NavigationProvider } from './navigation/NavigationProvider.tsx';
@@ -283,15 +288,18 @@ export default function App() {
   // Resolve the authenticated user's OrgMember profile strictly from activeSession
   const activeMember: OrgMember | null = useMemo(() => {
     if (!activeSession) return null;
-    const normEmail = activeSession.email.trim().toLowerCase();
+    const normEmail = isValidRealEmail(activeSession.email)
+      ? activeSession.email.trim().toLowerCase()
+      : '';
 
     const matches = state.members.filter(
       (m) =>
-        m.id === activeSession.uid ||
-        m.uid === activeSession.uid ||
-        (normEmail &&
-          ((m.email || '').trim().toLowerCase() === normEmail ||
-            (m.phoneOrEmail || '').trim().toLowerCase() === normEmail))
+        m.accountStatus !== 'CLAIMED' &&
+        (m.id === activeSession.uid ||
+          m.uid === activeSession.uid ||
+          (normEmail &&
+            ((isValidRealEmail(m.email) && m.email!.trim().toLowerCase() === normEmail) ||
+              (isValidRealEmail(m.phoneOrEmail) && m.phoneOrEmail!.trim().toLowerCase() === normEmail))))
     );
 
     const found =
@@ -536,7 +544,7 @@ export default function App() {
 
   const orgMembers = useMemo(() => {
     if (!currentOrgId) return [];
-    return state.members.filter((m) => m.orgId === currentOrgId);
+    return filterVisibleOrgMembers(state.members, currentOrgId);
   }, [state.members, currentOrgId]);
 
   const orgDebtLiabilities = useMemo(() => {
@@ -616,7 +624,11 @@ export default function App() {
     const unifiedMembers = activePlan
       ? orgMembers.map((m) => {
         const pledge = (state.runwayPledges || []).find(
-          (p) => p.planId === activePlan.id && p.memberId === m.id
+          (p) =>
+            p.planId === activePlan.id &&
+            p.status !== 'MERGED' &&
+            p.status !== 'WITHDRAWN' &&
+            matchesMemberRecord(p.memberId, m)
         );
         if (pledge && pledge.amount > 0) {
           return {

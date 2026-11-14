@@ -235,6 +235,49 @@ test('WF-05: signOutCloud completely wipes all localStorage, sessionStorage, Ind
   );
 });
 
+test('WF-06: New user can join organization with 24-hr Org Invite Code + Personal Claim Code simultaneously', async () => {
+  const founder = toOrgMember(TEST_ACCOUNTS.agroAdmin);
+  const org = dataService.createOrganization({
+    name: 'Co-op Onboarding Claim Farm',
+    type: 'AGRO_FARMING',
+    actor: founder,
+    defaultTargetContributionUsd: 1000,
+  });
+  const activeFounder = dataService.getState().members.find((m) => m.id === founder.id) || {
+    ...founder,
+    orgId: org.id,
+  };
+
+  const placeholder = dataService.addMember({
+    fullName: 'Future Joiner Placeholder',
+    phoneOrEmail: '',
+    role: 'TREASURER',
+    initialContributionUsd: 350,
+    isPlaceholder: true,
+    actor: activeFounder,
+  });
+  const personalCode = dataService.getPlaceholderClaimCode(placeholder.id) || '';
+  assert.match(personalCode, /^CLM-/);
+
+  const newcomer = toOrgMember({
+    ...TEST_ACCOUNTS.candidateValid,
+    id: 'uid-onboard-claim-user',
+    uid: 'uid-onboard-claim-user',
+    email: 'future.joiner@example.com',
+    orgId: '',
+  });
+  const joinedOrg = await dataService.joinOrganizationWithCode({
+    inviteCode: org.currentInviteCode,
+    claimCode: personalCode,
+    actor: newcomer,
+  });
+  assert.equal(joinedOrg.id, org.id);
+
+  const merged = dataService.getState().members.find((m) => m.id === newcomer.id);
+  assert.equal(merged?.role, 'TREASURER');
+  assert.ok(merged?.linkedMemberIds?.includes(placeholder.id));
+});
+
 test.after(() => {
   setTimeout(() => process.exit(0), 100);
 });

@@ -13,6 +13,10 @@ import {
   Users,
   Sparkles,
   Pencil,
+  KeyRound,
+  Link2,
+  UserPlus,
+  RefreshCw,
 } from 'lucide-react';
 import type {
   CapitalContributionEvent,
@@ -29,7 +33,16 @@ import { dataService } from '../services/dataService.ts';
 import { useRunway } from '../hooks/useRunway.ts';
 import { ContributionSheet } from '../sheets/pool/ContributionSheet.tsx';
 import { TargetFundraisingSheet } from '../sheets/pool/TargetFundraisingSheet.tsx';
+import { BulkMockContributorsSheet } from '../sheets/pool/BulkMockContributorsSheet.tsx';
+import { LinkMemberSheet } from '../sheets/pool/LinkMemberSheet.tsx';
+import { ClaimProfileSheet } from '../sheets/pool/ClaimProfileSheet.tsx';
+import { AddMemberSheet } from '../sheets/pool/AddMemberSheet.tsx';
 import { MemberRoleSheet } from '../sheets/common/MemberRoleSheet.tsx';
+import {
+  filterVisibleOrgMembers,
+  isUnclaimedPlaceholder,
+  matchesMemberRecord,
+} from '../utils/memberIdentity.ts';
 import { PdfExportButton } from './ui/PdfExportButton.tsx';
 import { generateEquityCertificatePdf } from '../services/pdf/generators/shared/equityCertificatePdf.ts';
 import { buildExportFilename } from '../utils/pdfFilename.ts';
@@ -41,9 +54,9 @@ interface PoolEquityTabProps {
   locations: FarmLocation[];
   activeMember: OrgMember;
   activeOrg?: Organization | null;
-  onAddMember: (data: {
+  onAddMember?: (data: {
     fullName: string;
-    phoneOrEmail: string;
+    phoneOrEmail?: string;
     role: Role;
     assignedLocationId?: string;
     initialContributionUsd?: number;
@@ -79,6 +92,23 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
 
   const [simulatedProfit, setSimulatedProfit] = useState('2500');
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Placeholder / Mock member management state
+  const [showAddMemberSheet, setShowAddMemberSheet] = useState(false);
+  const [showBatchMockSheet, setShowBatchMockSheet] = useState(false);
+  const [showClaimSheet, setShowClaimSheet] = useState(false);
+  const [linkingContext, setLinkingContext] = useState<{
+    placeholder: OrgMember;
+    preselectedTargetMemberId?: string;
+    claimRequestId?: string;
+  } | null>(null);
+  const [claimCodeSheet, setClaimCodeSheet] = useState<{
+    member: OrgMember;
+    code: string;
+    copied?: boolean;
+  } | null>(null);
+  const [claimCodeBusy, setClaimCodeBusy] = useState(false);
+  const [poolActionNotice, setPoolActionNotice] = useState<string | null>(null);
 
   // Log Contribution / Contra Modal State
   const [contribModal, setContribModal] = useState<{
@@ -130,7 +160,14 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
     setCError('');
 
     if (activePlan) {
-      const pl = runway.pledges.find((p) => p.planId === activePlan.id && p.memberId === memberId);
+      const targetEq = memberEquities.find((e) => e.member.id === memberId);
+      const pl = runway.pledges.find(
+        (p) =>
+          p.planId === activePlan.id &&
+          p.status !== 'MERGED' &&
+          p.status !== 'WITHDRAWN' &&
+          (targetEq ? matchesMemberRecord(p.memberId, targetEq.member) : p.memberId === memberId)
+      );
       const paid = pl?.paidAmount ?? 0;
       const pledged = pl?.pledgedAmount ?? pl?.amount ?? 0;
       setApplyToRunway(Boolean(pl && paid < pledged));
@@ -217,6 +254,57 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
   const canLogCapital = PERMISSIONS.canLogCapitalDeposit(activeMember.role);
   const canPostContra = PERMISSIONS.canPostContraReversals(activeMember.role);
   const canViewUnmasked = PERMISSIONS.canViewUnmaskedPII(activeMember.role);
+  const isAgroOrg = activeOrg?.type !== 'GENERAL_VENTURE';
+
+  const snapshot = dataService.getState();
+  const visibleOrgMembers = filterVisibleOrgMembers(snapshot.members || [], activeMember.orgId);
+  const unclaimedPlaceholders = visibleOrgMembers.filter((m) => isUnclaimedPlaceholder(m));
+  const pendingClaimRequests = (snapshot.memberClaimRequests || []).filter(
+    (r) => (!activeMember.orgId || r.orgId === activeMember.orgId) && r.status === 'PENDING'
+  );
+
+  const handleOpenClaimCode = async (member: OrgMember) => {
+    setPoolActionNotice(null);
+    let code = dataService.getPlaceholderClaimCode(member.id);
+    if (!code && activeMember.orgId) {
+      setClaimCodeBusy(true);
+      try {
+        code = await dataService.fetchPlaceholderClaimCode(member.id, activeMember.orgId);
+      } finally {
+        setClaimCodeBusy(false);
+      }
+    }
+    setClaimCodeSheet({ member, code: code || '' });
+  };
+
+  const handleRegenerateClaimCode = async () => {
+    if (!claimCodeSheet) return;
+    setClaimCodeBusy(true);
+    try {
+      const freshCode = await dataService.regeneratePlaceholderClaimCode({
+        placeholderMemberId: claimCodeSheet.member.id,
+        actor: activeMember,
+      });
+      setClaimCodeSheet({ member: claimCodeSheet.member, code: freshCode, copied: false });
+      setPoolActionNotice(`Generated a new Claim Code for ${claimCodeSheet.member.fullName}.`);
+    } catch (err: unknown) {
+      setPoolActionNotice(err instanceof Error ? err.message : 'Failed to regenerate claim code.');
+    } finally {
+      setClaimCodeBusy(false);
+    }
+  };
+
+  const handleRejectClaimRequest = async (requestId: string) => {
+    try {
+      await dataService.rejectMemberClaimRequest({
+        requestId,
+        actor: activeMember,
+      });
+      setPoolActionNotice('Profile link request rejected.');
+    } catch (err: unknown) {
+      setPoolActionNotice(err instanceof Error ? err.message : 'Failed to reject link request.');
+    }
+  };
 
   // Calculate Organization Total Target Commitment
   const totalTargetGoal = memberEquities.reduce((acc, eq) => acc + (eq.targetContributionUsd || 1000), 0);
@@ -423,6 +511,101 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
         </div>
       </section>
 
+      {/* Newcomer Prompt to Claim Pre-Recorded Mock Profile */}
+      {!canManageMembers && unclaimedPlaceholders.length > 0 && !(activeMember.linkedMemberIds?.length) && (
+        <div className="p-4 rounded-3xl bg-indigo-50 border border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-indigo-950 uppercase tracking-wide">
+                Contributed Before Joining?
+              </p>
+              <p className="text-[11px] text-indigo-900 font-medium mt-0.5">
+                Claim your pre-registered contributor account with your Personal Claim Code or send a link request to an admin.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowClaimSheet(true)}
+            className="self-start sm:self-auto px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs cursor-pointer transition-colors"
+          >
+            Claim My Profile
+          </button>
+        </div>
+      )}
+
+      {/* Pending Claim Requests Alert for Admins */}
+      {canManageMembers && pendingClaimRequests.length > 0 && (
+        <div className="p-4 rounded-3xl bg-amber-50 border border-amber-300 space-y-2.5 shadow-xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-amber-800" />
+              <span className="text-xs font-black text-amber-950 uppercase tracking-wide">
+                {pendingClaimRequests.length} Profile Link Request{pendingClaimRequests.length > 1 ? 's' : ''} Pending
+              </span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {pendingClaimRequests.map((req) => {
+              const placeholder = visibleOrgMembers.find((m) => m.id === req.placeholderMemberId);
+              return (
+                <div
+                  key={req.id}
+                  className="p-2.5 rounded-2xl bg-white border border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs"
+                >
+                  <div>
+                    <span className="font-black text-slate-950">{req.requesterName}</span>
+                    <span className="text-slate-600 font-medium"> requested link to </span>
+                    <span className="font-black text-amber-900">{req.placeholderName}</span>
+                    {req.note && <p className="text-[11px] text-slate-500 mt-0.5">Note: {req.note}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {placeholder && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLinkingContext({
+                            placeholder,
+                            preselectedTargetMemberId: req.requesterMemberId || req.requesterUid,
+                            claimRequestId: req.id,
+                          })
+                        }
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] cursor-pointer"
+                      >
+                        Approve &amp; Link
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRejectClaimRequest(req.id)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {poolActionNotice && (
+        <div className="p-3 rounded-2xl bg-slate-900 text-white text-xs font-bold flex items-center justify-between gap-2">
+          <span>{poolActionNotice}</span>
+          <button
+            type="button"
+            onClick={() => setPoolActionNotice(null)}
+            className="text-slate-300 hover:text-white cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 3. MEMBER EQUITY & TARGET CONTRIBUTION CARDS */}
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -434,16 +617,41 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
               Progress towards agreed capital target and equity ownership
             </p>
           </div>
-          <span className="text-xs font-mono font-black text-slate-800 bg-white border border-[#E8DFCE] px-2.5 py-1 rounded-full shadow-xs">
-            {memberEquities.length} Active Partners
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {canCreateMembers && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowAddMemberSheet(true)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>+ Add Contributor</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBatchMockSheet(true)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>+ Batch Mock List</span>
+                </button>
+              </>
+            )}
+            <span className="text-xs font-mono font-black text-slate-800 bg-white border border-[#E8DFCE] px-2.5 py-1 rounded-full shadow-xs">
+              {memberEquities.length} Active Partners
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {memberEquities.map((eq) => {
             const assignedLoc = locations.find((l) => l.id === eq.member.assignedLocationId);
-            const isCurrentViewer = eq.member.id === activeMember.id;
-            const contactDisplay = maskContact(eq.member.phoneOrEmail, canViewUnmasked);
+            const isCurrentViewer =
+              matchesMemberRecord(eq.member.id, activeMember) || eq.member.id === activeMember.id;
+            const isPlaceholder = isUnclaimedPlaceholder(eq.member);
+            const hasLinkedHistory = Boolean(eq.member.linkedMemberIds?.length);
+            const contactDisplay = maskContact(eq.member.phoneOrEmail || '', canViewUnmasked);
 
             const targetUsd = eq.targetContributionUsd || 1000;
             const progress = eq.progressPercentage;
@@ -455,26 +663,40 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                 key={eq.member.id}
                 className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-3.5 transition-all shadow-xs ${isCurrentViewer
                   ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                  : 'bg-white border-[#E8DFCE] hover:border-[#D5C9B3]'
+                  : isPlaceholder
+                    ? 'bg-amber-50/40 border-amber-300 hover:border-amber-400'
+                    : 'bg-white border-[#E8DFCE] hover:border-[#D5C9B3]'
                   }`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <h3 className="text-base font-black text-slate-950">{eq.member.fullName}</h3>
                         {isCurrentViewer && (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300">
                             Your Stake
                           </span>
                         )}
+                        {isPlaceholder && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            Unclaimed · Mock
+                          </span>
+                        )}
+                        {hasLinkedHistory && !isPlaceholder && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-300">
+                            Linked ✓
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-600 font-bold">
                         {eq.member.role.replace(/_/g, ' ')}
-                        {assignedLoc ? ` · ${assignedLoc.name}` : ' · Remote'}
+                        {isAgroOrg ? (assignedLoc ? ` · ${assignedLoc.name}` : ' · Remote') : ''}
                       </p>
                       <p className="text-[11px] font-mono text-slate-500 font-medium mt-0.5">
-                        Contact: {contactDisplay}
+                        {isPlaceholder
+                          ? (eq.member.phoneOrEmail ? `Contact: ${contactDisplay}` : 'Awaiting future registration')
+                          : `Contact: ${contactDisplay}`}
                       </p>
                     </div>
 
@@ -549,7 +771,13 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                   </div>
 
                   {activePlan && (() => {
-                    const pl = runway.pledges.find((p) => p.planId === activePlan.id && p.memberId === eq.member.id);
+                    const pl = runway.pledges.find(
+                      (p) =>
+                        p.planId === activePlan.id &&
+                        p.status !== 'MERGED' &&
+                        p.status !== 'WITHDRAWN' &&
+                        matchesMemberRecord(p.memberId, eq.member)
+                    );
                     if (!pl) return null;
                     return (
                       <div className="p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 flex items-center justify-between text-xs">
@@ -598,6 +826,29 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
                       >
                         <span>⚙️ Change Role</span>
                       </button>
+                    )}
+
+                    {canManageMembers && isPlaceholder && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenClaimCode(eq.member)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 text-xs font-black flex items-center gap-1 cursor-pointer transition-colors"
+                          title="View or share Personal Claim Code"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span>Claim Code</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLinkingContext({ placeholder: eq.member })}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Link to a registered user"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          <span>Link to User</span>
+                        </button>
+                      </>
                     )}
                   </div>
 
@@ -683,6 +934,108 @@ export const PoolEquityTab: React.FC<PoolEquityTabProps> = ({
           member={roleModalMember}
           activeMember={activeMember}
         />
+      )}
+
+      {showAddMemberSheet && (
+        <AddMemberSheet
+          isOpen={showAddMemberSheet}
+          onClose={() => setShowAddMemberSheet(false)}
+          activeMember={activeMember}
+        />
+      )}
+
+      {showBatchMockSheet && (
+        <BulkMockContributorsSheet
+          isOpen={showBatchMockSheet}
+          onClose={() => setShowBatchMockSheet(false)}
+          activeMember={activeMember}
+          defaultPlanId={activePlan?.id || ''}
+        />
+      )}
+
+      {showClaimSheet && (
+        <ClaimProfileSheet
+          isOpen={showClaimSheet}
+          onClose={() => setShowClaimSheet(false)}
+          activeMember={activeMember}
+        />
+      )}
+
+      {linkingContext && (
+        <LinkMemberSheet
+          isOpen={Boolean(linkingContext)}
+          onClose={() => setLinkingContext(null)}
+          placeholderMember={linkingContext.placeholder}
+          activeMember={activeMember}
+          preselectedTargetMemberId={linkingContext.preselectedTargetMemberId}
+          claimRequestId={linkingContext.claimRequestId}
+        />
+      )}
+
+      {claimCodeSheet && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-[#E8DFCE] p-5 space-y-4 shadow-xl">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-black text-slate-950">
+                  Personal Claim Code
+                </h4>
+                <p className="text-xs text-slate-600 font-medium">
+                  Share privately with <strong>{claimCodeSheet.member.fullName}</strong> so they can claim their profile when registering.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setClaimCodeSheet(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {claimCodeSheet.code ? (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 flex items-center justify-between gap-2">
+                <span className="font-mono font-black text-lg text-amber-950 tracking-wider">
+                  {claimCodeSheet.code}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(claimCodeSheet.code);
+                    setClaimCodeSheet({ ...claimCodeSheet, copied: true });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black flex items-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{claimCodeSheet.copied ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-slate-100 text-xs text-slate-700 font-medium">
+                {claimCodeBusy ? 'Loading claim code...' : 'Claim code not cached yet. Click Regenerate to issue a fresh personal claim code.'}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                disabled={claimCodeBusy}
+                onClick={handleRegenerateClaimCode}
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${claimCodeBusy ? 'animate-spin' : ''}`} />
+                <span>Regenerate Code</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setClaimCodeSheet(null)}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

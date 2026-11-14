@@ -1115,3 +1115,107 @@ test('U-17: Timeline "How to Read" guide excludes agro terminology for General B
   assert.match(agroCopy.guideTitle, /Agriculture/);
   assert.match(agroCopy.dipDescription, /feed, chicks/i);
 });
+
+test('U-18: computeFundingLayers ignores MERGED and WITHDRAWN pledges without double-counting after linking', () => {
+  const plan: RunwayPlan = {
+    id: 'RWY-U18',
+    orgId: 'org-u18',
+    name: 'General Venture Cycle',
+    orgType: 'GENERAL_VENTURE',
+    mode: 'SIMPLE',
+    status: 'PLEDGING',
+    enforcement: 'STRICT',
+    startDate: '2026-03-01T00:00:00Z',
+    contingencyMode: 'PERCENT',
+    contingencyPercent: 0,
+    targetBasis: 'GROSS',
+    activationThresholdPct: 100,
+    openingCashAdopted: 0,
+    plannedFinancing: [],
+    phases: [],
+    showMemberPledges: true,
+    collectionMode: 'ANYTIME',
+    milestonesReached: {},
+    version: 1,
+    createdByMemberId: 'mem-1',
+    createdByName: 'Admin',
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-01T00:00:00Z',
+    auditHash: 'h-u18',
+  };
+
+  const lines: RunwayLine[] = [
+    {
+      id: 'L1',
+      planId: plan.id,
+      orgId: plan.orgId,
+      kind: 'COST',
+      title: 'Inventory Stock',
+      name: 'Inventory Stock',
+      category: 'STOCK',
+      plannedDate: '2026-03-05T00:00:00Z',
+      unitCost: 1000,
+      qty: 1,
+      priority: 'ESSENTIAL',
+      origin: 'PLAN',
+      approval: 'APPROVED',
+      sortOrder: 1,
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-01T00:00:00Z',
+      auditHash: 'h-l1',
+    },
+  ];
+
+  const pledges: RunwayPledge[] = [
+    {
+      id: 'PLG-SURVIVOR',
+      planId: plan.id,
+      orgId: plan.orgId,
+      memberId: 'uid-real-1',
+      memberName: 'Alice Real',
+      amount: 700,
+      pledgedAmount: 700,
+      paidAmount: 500,
+      pace: 'ONE_OFF',
+      status: 'ACTIVE',
+      history: [],
+      createdAt: '2026-03-02T00:00:00Z',
+      updatedAt: '2026-03-03T00:00:00Z',
+    },
+    {
+      id: 'PLG-ABSORBED-MOCK',
+      planId: plan.id,
+      orgId: plan.orgId,
+      memberId: 'uid-real-1',
+      memberName: 'Alice Mock',
+      amount: 400,
+      pledgedAmount: 400,
+      paidAmount: 0,
+      pace: 'ONE_OFF',
+      status: 'MERGED',
+      absorbedIntoPledgeId: 'PLG-SURVIVOR',
+      history: [],
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-03T00:00:00Z',
+    },
+    {
+      id: 'PLG-WITHDRAWN',
+      planId: plan.id,
+      orgId: plan.orgId,
+      memberId: 'mem-2',
+      memberName: 'Bob',
+      amount: 300,
+      pledgedAmount: 300,
+      paidAmount: 0,
+      pace: 'ONE_OFF',
+      status: 'WITHDRAWN',
+      history: [],
+      createdAt: '2026-03-01T00:00:00Z',
+      updatedAt: '2026-03-03T00:00:00Z',
+    },
+  ];
+
+  const layers = computeFundingLayers(plan, lines, pledges, [], []);
+  assert.equal(layers.pledged, 700);
+  assert.equal(layers.gap, 300);
+});

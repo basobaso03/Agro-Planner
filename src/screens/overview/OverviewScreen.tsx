@@ -9,10 +9,12 @@ import { useNavigation } from '../../navigation/useNavigation.ts';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh.ts';
 import { dataService } from '../../services/dataService.ts';
 import { getRoleMeta } from '../../utils/permissions.ts';
-import { Loader2, Sparkles, X, ChevronRight, Compass } from 'lucide-react';
+import { Loader2, Sparkles, X, ChevronRight, Compass, KeyRound, Link2 } from 'lucide-react';
 import { InviteCodeSheet } from '../../sheets/common/InviteCodeSheet.tsx';
+import { ClaimProfileSheet } from '../../sheets/pool/ClaimProfileSheet.tsx';
 import { useRunway } from '../../hooks/useRunway.ts';
 import { RunwayHeroCard } from '../../components/runway/RunwayHeroCard.tsx';
+import { filterVisibleOrgMembers, isUnclaimedPlaceholder } from '../../utils/memberIdentity.ts';
 import type { AgroStateSnapshot, OrgMember, AuditNotificationEvent } from '../../types/agro.ts';
 import type { Organization } from '../../types/organization.ts';
 
@@ -60,6 +62,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
   const { navigate } = useNavigation();
   const { isRefreshing, pullDistance, handlers } = usePullToRefresh(onRefresh);
   const [showInviteSheet, setShowInviteSheet] = React.useState(false);
+  const [showClaimSheet, setShowClaimSheet] = React.useState(false);
 
   const org =
     activeOrg ||
@@ -102,6 +105,12 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
   const livestockValuation = livestockStatuses.reduce((acc: number, s: any) => acc + s.estimatedCurrentValueUsd, 0);
 
   const runway = useRunway(undefined, activeMember.orgId);
+
+  const visibleOrgMembers = filterVisibleOrgMembers(state.members || [], activeMember.orgId);
+  const unclaimedPlaceholders = visibleOrgMembers.filter((m) => isUnclaimedPlaceholder(m));
+  const pendingClaimRequests = (state.memberClaimRequests || []).filter(
+    (r) => (!activeMember.orgId || r.orgId === activeMember.orgId) && r.status === 'PENDING'
+  );
 
   return (
     <div {...handlers} className="p-4 sm:p-5 space-y-4 max-w-xl mx-auto">
@@ -229,6 +238,53 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         onAddLoanDebt={onAddLoanDebt}
         onBroadcast={onBroadcast}
       />
+
+      {/* 2.1 Pre-registered Placeholder Claim / Link Banner */}
+      {!isAdmin && unclaimedPlaceholders.length > 0 && !(activeMember.linkedMemberIds?.length) && (
+        <button
+          type="button"
+          onClick={() => setShowClaimSheet(true)}
+          className="w-full p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-between gap-3 text-left hover:bg-indigo-100/70 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <KeyRound className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-indigo-950">
+                Contributed before registering? Claim Existing Profile
+              </p>
+              <p className="text-[11px] text-indigo-800 font-medium truncate">
+                Enter your personal claim code or ask an admin to link your past contributions.
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-indigo-600 shrink-0" />
+        </button>
+      )}
+
+      {isAdmin && pendingClaimRequests.length > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate('members')}
+          className="w-full p-3.5 rounded-2xl bg-amber-50 border border-amber-300 flex items-center justify-between gap-3 text-left hover:bg-amber-100/70 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
+              <Link2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-amber-950">
+                {pendingClaimRequests.length} Profile Link Request{pendingClaimRequests.length > 1 ? 's' : ''} Pending
+              </p>
+              <p className="text-[11px] text-amber-800 font-medium truncate">
+                Review and link registered members to their pre-recorded mock contributor profiles.
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-amber-700 shrink-0" />
+        </button>
+      )}
 
       {/* 2.2 Runway Capital Planning Hero Card for Agro & General Business */}
       <div className="space-y-1.5">
@@ -358,6 +414,12 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
       <InviteCodeSheet
         isOpen={showInviteSheet}
         onClose={() => setShowInviteSheet(false)}
+        activeMember={activeMember}
+      />
+
+      <ClaimProfileSheet
+        isOpen={showClaimSheet}
+        onClose={() => setShowClaimSheet(false)}
         activeMember={activeMember}
       />
     </div>

@@ -157,6 +157,8 @@ export interface RunwayPledge {
   amount: number;
   pledgedAmount?: number; // alias for amount
   paidAmount?: number; // computed paid
+  status?: 'ACTIVE' | 'MERGED' | 'WITHDRAWN';
+  absorbedIntoPledgeId?: string;
   pace: 'ONE_OFF' | 'MONTHLY' | 'MILESTONE' | 'FLEXIBLE';
   instalments?: RunwayInstalment[];
   history: RunwayPledgeEvent[];

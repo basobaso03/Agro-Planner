@@ -95,6 +95,7 @@ export function createEmptyProductionSnapshot(): AgroStateSnapshot {
     runwayPledges: [],
     runwayClaims: [],
     runwayTemplates: [],
+    memberClaimRequests: [],
   };
 }
 

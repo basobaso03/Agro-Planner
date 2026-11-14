@@ -26,6 +26,12 @@ import type {
 } from '../../types/runway';
 import type { OrgMember, CapitalContributionEvent } from '../../types/agro';
 import { PERMISSIONS } from '../../utils/permissions';
+import {
+  getMemberMatchIds,
+  isUnclaimedPlaceholder,
+  isValidRealEmail,
+  matchesMemberRecord,
+} from '../../utils/memberIdentity';
 import { compressImage } from '../../utils/imageUpload';
 import { ImageViewerSheet } from '../ui/ImageViewerSheet.tsx';
 import { CountUp } from './CountUp';
@@ -86,10 +92,12 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
 
   // Deduplicated org members list including currentMember
   const activeMembers = useMemo(() => {
-    const currentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
-    const list = [...members];
+    const rawCurrentEmail = (currentMember.email || currentMember.phoneOrEmail || '').trim().toLowerCase();
+    const currentEmail = isValidRealEmail(rawCurrentEmail) ? rawCurrentEmail : '';
+    const list = members.filter((m) => m.accountStatus !== 'CLAIMED');
     const hasCurrent = list.some(
       (m) =>
+        matchesMemberRecord(currentMember.id, m) ||
         m.id === currentMember.id ||
         (currentMember.uid && m.uid === currentMember.uid) ||
         (currentEmail && (m.email || m.phoneOrEmail || '').trim().toLowerCase() === currentEmail)
@@ -131,12 +139,19 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
   // Compute each pledger / member's pledge & pay-in progress
   const pledgerRows = useMemo(() => {
     return activeMembers.map((mem) => {
-      const pledge = pledges.find((p) => p.planId === plan.id && p.memberId === mem.id);
+      const matchIds = getMemberMatchIds(mem);
+      const pledge = pledges.find(
+        (p) =>
+          p.planId === plan.id &&
+          p.status !== 'MERGED' &&
+          p.status !== 'WITHDRAWN' &&
+          matchesMemberRecord(p.memberId, mem)
+      );
       const paid = contributions
-        .filter((c) => c.runwayPlanId === plan.id && (c.memberId === mem.id || (pledge && c.pledgeId === pledge.id)))
+        .filter((c) => c.runwayPlanId === plan.id && (matchIds.has(c.memberId) || (pledge && c.pledgeId === pledge.id)))
         .reduce((acc, c) => (c.direction === 'CONTRA_REVERSAL' ? acc - Math.abs(c.amount) : acc + c.amount), 0);
       const pending = pendingClaims
-        .filter((c) => c.memberId === mem.id || (pledge && c.pledgeId === pledge.id))
+        .filter((c) => matchIds.has(c.memberId) || (pledge && c.pledgeId === pledge.id))
         .reduce((acc, c) => acc + c.amount, 0);
 
       const pledgedAmount = pledge?.amount || 0;
@@ -145,7 +160,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
 
       // Master Capital Goal context
       const totalMasterContributed = contributions
-        .filter((c) => c.memberId === mem.id)
+        .filter((c) => matchIds.has(c.memberId))
         .reduce((acc, c) => (c.direction === 'CONTRA_REVERSAL' ? acc - Math.abs(c.amount) : acc + c.amount), 0);
       const masterTarget = mem.targetContributionUsd || 1000;
       const masterPct = masterTarget > 0 ? Math.min(100, Math.round((totalMasterContributed / masterTarget) * 100)) : 0;
@@ -266,7 +281,7 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
 
   const selectableMembers = canConfirm
     ? activeMembers
-    : activeMembers.filter((m) => m.id === currentMember.id);
+    : activeMembers.filter((m) => matchesMemberRecord(m.id, currentMember) || m.id === currentMember.id);
 
   return (
     <div className="space-y-6">
@@ -352,6 +367,11 @@ export const PayInPanel: React.FC<PayInPanelProps> = ({
                     <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-semibold">
                       {formatRole(mem.role)}
                     </span>
+                    {isUnclaimedPlaceholder(mem) && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-bold">
+                        Unclaimed · Mock
+                      </span>
+                    )}
                     {pledgedAmount > 0 ? (
                       <span
                         className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${paid >= pledgedAmount

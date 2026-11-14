@@ -16,13 +16,14 @@ service cloud.firestore {
       return isAuthenticated()
              && (
                (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                && (getMemberData().approvalStatus == 'APPROVED' || !('approvalStatus' in getMemberData()) || getMemberData().active == true)
-                && (orgId == null || !('orgId' in getMemberData()) || getMemberData().orgId == null || getMemberData().orgId == orgId))
+                && (getMemberData().get('approvalStatus', 'APPROVED') == 'APPROVED' || getMemberData().get('active', false) == true)
+                && (orgId == null || getMemberData().get('orgId', null) == null || getMemberData().get('orgId', null) == orgId))
                || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
-                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
-                       || (request.auth.token.email != null
-                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail != null
-                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))
+                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminMemberId', '') == request.auth.uid
+                       || ('email' in request.auth.token
+                           && request.auth.token.email != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', null) != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', '').lower() == request.auth.token.email.lower())))
                || !exists(/databases/$(database)/documents/members/$(request.auth.uid))
              );
     }
@@ -31,13 +32,14 @@ service cloud.firestore {
       return isAuthenticated()
              && (
                (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                && (getMemberData().orgId == orgId || !('orgId' in getMemberData()) || getMemberData().orgId == null)
-                && getMemberData().role in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN', 'TREASURER'])
+                && (getMemberData().get('orgId', null) == orgId || getMemberData().get('orgId', null) == null)
+                && getMemberData().get('role', '') in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN', 'TREASURER'])
                || (orgId != null && exists(/databases/$(database)/documents/organizations/$(orgId))
-                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.adminMemberId == request.auth.uid
-                       || (request.auth.token.email != null
-                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail != null
-                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.adminEmail.lower() == request.auth.token.email.lower())))
+                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminMemberId', '') == request.auth.uid
+                       || ('email' in request.auth.token
+                           && request.auth.token.email != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', null) != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', '').lower() == request.auth.token.email.lower())))
                || !exists(/databases/$(database)/documents/members/$(request.auth.uid))
              );
     }
@@ -47,8 +49,43 @@ service cloud.firestore {
              && (
                isOrgAdmin(orgId)
                || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                   && (getMemberData().role == 'TREASURER' || getMemberData().role == 'SYNDICATE_TREASURER'))
+                   && getMemberData().get('role', '') in ['TREASURER', 'SYNDICATE_TREASURER'])
              );
+    }
+
+    // Strict verified Org Admin check (never uses !exists bypass) for claim vaults, tokens, and claim approvals
+    function isVerifiedOrgAdmin(orgId) {
+      return isAuthenticated()
+             && orgId != null
+             && (
+               (exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                && getMemberData().get('orgId', null) == orgId
+                && (getMemberData().get('approvalStatus', 'APPROVED') == 'APPROVED' || getMemberData().get('active', false) == true)
+                && getMemberData().get('role', '') in ['ORG_ADMIN', 'SYNDICATE_ADMIN', 'ADMIN'])
+               || (exists(/databases/$(database)/documents/organizations/$(orgId))
+                   && (get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminMemberId', '') == request.auth.uid
+                       || ('email' in request.auth.token
+                           && request.auth.token.email != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', null) != null
+                           && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('adminEmail', '').lower() == request.auth.token.email.lower())))
+             );
+    }
+
+    // Atomic batch verification via getAfter() for Personal Claim Code redemption
+    function isClaimingOwnToken(memberDoc, tokenHash) {
+      return isAuthenticated()
+             && tokenHash is string
+             && tokenHash != ''
+             && exists(/databases/$(database)/documents/claim_tokens/$(tokenHash))
+             && existsAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash))
+             && get(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('status', '') == 'OPEN'
+             && getAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('status', '') == 'CLAIMED'
+             && getAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('claimedByUid', '') == request.auth.uid
+             && memberDoc.get('orgId', null) == getAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('orgId', '')
+             && memberDoc.get('role', '') == getAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('role', '')
+             && memberDoc.get('approvalStatus', '') == 'APPROVED'
+             && memberDoc.get('active', false) == true
+             && getAfter(/databases/$(database)/documents/claim_tokens/$(tokenHash)).data.get('placeholderMemberId', '') in memberDoc.get('linkedMemberIds', []);
     }
 
     function isValidId(id) {
@@ -76,6 +113,54 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidId(orgId);
       allow update: if isAuthenticated() && isValidId(orgId) && (isOrgAdmin(orgId) || request.resource.data.adminMemberId == request.auth.uid);
       allow delete: if isOrgAdmin(orgId);
+
+      // Admin-only plaintext Personal Claim Code vault (never readable by members/claimants)
+      match /claim_codes/{placeholderId} {
+        allow read, create, update, delete: if isVerifiedOrgAdmin(orgId) && isValidId(placeholderId);
+      }
+    }
+
+    // PERSONAL CLAIM TOKENS (SHA-256 HASHED KEY, SINGLE-GET ONLY, ATOMIC ONE-TIME REDEMPTION)
+    match /claim_tokens/{claimTokenHash} {
+      allow get: if isAuthenticated() && isValidId(claimTokenHash);
+      allow list: if false;
+      allow create: if 'orgId' in request.resource.data
+                    && isVerifiedOrgAdmin(request.resource.data.orgId)
+                    && isValidId(claimTokenHash)
+                    && request.resource.data.get('status', '') == 'OPEN';
+      allow update: if isValidId(claimTokenHash)
+                    && (
+                      ('orgId' in resource.data && isVerifiedOrgAdmin(resource.data.orgId))
+                      || (
+                        isAuthenticated()
+                        && resource.data.get('status', '') == 'OPEN'
+                        && request.resource.data.get('status', '') == 'CLAIMED'
+                        && request.resource.data.get('claimedByUid', '') == request.auth.uid
+                        && request.resource.data.get('orgId', '') == resource.data.get('orgId', null)
+                        && request.resource.data.get('placeholderMemberId', '') == resource.data.get('placeholderMemberId', null)
+                        && request.resource.data.get('role', '') == resource.data.get('role', null)
+                      )
+                    );
+      allow delete: if 'orgId' in resource.data && isVerifiedOrgAdmin(resource.data.orgId);
+    }
+
+    // PATH B PROFILE LINK REQUESTS (NAME-ONLY PICKER -> ADMIN REVIEW & MERGE)
+    match /member_claim_requests/{requestId} {
+      allow read: if 'orgId' in resource.data
+                  && (
+                    isVerifiedOrgAdmin(resource.data.orgId)
+                    || (isApprovedMemberOfOrg(resource.data.orgId) && resource.data.get('requesterUid', '') == request.auth.uid)
+                  );
+      allow create: if 'orgId' in request.resource.data
+                    && isApprovedMemberOfOrg(request.resource.data.orgId)
+                    && isValidId(requestId)
+                    && request.resource.data.get('requesterUid', '') == request.auth.uid
+                    && request.resource.data.get('status', '') == 'PENDING';
+      allow update: if 'orgId' in resource.data
+                    && isVerifiedOrgAdmin(resource.data.orgId)
+                    && request.resource.data.get('orgId', null) == resource.data.get('orgId', null);
+      allow delete: if ('orgId' in resource.data && isVerifiedOrgAdmin(resource.data.orgId))
+                    || (isAuthenticated() && resource.data.get('requesterUid', '') == request.auth.uid && resource.data.get('status', '') == 'PENDING');
     }
 
     match /invite_codes/{code} {
@@ -105,33 +190,68 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated()
                     && isValidId(memberId)
-                    && (request.auth.uid == memberId
-                        || (request.auth.token.email != null
-                            && request.resource.data.email != null
-                            && request.auth.token.email.lower() == request.resource.data.email.lower())
-                        || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                            && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')));
+                    && (
+                      (
+                        (request.auth.uid == memberId
+                         || ('email' in request.auth.token
+                             && request.auth.token.email != null
+                             && 'email' in request.resource.data
+                             && request.resource.data.email != null
+                             && request.auth.token.email.lower() == request.resource.data.email.lower()))
+                        && (
+                          !('redeemedClaimTokenHash' in request.resource.data)
+                          || request.resource.data.redeemedClaimTokenHash == null
+                          || isClaimingOwnToken(request.resource.data, request.resource.data.redeemedClaimTokenHash)
+                        )
+                      )
+                      || ('orgId' in request.resource.data && isVerifiedOrgAdmin(request.resource.data.orgId))
+                    );
       allow update: if isAuthenticated()
                     && isValidId(memberId)
                     && (
-                      // Org Admin updating a member within their own organization (promotions, demotions, suspensions, site assignments)
-                      isOrgAdmin(resource.data.orgId)
-                      || isOrgAdmin(request.resource.data.orgId)
-                      || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                          && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
-                          && (getMemberData().orgId == resource.data.orgId || resource.data.orgId == null || !('orgId' in resource.data)))
-                      // Self update of personal profile or initial/switch organization onboarding (when not suspended)
-                      || (request.auth.uid == memberId
-                          && resource.data.approvalStatus != 'SUSPENDED')
-                      || (request.auth.token.email != null
-                          && resource.data.email != null
-                          && request.auth.token.email.lower() == resource.data.email.lower()
-                          && resource.data.approvalStatus != 'SUSPENDED')
+                      // Verified Org Admin updating a member within their own organization (or assigning null-org member)
+                      ('orgId' in resource.data && resource.data.orgId != null && isVerifiedOrgAdmin(resource.data.orgId))
+                      || ((!('orgId' in resource.data) || resource.data.orgId == null)
+                          && 'orgId' in request.resource.data
+                          && isVerifiedOrgAdmin(request.resource.data.orgId))
+                      // Claimant atomically marking an UNCLAIMED placeholder as CLAIMED in the same batch as claim_tokens/{hash}
+                      || (
+                        resource.data.get('isPlaceholder', false) == true
+                        && resource.data.get('accountStatus', 'UNCLAIMED') == 'UNCLAIMED'
+                        && resource.data.get('claimCodeHash', '') is string
+                        && resource.data.get('claimCodeHash', '') != ''
+                        && request.resource.data.get('accountStatus', '') == 'CLAIMED'
+                        && request.resource.data.get('active', true) == false
+                        && request.resource.data.get('claimedByUid', '') == request.auth.uid
+                        && request.resource.data.get('orgId', null) == resource.data.get('orgId', null)
+                        && request.resource.data.get('role', '') == resource.data.get('role', '')
+                        && existsAfter(/databases/$(database)/documents/claim_tokens/$(resource.data.claimCodeHash))
+                        && getAfter(/databases/$(database)/documents/claim_tokens/$(resource.data.claimCodeHash)).data.get('status', '') == 'CLAIMED'
+                        && getAfter(/databases/$(database)/documents/claim_tokens/$(resource.data.claimCodeHash)).data.get('claimedByUid', '') == request.auth.uid
+                        && getAfter(/databases/$(database)/documents/claim_tokens/$(resource.data.claimCodeHash)).data.get('placeholderMemberId', '') == memberId
+                      )
+                      // Self update (profile edits allowed; restricted fields only via onboarding, owning target org, or valid claim batch)
+                      || (
+                        (request.auth.uid == memberId
+                         || ('email' in request.auth.token
+                             && request.auth.token.email != null
+                             && 'email' in resource.data
+                             && resource.data.email != null
+                             && request.auth.token.email.lower() == resource.data.email.lower()))
+                        && resource.data.get('approvalStatus', 'APPROVED') != 'SUSPENDED'
+                        && (
+                          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'active', 'assignedLocationId', 'linkedMemberIds'])
+                          || !('orgId' in resource.data)
+                          || resource.data.orgId == null
+                          || resource.data.get('approvalStatus', '') == 'PENDING_APPROVAL'
+                          || ('orgId' in request.resource.data && request.auth.uid == memberId && isVerifiedOrgAdmin(request.resource.data.orgId))
+                          || ('redeemedClaimTokenHash' in request.resource.data
+                              && request.resource.data.redeemedClaimTokenHash != null
+                              && isClaimingOwnToken(request.resource.data, request.resource.data.redeemedClaimTokenHash))
+                        )
+                      )
                     );
-      allow delete: if isOrgAdmin(resource.data.orgId)
-                    || (exists(/databases/$(database)/documents/members/$(request.auth.uid))
-                        && (getMemberData().role == 'ORG_ADMIN' || getMemberData().role == 'SYNDICATE_ADMIN')
-                        && getMemberData().orgId == resource.data.orgId)
+      allow delete: if ('orgId' in resource.data && isVerifiedOrgAdmin(resource.data.orgId))
                     || (request.auth.uid == memberId);
     }
 
@@ -256,9 +376,31 @@ service cloud.firestore {
     }
 
     match /runway_pledges/{id} {
-      allow read:   if isApprovedMemberOfOrg(resource.data.orgId) && getMemberData().role != 'GROUND_OPERATOR';
-      allow create, update: if isApprovedMemberOfOrg(request.resource.data.orgId)
+      allow read:   if isApprovedMemberOfOrg(resource.data.orgId)
+                    && (!exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                        || getMemberData().get('role', '') != 'GROUND_OPERATOR');
+      allow create: if isApprovedMemberOfOrg(request.resource.data.orgId)
+                    && isValidId(id)
                     && (request.resource.data.memberId == request.auth.uid || isTreasurerOfOrg(request.resource.data.orgId));
+      allow update: if isApprovedMemberOfOrg(resource.data.orgId)
+                    && request.resource.data.orgId == resource.data.orgId
+                    && (
+                      (
+                        request.resource.data.memberId == resource.data.memberId
+                        && (resource.data.memberId == request.auth.uid || isTreasurerOfOrg(resource.data.orgId))
+                      )
+                      || (
+                        request.resource.data.memberId != resource.data.memberId
+                        && (
+                          isVerifiedOrgAdmin(resource.data.orgId)
+                          || (
+                            request.resource.data.memberId == request.auth.uid
+                            && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+                            && resource.data.memberId in getMemberData().get('linkedMemberIds', [])
+                          )
+                        )
+                      )
+                    );
       allow delete: if false;
     }
 

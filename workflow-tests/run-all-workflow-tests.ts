@@ -62,6 +62,10 @@ const suites = [
     name: 'Suite 13: Navigation Back-Stack, Recents & Viewport Matrix Contracts',
     file: 'workflow-tests/13-navigation-and-viewport.test.ts',
   },
+  {
+    name: 'Suite 14: Unregistered Placeholder Contributors & Dual-Path Claiming (Agro & General Venture)',
+    file: 'workflow-tests/14-placeholder-member-claiming.test.ts',
+  },
 ];
 
 console.log('\n========================================================================');

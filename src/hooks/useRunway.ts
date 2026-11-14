@@ -21,6 +21,12 @@ import {
   round2,
   computeRunwayMonths,
 } from '../utils/runway.ts';
+import {
+  filterVisibleOrgMembers,
+  getMemberMatchIds,
+  isValidRealEmail,
+  matchesMemberRecord,
+} from '../utils/memberIdentity.ts';
 
 export function useRunway(planId?: string, orgIdOverride?: string) {
   const [state, setState] = useState<AgroStateSnapshot>(() => dataService.getState());
@@ -38,18 +44,18 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
   const isEnabled = Boolean(currentOrg?.features?.runwayModule);
 
   const orgMembers = useMemo(() => {
-    const raw = (state.members || []).filter((m) => m.orgId === activeOrgId);
+    const visible = filterVisibleOrgMembers(state.members || [], activeOrgId);
     const seenIds = new Set<string>();
     const seenUids = new Set<string>();
     const seenEmails = new Set<string>();
-    return raw.filter((m) => {
+    return visible.filter((m) => {
       if (seenIds.has(m.id)) return false;
       if (m.uid && seenUids.has(m.uid)) return false;
-      const email = (m.email || m.phoneOrEmail || '').trim().toLowerCase();
-      if (email && seenEmails.has(email)) return false;
+      const candidateEmail = (m.email || (isValidRealEmail(m.phoneOrEmail) ? m.phoneOrEmail : '')).trim().toLowerCase();
+      if (candidateEmail && isValidRealEmail(candidateEmail) && seenEmails.has(candidateEmail)) return false;
       seenIds.add(m.id);
       if (m.uid) seenUids.add(m.uid);
-      if (email) seenEmails.add(email);
+      if (candidateEmail && isValidRealEmail(candidateEmail)) seenEmails.add(candidateEmail);
       return true;
     });
   }, [state.members, activeOrgId]);
@@ -92,18 +98,23 @@ export function useRunway(planId?: string, orgIdOverride?: string) {
 
   const pledges = useMemo(() => {
     if (!plan) return [];
-    const plgList = (state.runwayPledges || []).filter((p) => p.planId === plan.id);
+    const plgList = (state.runwayPledges || []).filter(
+      (p) => p.planId === plan.id && p.status !== 'MERGED' && p.status !== 'WITHDRAWN'
+    );
     return plgList.map((p) => {
+      const owner = orgMembers.find((m) => matchesMemberRecord(p.memberId, m));
+      const ownerIds = owner ? getMemberMatchIds(owner) : new Set([p.memberId]);
       const paid = (state.capitalContributions || [])
-        .filter((c) => c.runwayPlanId === plan.id && (c.pledgeId === p.id || c.memberId === p.memberId))
+        .filter((c) => c.runwayPlanId === plan.id && (c.pledgeId === p.id || ownerIds.has(c.memberId)))
         .reduce((acc, c) => acc + (c.direction === 'CONTRA_REVERSAL' ? -Math.abs(c.amount) : c.amount), 0);
       return {
         ...p,
+        memberName: owner ? owner.fullName : p.memberName,
         pledgedAmount: p.amount,
         paidAmount: round2(Math.max(0, paid)),
       };
     });
-  }, [state.runwayPledges, state.capitalContributions, plan]);
+  }, [state.runwayPledges, state.capitalContributions, plan, orgMembers]);
 
   const claims = useMemo(() => {
     if (!plan) return [];
